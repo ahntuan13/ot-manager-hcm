@@ -669,8 +669,8 @@
     <div class="dash-chart-main card ac-top ac-blue">
       <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên</div>
       <div class="legend">
-        <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤60h</span>
-        <span><span class="ldot" style="background:#E8A33D"></span>Cảnh báo 60–70h</span>
+        <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤45h</span>
+        <span><span class="ldot" style="background:#E8A33D"></span>Cảnh báo 45–70h</span>
         <span><span class="ldot" style="background:#C0392B"></span>Vượt 70h</span>
       </div>
       <div style="position:relative;width:100%;height:420px"><canvas id="cBar" role="img" aria-label="OT luỹ kế nhân viên">OT nhân viên.</canvas></div>
@@ -739,7 +739,7 @@
       <select id="stFilter" onchange="renderEmployeeList()">
         <option value="all">Tất cả trạng thái</option>
         <option value="d">Vượt &gt;70h</option>
-        <option value="w">Cảnh báo 60–70h</option>
+        <option value="w">Cảnh báo 45–70h</option>
         <option value="o">Bình thường</option>
       </select>
       <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
@@ -1173,7 +1173,7 @@
     <div class="card-title">Upload dữ liệu</div>
     <div class="info-box">
       <strong>Hỗ trợ 2 định dạng file:</strong><br>
-      1) File chấm công In/Out (như file gốc) — app tự tính OT mỗi ngày: T2–T6 &amp; CN tính sau 17:00, Thứ 7 tính sau 13:00, ngày lễ/Tết tính từ 8:00.<br>
+      1) File chấm công In/Out (như file gốc) — app tự tính OT theo công thức: <strong>MAX(0, Tổng giờ đã làm cả kỳ − Tổng giờ tiêu chuẩn cả kỳ)</strong> (8h/ngày thường, 4h/thứ 7, 0h/CN). Xem chi tiết ở mục "Công thức tính".<br>
       2) File đơn giản: Tên NV &middot; Phòng Ban &middot; Ngày &middot; Giờ OT (đã có sẵn số giờ OT).<br>
       <strong>Chu kỳ tháng công ty:</strong> mỗi "tháng" tính từ ngày 16 đến ngày 15 tháng sau.<br>
       <strong>Upload theo từng mốc luỹ kế:</strong> mỗi lần upload, file chứa dữ liệu từ 16 đến ngày bất kỳ (ví dụ 16-26/04, lần sau 16/04-03/05, lần sau 16/04-10/05...). App lưu OT theo từng ngày cụ thể và ghi nhận mỗi lần upload là 1 "mốc" — vào tab Dashboard có nút chọn xem lại từng mốc, mốc cuối cùng (xa nhất) = báo cáo luỹ kế cả tháng.<br>
@@ -1258,26 +1258,43 @@
   <div style="font-size:12.5px;color:var(--text2);margin-bottom:18px">Giải thích cách hệ thống tính OT, đi trễ và WLB — để các số liệu trên Dashboard, Phòng ban, So sánh và Đi trễ đều nhất quán với nhau.</div>
 
   <div class="card" style="margin-bottom:16px">
-    <div class="card-title" style="margin-bottom:10px">🟣 Cách tính OT</div>
+    <div class="card-title" style="margin-bottom:10px">🟣 Cách tính OT <span style="font-size:11px;font-weight:400;color:var(--text2)">— theo file Excel VBA gốc công ty dùng trước đây (macro WT2)</span></div>
     <div style="font-size:13px;line-height:1.7;color:var(--text)">
-      <p><strong>Mỗi ngày, OT chỉ tính theo giờ ra (checkout), mốc tính khác nhau theo loại ngày:</strong></p>
+      <p><strong>Công thức tổng quát (tính theo cả kỳ, không phải "vượt ngưỡng mỗi ngày" như trước):</strong></p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        OT = MAX(0, Tổng giờ ĐÃ LÀM trong kỳ − Tổng giờ TIÊU CHUẨN trong kỳ)
+      </p>
+      <p style="color:var(--text2);font-size:12px">Mỗi ngày chỉ đóng góp 2 con số: <strong>giờ đã làm</strong> và <strong>giờ tiêu chuẩn</strong>. OT chỉ thật sự "lộ ra" ở phần <strong>chênh lệch cộng dồn</strong> của cả kỳ — không giới hạn theo từng ngày riêng lẻ.</p>
+
+      <p style="margin-top:10px"><strong>1. Giờ đã làm mỗi ngày</strong> (tự động trừ giờ nghỉ trưa 12h-13h, <u>có tính cả giờ đến sớm</u>):</p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        Giờ làm = max(0, min(12h, Giờ ra) − Giờ vào) + max(0, Giờ ra − max(13h, Giờ vào))
+      </p>
+      <p style="color:var(--text2);font-size:12px">Giờ vào/ra được <strong>làm tròn 2 bước</strong> trước khi tính: làm tròn LÊN 15 phút, rồi làm tròn XUỐNG 30 phút. Ví dụ 7:32 → 7:45 → 7:30.</p>
+      <p style="color:var(--text2);font-size:12px">Thiếu dữ liệu chấm công: <strong>có giờ vào, thiếu giờ ra</strong> → mặc định giờ ra = 17:00. <strong>Thiếu giờ vào, có giờ ra</strong> → mặc định giờ vào = 8:00. <strong>Thiếu cả 2</strong> → ngày đó đóng góp 0 giờ làm (nhưng vẫn tính đủ giờ tiêu chuẩn bên dưới).</p>
+
+      <p style="margin-top:10px"><strong>2. Giờ tiêu chuẩn mỗi ngày</strong> (luôn cộng dồn dù có đi làm hay không):</p>
       <table style="margin:8px 0;font-size:12.5px">
-        <thead><tr><th>Loại ngày</th><th>Công thức</th></tr></thead>
+        <thead><tr><th>Loại ngày</th><th>Giờ tiêu chuẩn</th></tr></thead>
         <tbody>
-          <tr><td>Thứ 2 – Thứ 6 &amp; Chủ nhật</td><td style="font-family:var(--font-mono)">OT = max(0, Giờ ra − 17:00)</td></tr>
-          <tr><td>Thứ 7</td><td style="font-family:var(--font-mono)">OT = max(0, Giờ ra − 13:00)</td></tr>
-          <tr><td>Ngày lễ / Tết (theo quy định Nhà nước)</td><td style="font-family:var(--font-mono)">OT = max(0, Giờ ra − 8:00)</td></tr>
+          <tr><td>Thứ 2 – Thứ 6</td><td style="font-family:var(--font-mono)">8h</td></tr>
+          <tr><td>Thứ 7</td><td style="font-family:var(--font-mono)">4h</td></tr>
+          <tr><td>Chủ nhật</td><td style="font-family:var(--font-mono)">0h</td></tr>
         </tbody>
       </table>
-      <p style="color:var(--text2);font-size:12px">Ngày lễ/Tết áp dụng theo <strong>lịch nghỉ chính thức do công ty ban hành</strong> hằng năm (Tết Dương lịch, Tết Nguyên đán, Giỗ Tổ Hùng Vương, 30/4, 1/5, Quốc khánh 2/9 và các ngày nghỉ bù/ngày (*) công ty quy định) — toàn bộ thời gian làm việc từ 8:00 sáng được tính là OT. Các ngày Chủ nhật chỉ ghi "Weekend day" trong lịch nghỉ vẫn áp dụng quy tắc Chủ nhật thông thường. Danh sách ngày cụ thể theo từng năm được cập nhật trong code theo thông báo lịch nghỉ mới nhất của công ty.</p>
+      <p style="color:var(--text2);font-size:12px">⚠️ <strong>Khác với file Excel gốc:</strong> file gốc không giảm giờ tiêu chuẩn cho ngày lễ (khiến người nghỉ đúng ngày lễ bị kéo tụt OT tháng đó một cách bất hợp lý). App đã sửa: <strong>ngày lễ/Tết được miễn giờ tiêu chuẩn (0h)</strong> — người nghỉ đúng ngày lễ sẽ không bị trừ quota ngày đó. Người <strong>vẫn đi làm</strong> đúng ngày lễ thì không đổi gì — giờ làm hôm đó vẫn được tính 100% là OT như file gốc.</p>
+
+      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn) được <strong>tách theo dõi riêng</strong> ở cột "OT sau 22h" — không cộng/trừ vào công thức OT chính ở trên, chỉ để biết ai làm việc khuya.</p>
+
       <p style="margin-top:10px"><strong>Theo tháng (chu kỳ 16→15):</strong></p>
-      <p style="color:var(--text2);font-size:12px">Tổng OT luỹ kế = tổng OT(ngày) từ ngày 16 đầu chu kỳ đến ngày được chọn (Week 1/2/3/4). Giới hạn quy định: <strong>70h/tháng</strong>.</p>
+      <p style="color:var(--text2);font-size:12px">Tổng OT luỹ kế = MAX(0, tổng giờ làm − tổng giờ tiêu chuẩn) tính từ ngày 16 đầu chu kỳ đến ngày được chọn (Week 1/2/3/4).</p>
+      <p style="color:var(--text2);font-size:12px">Quy định OT: <strong>không vượt quá 45h/tháng</strong> là mức chuẩn. Từ 45h đến 70h vẫn được xem là <strong>hợp lệ</strong> (chưa vi phạm) nhưng cần theo dõi. Chỉ khi <strong>vượt quá 70h</strong> mới thật sự là cảnh báo/vượt mức cần xử lý.</p>
       <table style="margin-top:10px;font-size:12.5px">
-        <thead><tr><th>Mức OT luỹ kế</th><th>Trạng thái</th></tr></thead>
+        <thead><tr><th>Mức OT luỹ kế</th><th>Trạng thái</th><th>Ý nghĩa</th></tr></thead>
         <tbody>
-          <tr><td>≤ 60h</td><td><span class="badge bo">Bình thường</span></td></tr>
-          <tr><td>60h – 70h</td><td><span class="badge bw">Cảnh báo</span></td></tr>
-          <tr><td>&gt; 70h</td><td><span class="badge bd">Vượt mức</span></td></tr>
+          <tr><td>≤ 45h</td><td><span class="badge bo">Bình thường</span></td><td>Trong mức chuẩn quy định</td></tr>
+          <tr><td>45h – 70h</td><td><span class="badge bw">Cảnh báo</span></td><td>Vượt mức chuẩn 45h nhưng vẫn <strong>hợp lệ</strong> (chưa vi phạm) — cần theo dõi</td></tr>
+          <tr><td>&gt; 70h</td><td><span class="badge bd">Vượt mức</span></td><td>Vượt trần 70h — cần xử lý/xin duyệt</td></tr>
         </tbody>
       </table>
       <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>% Giới hạn</strong> = Tổng OT luỹ kế ÷ 70h × 100%. Dùng chung công thức này ở mọi tab: Tổng quan OT, OT phòng ban — chỉ khác cách lấy mốc thời gian (theo tuần hoặc theo cả tháng).</p>
@@ -1302,10 +1319,11 @@
   <div class="card" style="margin-bottom:16px">
     <div class="card-title" style="margin-bottom:10px">🟠 Cách tính đi trễ</div>
     <div style="font-size:13px;line-height:1.7;color:var(--text)">
-      <p><strong>Mỗi ngày:</strong></p>
+      <p><strong>Mỗi ngày (có 5 phút ân hạn):</strong></p>
       <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
-        Số phút trễ = max(0, Giờ vào − 8:00)
+        Số phút trễ = max(0, Giờ vào − 8:05)
       </p>
+      <p style="color:var(--text2);font-size:12px">Vào trước hoặc đúng 8:05 sáng → <strong>không</strong> tính trễ (khoảng 8:00-8:05 là thời gian ân hạn). Vào sau 8:05 mới bắt đầu tính phút trễ.</p>
       <p style="color:var(--text2);font-size:12px">Dữ liệu lấy <strong>tự động</strong> từ file chấm công In/Out đã upload ở mục OT (không cần upload riêng) — chỉ tính cho 6 phòng ban được phép theo dõi đi trễ: <strong>S-AD, S-AZ, S-PD, S-PU, S-QC, S-ED</strong>.</p>
       <p style="margin-top:10px"><strong>Chia 2 mốc:</strong></p>
       <table style="margin:8px 0;font-size:12.5px">
@@ -1316,6 +1334,7 @@
         </tbody>
       </table>
       <p style="color:var(--text2);font-size:12px">Khoảng 15–29 phút không thuộc mốc nào (ít gặp), chỉ được cộng vào <strong>Tổng số lần / Tổng phút</strong> chung — không hiển thị thành cột riêng. Số lần và tổng phút được tính riêng cho từng mốc, sau đó mới cộng lại thành Tổng.</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Bảng chi tiết đi trễ có thêm cột <strong>"Ngày đi trễ"</strong> — chỉ liệt kê CHÍNH XÁC những ngày NV đó đi trễ (dạng dd/mm), không hiển thị cả lịch tháng. Ngày trễ ≥30 phút được tô đỏ đậm để dễ nhận biết.</p>
       <p style="margin-top:8px;color:var(--text2);font-size:12px">Biểu đồ "Top NV đi trễ nhiều nhất" ưu tiên hiển thị <strong>Mốc 1 (&lt;15p)</strong> làm phần chính của cột (vì đây là tình trạng phổ biến nhất), phần Mốc 2 xếp chồng phía trên bằng màu đỏ để dễ nhận biết các trường hợp cần xin phép.</p>
       <p style="margin-top:8px;color:var(--text2);font-size:12px">Mục Đi trễ có 2 tab: <strong>Theo tháng</strong> (chi tiết từng tháng đang chọn) và <strong>Theo Quý</strong> (tổng hợp 3 tháng/quý theo từng phòng ban, 2 mốc) — tương tự cách xem theo Tuần/Tháng/Quý ở mục So sánh OT.</p>
     </div>
@@ -1469,7 +1488,7 @@ function fmtMK(mk) {
   const [y,m] = mk.split('-').map(Number);
   return `${MONTH_NAMES_EN[m-1]} ${y}`;
 }
-function stOf(t) { return t > 70 ? 'd' : t >= 60 ? 'w' : 'o'; }
+function stOf(t) { return t > 70 ? 'd' : t >= 45 ? 'w' : 'o'; }
 function stBadge(t) {
   const s = stOf(t);
   return s==='d' ? '<span class="badge bd">Vượt mức</span>'
@@ -1634,9 +1653,15 @@ function sumDaysInRange(daysObj, start, end) {
   });
   return sum;
 }
-// Total OT hours for an employee record (object with .days)
+// Total OT hours for an employee record — theo công thức mới: MAX(0, tổng giờ đã làm − tổng giờ tiêu chuẩn).
 function totalOf(e) {
-  return Object.values(e.days || {}).reduce((a,b)=>a+b,0);
+  const worked = Object.values(e.days || {}).reduce((a,b)=>a+b,0);
+  const quota = Object.values(e.quotaDays || {}).reduce((a,b)=>a+b,0);
+  return Math.max(0, worked - quota);
+}
+// Tổng phần OT phát sinh SAU 22:00 (Night OT) — chỉ để theo dõi riêng, đã nằm sẵn trong totalOf() ở trên.
+function nightTotalOf(e) {
+  return Object.values(e.nightDays || {}).reduce((a,b)=>a+b,0);
 }
 
 function fmtCompanyMK(mk) {
@@ -1817,8 +1842,19 @@ function getAllDepts() {
   return [...s].sort();
 }
 
+// Dùng riêng cho trang WLB: gộp tên phòng ban từ CẢ 2 nguồn (OT + Off Day).
+// getAllDepts() gốc chỉ lấy từ OT (dùng cho Dashboard/OT phòng ban để khớp đúng dữ liệu OT thuần) —
+// nhưng ở WLB nếu chỉ dùng danh sách đó, phòng ban nào chỉ xuất hiện trong file Off Day
+// (tên hơi khác, hoặc NV đó chưa có OT tháng này) sẽ bị rớt khỏi bảng dù có dữ liệu.
+function getAllDeptsForWlb() {
+  const s = new Set(getAllDepts());
+  Object.values(OFF_DB).forEach(m => Object.keys(m.depts || {}).forEach(d => { if (d) s.add(d); }));
+  return [...s].sort();
+}
+
 // Get totals for employees in month `mk`, cumulative up to period index `pIdx` (default: last/latest period).
-// Returns { name, dept, total } per employee — `total` = cumulative OT hours from cycle-start to period end.
+// Returns { name, dept, total } per employee — `total` = MAX(0, tổng giờ đã làm − tổng giờ tiêu chuẩn)
+// cộng dồn từ đầu chu kỳ (16) đến hết period đang xét — đúng công thức lấy từ file Excel VBA gốc.
 function getTotals(mk, deptFilter = '__all__', pIdx = null) {
   const m = DB[mk]; if (!m) return [];
   const periods = buildPeriods(mk);
@@ -1830,10 +1866,19 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
     .map(n => {
       const e = m.employees[n];
       const days = e.days || {};
-      const tot = Math.round(sumDaysInRange(days, period.start, period.end)*10)/10;
-      // Per-period breakdown (delta OT for each period, not cumulative)
-      const segVals = periods.map(p => Math.round(sumDaysInRange(days, p.start, p.end)*10)/10);
-      return { name: n, dept: e.dept, staffCode: e.staffCode || '', weeks: segVals, total: tot };
+      const quotaDays = e.quotaDays || {};
+      const nightDays = e.nightDays || {};
+      const workedUpTo = sumDaysInRange(days, period.start, period.end);
+      const quotaUpTo = sumDaysInRange(quotaDays, period.start, period.end);
+      const tot = Math.round(Math.max(0, workedUpTo - quotaUpTo)*10)/10;
+      const nightTot = Math.round(sumDaysInRange(nightDays, period.start, period.end)*10)/10;
+      // Per-period breakdown (OT cộng dồn tính đến hết từng mốc tuần, không phải phát sinh riêng từng tuần)
+      const segVals = periods.map(p => {
+        const w = sumDaysInRange(days, p.start, p.end);
+        const q = sumDaysInRange(quotaDays, p.start, p.end);
+        return Math.round(Math.max(0, w - q)*10)/10;
+      });
+      return { name: n, dept: e.dept, staffCode: e.staffCode || '', weeks: segVals, total: tot, nightTotal: nightTot };
     });
 }
 
@@ -1891,24 +1936,59 @@ const VN_HOLIDAYS = new Set([
 ]);
 function isVNHoliday(iso) { return !!iso && VN_HOLIDAYS.has(iso); }
 
-// Compute OT hours for one day given in/out times + the day's ISO date (YYYY-MM-DD).
-// Quy định mới:
-//  · Thứ 2 - Thứ 6 & Chủ nhật: OT = max(0, Giờ ra − 17:00)
-//  · Thứ 7: OT = max(0, Giờ ra − 13:00)
-//  · Ngày lễ/Tết (VN_HOLIDAYS): OT = max(0, Giờ ra − 8:00)  ← toàn bộ giờ làm tính là OT
-function computeDayOT(inVal, outVal, iso) {
-  const inM = timeToMinutes(inVal);
-  const outM = timeToMinutes(outVal);
-  if (inM === null || outM === null) return 0;
+// ============================================================
+//  CÔNG THỨC TÍNH OT — theo đúng file Excel VBA (macro WT2 / New_Over_Hour) do công ty dùng trước đây.
+//  OT (cả kỳ) = MAX(0, Tổng giờ ĐÃ LÀM trong kỳ − Tổng giờ TIÊU CHUẨN trong kỳ)
+//  Đây là công thức TỔNG HỢP (không phải "quá X giờ mỗi ngày mới tính OT" như bản cũ) — mỗi ngày chỉ
+//  đóng góp "giờ đã làm" (đã trừ giờ nghỉ trưa 12h-13h) và "giờ tiêu chuẩn" (8h/4h/0h theo loại ngày),
+//  OT thực sự chỉ lộ ra ở phần CHÊNH LỆCH cộng dồn cả kỳ.
+// ============================================================
 
-  let cutoff = 17*60; // mặc định: T2–T6 & CN
-  if (iso && isVNHoliday(iso)) {
-    cutoff = 8*60;
-  } else if (iso) {
-    const dow = new Date(iso+'T00:00:00').getDay(); // 0=CN,6=T7
-    if (dow === 6) cutoff = 13*60;
-  }
-  return outM > cutoff ? (outM - cutoff) / 60 : 0;
+// Làm tròn giờ (dạng phút) theo đúng cách file Excel: làm tròn LÊN 15 phút, rồi làm tròn XUỐNG 30 phút.
+// Ví dụ: 7:32 → (làm tròn lên 15p) 7:45 → (làm tròn xuống 30p) 7:30.
+function roundToHalfHourVBA(mins) {
+  const upQuarter = Math.ceil(mins / 15) * 15;
+  return Math.floor(upQuarter / 30) * 30;
+}
+
+// Tính "giờ đã làm" trong 1 ngày (đã trừ giờ nghỉ trưa 12h-13h, CÓ tính giờ đến sớm) + phần OT sau 22h (theo dõi riêng).
+// Áp dụng 2 quy tắc khi thiếu dữ liệu chấm công:
+//   · Có giờ vào, KHÔNG có giờ ra → mặc định giờ ra = 17:00
+//   · KHÔNG có giờ vào, có giờ ra → mặc định giờ vào = 8:00
+//   · Thiếu cả 2 → ngày đó đóng góp 0 giờ làm (nhưng vẫn tính đủ giờ tiêu chuẩn — xem getDayQuota())
+function computeDayWorked(inVal, outVal, iso) {
+  let inM = timeToMinutes(inVal);
+  let outM = timeToMinutes(outVal);
+  if (inM === null && outM === null) return { worked: 0, night: 0 };
+  if (inM === null) inM = 8 * 60;    // thiếu giờ vào → 8:00
+  if (outM === null) outM = 17 * 60; // thiếu giờ ra → 17:00
+
+  const inR = roundToHalfHourVBA(inM);
+  const outR = roundToHalfHourVBA(outM);
+
+  // Giờ đã làm = (giờ ra, tối đa 12h) − giờ vào  +  giờ ra − (13h hoặc giờ vào, cái nào muộn hơn)
+  const morning = Math.max(0, Math.min(12 * 60, outR) - inR);
+  const afternoon = Math.max(0, outR - Math.max(13 * 60, inR));
+  const worked = (morning + afternoon) / 60;
+
+  // OT sau 22h — chỉ để theo dõi riêng (không trừ/cộng vào công thức chính ở trên).
+  const NIGHT_START = 22 * 60;
+  const night = outR > NIGHT_START ? (outR - NIGHT_START) / 60 : 0;
+
+  return { worked, night };
+}
+
+// Giờ tiêu chuẩn (quota) của 1 ngày theo loại ngày — LUÔN cộng dồn dù ngày đó có đi làm hay không
+// (nghỉ không phép/không chấm công vẫn tính đủ giờ tiêu chuẩn, làm giảm OT tháng đó — đúng theo file gốc).
+// NGOẠI LỆ đã sửa so với file gốc: ngày lễ/Tết được MIỄN quota (0h) — vì công thức gốc không làm việc
+// này, khiến người NGHỈ đúng ngày lễ bị kéo tụt OT cả tháng một cách bất hợp lý (còn người VẪN ĐI LÀM
+// ngày lễ thì không bị ảnh hưởng, vì giờ làm hôm đó vẫn được tính OT 100% như cũ — xem computeDayWorked).
+function getDayQuota(iso) {
+  if (isVNHoliday(iso)) return 0; // ngày lễ: miễn quota, dù rơi vào thứ mấy
+  const dow = new Date(iso + 'T00:00:00').getDay(); // 0=CN, 6=T7
+  if (dow === 0) return 0;   // Chủ nhật
+  if (dow === 6) return 4;   // Thứ 7
+  return 8;                  // Thứ 2 - Thứ 6
 }
 
 // Parse dd/mm/yyyy date string used in the checkin-out header row
@@ -1973,20 +2053,30 @@ function tryParseCheckinOutFormat(ws) {
     const staffCode = codeCol >= 0 ? String(row[codeCol] || '').trim() : '';
 
     dayCols.forEach(dc => {
-      const otHours = computeDayOT(row[dc.inCol], row[dc.outCol], dc.iso);
+      const wResult = computeDayWorked(row[dc.inCol], row[dc.outCol], dc.iso);
+      const quota = getDayQuota(dc.iso);
       const mk = dc.monthKey;
       if (!DB[mk]) DB[mk] = { employees:{}, names:[], depts:{}, snapshots:[] };
       if (!DB[mk].employees[name]) {
-        DB[mk].employees[name] = { days:{}, dept, staffCode };
+        DB[mk].employees[name] = { days:{}, quotaDays:{}, nightDays:{}, dept, staffCode };
         DB[mk].names.push(name);
       }
       if (staffCode) DB[mk].employees[name].staffCode = staffCode;
-      if (otHours > 0) {
-        DB[mk].employees[name].days[dc.iso] = Math.round(otHours*100)/100;
+      if (!DB[mk].employees[name].nightDays) DB[mk].employees[name].nightDays = {};
+      if (!DB[mk].employees[name].quotaDays) DB[mk].employees[name].quotaDays = {};
+      // days[iso] giờ lưu GIỜ ĐÃ LÀM trong ngày (không phải OT trực tiếp nữa) — OT = tổng giờ làm − tổng quota cả kỳ.
+      if (wResult.worked > 0) {
+        DB[mk].employees[name].days[dc.iso] = Math.round(wResult.worked*100)/100;
         cnt++;
       } else {
-        // Explicitly mark 0 so re-uploads can overwrite previous non-zero values
         delete DB[mk].employees[name].days[dc.iso];
+      }
+      // Quota luôn được ghi nhận (kể cả ngày không đi làm) — đúng theo công thức gốc.
+      DB[mk].employees[name].quotaDays[dc.iso] = quota;
+      if (wResult.night > 0) {
+        DB[mk].employees[name].nightDays[dc.iso] = Math.round(wResult.night*100)/100;
+      } else {
+        delete DB[mk].employees[name].nightDays[dc.iso];
       }
       DB[mk].employees[name].dept = dept;
       if (!DB[mk].depts[dept]) DB[mk].depts[dept] = [];
@@ -2297,7 +2387,7 @@ function renderDash() {
   const totals = getTotals(activeMK, df, periodIdx);
   const tots = totals.map(t => t.total);
   const over = totals.filter(t => t.total > 70).length;
-  const warn = totals.filter(t => t.total >= 60 && t.total <= 70).length;
+  const warn = totals.filter(t => t.total >= 45 && t.total <= 70).length;
   const avg  = tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)/tots.length) : 0;
   const mx   = tots.length ? Math.max(...tots) : 0;
   const mxNV = nvLabel(totals.find(t => t.total === mx)) || '—';
@@ -2310,7 +2400,7 @@ function renderDash() {
   document.getElementById('dashMetrics').innerHTML = `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
     <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h</div><div class="mv">${over}</div><div class="ms">cần xem lại</div></div>
-    <div class="mc amber"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="ml">Cảnh báo</div><div class="mv">${warn}</div><div class="ms">60–70h</div></div>
+    <div class="mc amber"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="ml">Cảnh báo</div><div class="mv">${warn}</div><div class="ms">45–70h</div></div>
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
     <div class="mc ${stOf(mx)==='d'?'red':stOf(mx)==='w'?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
 
@@ -2343,11 +2433,11 @@ function renderDash() {
   renderDashWarnList(totals);
 }
 
-// Danh sách gọn NV cảnh báo (60–70h) & vượt mức (>70h), hiện ngay dưới biểu đồ OT đầu tiên.
+// Danh sách gọn NV cảnh báo (45–70h) & vượt mức (>70h), hiện ngay dưới biểu đồ OT đầu tiên.
 function renderDashWarnList(totals) {
   const el = document.getElementById('dashWarnList');
   if (!el) return;
-  const flagged = totals.filter(t => t.total >= 60).sort((a,b) => b.total - a.total);
+  const flagged = totals.filter(t => t.total >= 45).sort((a,b) => b.total - a.total);
   el.innerHTML = flagged.map(t => {
     const over = t.total > 70;
     const c = over ? '#C0392B' : '#E8A33D';
@@ -2407,10 +2497,10 @@ function renderBarChart(totals, showAll = false) {
   const emptyEl = document.getElementById('cBarEmpty');
 
   // Month mode: show all employees sorted by total
-  // Week mode: show employees in Cảnh báo (60-70h) and Vượt mức (>70h)
+  // Week mode: show employees in Cảnh báo (45-70h) and Vượt mức (>70h)
   const displayList = showAll
     ? [...totals].sort((a,b) => b.total - a.total)
-    : totals.filter(t => t.total >= 60).sort((a,b) => b.total - a.total);
+    : totals.filter(t => t.total >= 45).sort((a,b) => b.total - a.total);
 
   if (!displayList.length) {
     if (chartEl) chartEl.style.display = 'none';
@@ -2429,7 +2519,7 @@ function renderBarChart(totals, showAll = false) {
   if (emptyEl) emptyEl.style.display = 'none';
   if (chartEl) chartEl.style.display = 'block';
 
-  const cols = displayList.map(t => t.total > 90 ? '#B14B3F' : t.total > 70 ? '#C0392B' : t.total >= 60 ? '#E8A33D' : '#7A9468');
+  const cols = displayList.map(t => t.total > 90 ? '#B14B3F' : t.total > 70 ? '#C0392B' : t.total >= 45 ? '#E8A33D' : '#7A9468');
   CH['cBar'] = new Chart(chartEl, {
     type:'bar',
     data:{
@@ -2478,8 +2568,8 @@ function renderMonthDonut(totals) {
   }
 
   const groups = [
-    { key:'o', label:'Bình thường ≤60h', color:'#7A9468' },
-    { key:'w', label:'Cảnh báo 60–70h',   color:'#E8A33D' },
+    { key:'o', label:'Bình thường ≤45h', color:'#7A9468' },
+    { key:'w', label:'Cảnh báo 45–70h',   color:'#E8A33D' },
     { key:'d', label:'Vượt 70h',          color:'#C0392B' }
   ];
   groups.forEach(g => { g.hours = 0; g.count = 0; });
@@ -2589,7 +2679,7 @@ function renderTrendPeriodChart(deptFilter, periodIdx) {
   legend.innerHTML = `<span style="color:var(--text2);font-weight:500">${periods[periodIdx]?.label || ''}</span>`;
 
   const data = finalTotals.map(t=>t.total);
-  const cols = finalTotals.map(t => t.total>70?'#C0392B':t.total>=60?'#E8A33D':'#7A9468');
+  const cols = finalTotals.map(t => t.total>70?'#C0392B':t.total>=45?'#E8A33D':'#7A9468');
   const maxVal = data.length ? Math.max(...data) : 80;
   CH['cTrendPeriod'] = new Chart(document.getElementById('cTrendPeriod'), {
     type:'bar',
@@ -2621,21 +2711,23 @@ function renderDashTable(totals, periods) {
     return true;
   });
   document.getElementById('dtHead').innerHTML =
-    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>% Giới hạn <span style="font-weight:400;color:var(--text3)">/ Limit</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
+    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>% Giới hạn <span style="font-weight:400;color:var(--text3)">/ Limit</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
   document.getElementById('dtBody').innerHTML = rows.map(t => {
     const pct = Math.min(100, Math.round(t.total/70*100));
     const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w'?'#E8A33D':'#7A9468';
     const over = t.total > 70;
     const rc = over ? 'color:#C0392B;font-weight:700' : '';
+    const night = t.nightTotal || 0;
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;${over?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${t.staffCode||'—'}</td>
       <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
       <td style="color:var(--text2)">${t.dept}</td>
       <td style="${rc || 'font-weight:500'}">${t.total}h</td>
+      <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
       <td><div style="font-size:10px;color:var(--text2)">${pct}%</div>
           <div class="pb"><div class="pf" style="width:${pct}%;background:${fc}"></div></div></td>
       <td>${stBadge(t.total)}</td></tr>`;
-  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
+  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
 }
 
 // ============================================================
@@ -2689,7 +2781,7 @@ function renderEmployeeList() {
   if (!empMK || !DB[empMK]) {
     document.getElementById('dtHead').innerHTML = '';
     document.getElementById('dtBody').innerHTML =
-      '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Vào tab Upload để bắt đầu.</td></tr>';
+      '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Vào tab Upload để bắt đầu.</td></tr>';
     const tt = document.getElementById('empTableTitle');
     if (tt) tt.textContent = '';
     return;
@@ -2794,7 +2886,7 @@ function renderDept() {
     const ci = allDepts.indexOf(dname);
     const col = DEPT_COLORS[ci % DEPT_COLORS.length];
     const tots = getTotals(mk, dname, pIdx).map(t=>t.total);
-    const warn = tots.filter(t=>t>=60&&t<=70).length;
+    const warn = tots.filter(t=>t>=45&&t<=70).length;
     return `<tr>
       <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
         <span style="width:10px;height:10px;border-radius:3px;background:${col};flex-shrink:0"></span>${dname}</span></td>
@@ -3030,8 +3122,8 @@ function renderCompareMonth() {
         <td style="font-weight:500">${fmtMK(mk)}</td>
         <td>${dept}</td><td>${nvs.length}</td>
         <td><span class="badge bd">${tots.filter(t=>t>70).length}</span></td>
-        <td><span class="badge bw">${tots.filter(t=>t>=60&&t<=70).length}</span></td>
-        <td><span class="badge bo">${tots.filter(t=>t<60).length}</span></td>
+        <td><span class="badge bw">${tots.filter(t=>t>=45&&t<=70).length}</span></td>
+        <td><span class="badge bo">${tots.filter(t=>t<45).length}</span></td>
         <td style="font-weight:600;color:var(--accent)">${Math.round(tots.reduce((a,b)=>a+b,0)*10)/10}h</td></tr>`);
     });
   });
@@ -3132,7 +3224,7 @@ function renderCompareQuarter() {
         nvs.forEach(n => {
           const t = DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0;
           totalSum += t; entries += 1;
-          if (t > 70) overCount++; else if (t >= 60) warnCount++; else normalCount++;
+          if (t > 70) overCount++; else if (t >= 45) warnCount++; else normalCount++;
         });
       });
       qRows.push(`<tr>
@@ -3190,7 +3282,7 @@ function exportAll() {
       const perPeriod = periods.map((p,pi) => getTotals(mk, '__all__', pi).find(x=>x.name===n)?.total ?? 0);
       const finalTotal = perPeriod.length ? perPeriod[perPeriod.length-1] : 0;
       rows.push([n, e.dept, ...perPeriod, Math.round(finalTotal/70*100)+'%',
-                 finalTotal>70?'Vượt mức':finalTotal>=60?'Cảnh báo':'Bình thường']);
+                 finalTotal>70?'Vượt mức':finalTotal>=45?'Cảnh báo':'Bình thường']);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:22},{wch:16}, ...periods.map(()=>({wch:18})), {wch:14},{wch:11}];
@@ -3204,7 +3296,7 @@ function exportAll() {
       const nvs  = DB[mk].depts[dept];
       const tots = nvs.map(n=>Math.round(totalOf(DB[mk].employees[n])*10)/10);
       sumRows.push([fmtMK(mk), dept, nvs.length,
-        tots.filter(t=>t>70).length, tots.filter(t=>t>=60&&t<=70).length, tots.filter(t=>t<60).length,
+        tots.filter(t=>t>70).length, tots.filter(t=>t>=45&&t<=70).length, tots.filter(t=>t<45).length,
         Math.round(tots.reduce((a,b)=>a+b,0)*10)/10]);
     });
   });
@@ -3249,7 +3341,7 @@ function buildReportHtml(mode) {
       deptStats,
       trend,
       over: finalTotals.filter(t=>t.total>70).length,
-      warn: finalTotals.filter(t=>t.total>=60&&t.total<=70).length,
+      warn: finalTotals.filter(t=>t.total>=45&&t.total<=70).length,
       avg: finalTotals.length ? Math.round(finalTotals.reduce((a,b)=>a+b.total,0)/finalTotals.length*10)/10 : 0
     };
   });
@@ -3335,7 +3427,7 @@ ${autoprintScript}
 const MONTHS = ${dataJson};
 const DEPT_COLORS = ${DEPT_COLORS_JSON};
 const NV_COLORS = ${NV_COLORS_JSON};
-function stOf(t){ return t>70?'d':t>=60?'w':'o'; }
+function stOf(t){ return t>70?'d':t>=45?'w':'o'; }
 function stBadge(t){ const s=stOf(t); return s==='d'?'<span class="badge bd">Vượt mức</span>':s==='w'?'<span class="badge bw">Cảnh báo</span>':'<span class="badge bo">Bình thường</span>'; }
 
 const root = document.getElementById('root');
@@ -3351,7 +3443,7 @@ MONTHS.forEach((m, idx) => {
     <div class="metrics">
       <div class="mc"><div class="ml">Nhân viên</div><div class="mv">\${m.totals.length}</div></div>
       <div class="mc red"><div class="ml">Vượt 70h</div><div class="mv">\${m.over}</div></div>
-      <div class="mc amber"><div class="ml">Cảnh báo 60-70h</div><div class="mv">\${m.warn}</div></div>
+      <div class="mc amber"><div class="ml">Cảnh báo 45-70h</div><div class="mv">\${m.warn}</div></div>
       <div class="mc"><div class="ml">OT trung bình</div><div class="mv">\${m.avg}h</div></div>
     </div>
     <div class="grid2">
@@ -3391,7 +3483,7 @@ MONTHS.forEach((m, idx) => {
   root.appendChild(sec);
 
   // Bar chart: final totals
-  const cols = m.totals.map(t => t.total>70?'#C0392B':t.total>=60?'#E8A33D':'#7A9468');
+  const cols = m.totals.map(t => t.total>70?'#C0392B':t.total>=45?'#E8A33D':'#7A9468');
   new Chart(document.getElementById('bar_'+idx), {
     type:'bar',
     data:{ labels: m.totals.map(t=>t.staffCode?(t.staffCode+' - '+t.name):t.name),
@@ -4091,7 +4183,7 @@ function renderWlb() {
   const offKeys = Object.keys(OFF_DB).sort();
   const otKeys  = Object.keys(DB).sort();
   const allMks  = [...new Set([...offKeys,...otKeys])].sort();
-  const allDepts = getAllDepts();
+  const allDepts = getAllDeptsForWlb();
   const THRESHOLD = 10;
   const EMPTY = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Upload file OT và Off Day để bắt đầu.</td></tr>';
 
@@ -4426,10 +4518,12 @@ function loadLateDB() {
 
 // Late minutes for one day: counts minutes AFTER 8:00 (giờ vào chuẩn). Arriving 8:01 or later = late.
 // Arriving at or before 8:00 = not late (0).
+// Đi trễ: có 5 phút ân hạn — chỉ tính trễ từ 8:05 trở đi (8:00-8:05 không bị tính).
 function computeLateMinutes(inVal) {
   const m = timeToMinutes(inVal);
   if (m === null) return 0;
-  return m > 480 ? (m - 480) : 0;
+  const GRACE_CUTOFF = 8*60 + 5; // 8:05
+  return m > GRACE_CUTOFF ? (m - GRACE_CUTOFF) : 0;
 }
 
 // Returns per-employee: chia 2 mốc — Mốc 1: <15 phút (đi trễ nhẹ, phổ biến nhất),
@@ -4441,7 +4535,8 @@ function getLateTotals(mk, deptFilter) {
     .filter(n => deptFilter==='__all__' || m.employees[n].dept === deptFilter)
     .map(n => {
       const e = m.employees[n];
-      const dayVals = Object.values(e.days||{});
+      const daysObj = e.days || {};
+      const dayVals = Object.values(daysObj);
       const totalMin = dayVals.reduce((a,b)=>a+b,0);
       const count = dayVals.length;
       const t1Vals = dayVals.filter(v => v < 15);           // Mốc 1: dưới 15 phút
@@ -4449,7 +4544,13 @@ function getLateTotals(mk, deptFilter) {
       const t1Count = t1Vals.length, t1Min = t1Vals.reduce((a,b)=>a+b,0);
       const t2Count = t2Vals.length, t2Min = t2Vals.reduce((a,b)=>a+b,0);
       const needsNote = t2Count; // ≥30 phút → cần ghi chú xin phép quản lý
-      return { name:n, dept:e.dept, code:e.code||'', totalMin, count, t1Count, t1Min, t2Count, t2Min, needsNote };
+      // Danh sách CHÍNH XÁC những ngày bị đi trễ (chỉ liệt kê ngày có đi trễ, không phải cả lịch),
+      // sắp xếp theo ngày tăng dần, dạng "dd/mm (+Xp)" để biết trễ bao nhiêu phút ngày đó.
+      const lateDates = Object.keys(daysObj).sort().map(iso => {
+        const [y,mo,da] = iso.split('-');
+        return { iso, label: `${da}/${mo}`, min: daysObj[iso] };
+      });
+      return { name:n, dept:e.dept, code:e.code||'', totalMin, count, t1Count, t1Min, t2Count, t2Min, needsNote, lateDates };
     });
 }
 
@@ -4626,11 +4727,15 @@ function renderLate() {
     `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
       <th>Mốc 1: &lt;15p (lượt)</th><th>Mốc 1: &lt;15p (phút)</th>
       <th>Mốc 2: ≥30p (lượt)</th><th>Mốc 2: ≥30p (phút)</th>
-      <th>Tổng lượt</th><th>Tổng phút</th><th>Ghi chú</th></tr>`;
+      <th>Tổng lượt</th><th>Tổng phút</th><th>Ngày đi trễ</th><th>Ghi chú</th></tr>`;
   document.getElementById('lateTBody').innerHTML = sortedByMin
     .filter(t => t.totalMin > 0)  // bỏ NV không đi trễ lần nào
     .map(t => {
     const flagged = t.needsNote > 0;
+    // Chỉ liệt kê NGÀY có đi trễ (không hiển thị cả lịch tháng) — ngày ≥30p tô đỏ đậm để dễ nhận biết.
+    const datesHtml = (t.lateDates||[]).map(d =>
+      `<span title="${d.label}: trễ ${d.min}p" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}</span>`
+    ).join(', ');
     return `
     <tr>
       <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${t.code||'—'}</td>
@@ -4642,10 +4747,11 @@ function renderLate() {
       <td style="font-family:var(--font-mono);${t.t2Min>0?'color:#C0392B;font-weight:700':''}">${t.t2Min}p</td>
       <td style="font-family:var(--font-mono);${t.count>0?'color:#B5731E;font-weight:600':''}">${t.count}</td>
       <td style="font-family:var(--font-mono);font-weight:600;${flagged?'color:#C0392B':t.totalMin>0?'color:#B5731E':''}">${t.totalMin}p</td>
+      <td style="font-size:11px;max-width:220px;white-space:normal;line-height:1.6">${datesHtml || '—'}</td>
       <td>${flagged ? `<span class="badge bd">${t.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
     </tr>`;
   }).join('') ||
-    '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+    '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 }
 
 // ── Theo Quý: tổng hợp Đi trễ theo quý × phòng ban, 2 mốc ──
