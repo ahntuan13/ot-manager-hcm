@@ -993,6 +993,12 @@
       <div style="position:relative;height:220px"><canvas id="cLateQtrRisk" role="img" aria-label="Nhân viên cần xin phép theo quý">Rủi ro quý.</canvas></div>
     </div>
     <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="tbl-wrap">
+        <table><thead id="lateQtrEmpTHead"></thead><tbody id="lateQtrEmpTBody"></tbody></table>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban</div>
       <div class="tbl-wrap">
         <table><thead id="lateQtrTHead"></thead><tbody id="lateQtrTBody"></tbody></table>
@@ -1271,7 +1277,7 @@
         Giờ làm = max(0, min(12h, Giờ ra) − Giờ vào) + max(0, Giờ ra − max(13h, Giờ vào))
       </p>
       <p style="color:var(--text2);font-size:12px">Giờ vào/ra được <strong>làm tròn 2 bước</strong> trước khi tính: làm tròn LÊN 15 phút, rồi làm tròn XUỐNG 30 phút. Ví dụ 7:32 → 7:45 → 7:30.</p>
-      <p style="color:var(--text2);font-size:12px">Thiếu dữ liệu chấm công: <strong>có giờ vào, thiếu giờ ra</strong> → mặc định giờ ra = 17:00. <strong>Thiếu giờ vào, có giờ ra</strong> → mặc định giờ vào = 8:00. <strong>Thiếu cả 2</strong> → ngày đó đóng góp 0 giờ làm (nhưng vẫn tính đủ giờ tiêu chuẩn bên dưới).</p>
+      <p style="color:var(--text2);font-size:12px">Thiếu dữ liệu chấm công: <strong>thiếu 1 trong 2 (thiếu giờ vào HOẶC thiếu giờ ra)</strong> → ngày đó đóng góp <strong>0 giờ làm</strong> (không có giả định 8:00/17:00 nào — khớp đúng file gốc công ty đã kiểm chứng), nhưng vẫn tính đủ giờ tiêu chuẩn của ngày đó (xem bên dưới) — nên ngày thiếu chấm công sẽ làm giảm OT cộng dồn của kỳ.</p>
 
       <p style="margin-top:10px"><strong>2. Giờ tiêu chuẩn mỗi ngày</strong> (luôn cộng dồn dù có đi làm hay không):</p>
       <table style="margin:8px 0;font-size:12.5px">
@@ -1334,7 +1340,8 @@
         </tbody>
       </table>
       <p style="color:var(--text2);font-size:12px">Khoảng 15–29 phút không thuộc mốc nào (ít gặp), chỉ được cộng vào <strong>Tổng số lần / Tổng phút</strong> chung — không hiển thị thành cột riêng. Số lần và tổng phút được tính riêng cho từng mốc, sau đó mới cộng lại thành Tổng.</p>
-      <p style="margin-top:8px;color:var(--text2);font-size:12px">Bảng chi tiết đi trễ có thêm cột <strong>"Ngày đi trễ"</strong> — chỉ liệt kê CHÍNH XÁC những ngày NV đó đi trễ (dạng dd/mm), không hiển thị cả lịch tháng. Ngày trễ ≥30 phút được tô đỏ đậm để dễ nhận biết.</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Bảng chi tiết đi trễ hiển thị theo kiểu <strong>liệt kê</strong>: mỗi NV 1 dòng, cột <strong>"Ngày đi trễ"</strong> ghi CHÍNH XÁC những ngày NV đó đi trễ kèm giờ vào thực tế (vd "28/06, 8:03"), không hiển thị cả lịch tháng. Ngày trễ ≥30 phút được tô đỏ đậm để dễ nhận biết. Cột "Tổng lượt"/"Tổng phút" đặt sau cột ngày đi trễ. Áp dụng cho cả tab Theo tháng và Theo quý (tab Quý gộp dữ liệu 3 tháng, ghi rõ tháng nào khi hover vào từng ngày).</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Các biểu đồ tổng hợp (số lần/tổng phút theo phòng ban) vẫn chia theo 2 mốc <strong>Mốc 1 (&lt;15p)</strong> / <strong>Mốc 2 (≥30p)</strong> để dễ so sánh trực quan giữa các phòng ban — riêng bảng chi tiết từng NV thì không cần chia mốc nữa vì đã thấy rõ từng ngày cụ thể.</p>
       <p style="margin-top:8px;color:var(--text2);font-size:12px">Biểu đồ "Top NV đi trễ nhiều nhất" ưu tiên hiển thị <strong>Mốc 1 (&lt;15p)</strong> làm phần chính của cột (vì đây là tình trạng phổ biến nhất), phần Mốc 2 xếp chồng phía trên bằng màu đỏ để dễ nhận biết các trường hợp cần xin phép.</p>
       <p style="margin-top:8px;color:var(--text2);font-size:12px">Mục Đi trễ có 2 tab: <strong>Theo tháng</strong> (chi tiết từng tháng đang chọn) và <strong>Theo Quý</strong> (tổng hợp 3 tháng/quý theo từng phòng ban, 2 mốc) — tương tự cách xem theo Tuần/Tháng/Quý ở mục So sánh OT.</p>
     </div>
@@ -1952,16 +1959,14 @@ function roundToHalfHourVBA(mins) {
 }
 
 // Tính "giờ đã làm" trong 1 ngày (đã trừ giờ nghỉ trưa 12h-13h, CÓ tính giờ đến sớm) + phần OT sau 22h (theo dõi riêng).
-// Áp dụng 2 quy tắc khi thiếu dữ liệu chấm công:
-//   · Có giờ vào, KHÔNG có giờ ra → mặc định giờ ra = 17:00
-//   · KHÔNG có giờ vào, có giờ ra → mặc định giờ vào = 8:00
-//   · Thiếu cả 2 → ngày đó đóng góp 0 giờ làm (nhưng vẫn tính đủ giờ tiêu chuẩn — xem getDayQuota())
+// Khớp CHÍNH XÁC với macro VBA gốc công ty dùng (WT2 / MD_Get_WTR_Weekly2025_04):
+//   · Thiếu 1 TRONG 2 (thiếu giờ vào HOẶC thiếu giờ ra) → ngày đó đóng góp 0 GIỜ LÀM — KHÔNG có giả định
+//     8:00/17:00 nào cả (macro gốc không hề làm việc này). Quota (8h/4h) của ngày đó vẫn được tính bình thường.
+//   · Chỉ khi CÓ ĐỦ CẢ giờ vào và giờ ra mới tính giờ làm thực tế của ngày đó.
 function computeDayWorked(inVal, outVal, iso) {
-  let inM = timeToMinutes(inVal);
-  let outM = timeToMinutes(outVal);
-  if (inM === null && outM === null) return { worked: 0, night: 0 };
-  if (inM === null) inM = 8 * 60;    // thiếu giờ vào → 8:00
-  if (outM === null) outM = 17 * 60; // thiếu giờ ra → 17:00
+  const inM = timeToMinutes(inVal);
+  const outM = timeToMinutes(outVal);
+  if (inM === null || outM === null) return { worked: 0, night: 0 }; // thiếu 1 trong 2 → 0 giờ làm, đúng theo file gốc
 
   const inR = roundToHalfHourVBA(inM);
   const outR = roundToHalfHourVBA(outM);
@@ -4545,10 +4550,15 @@ function getLateTotals(mk, deptFilter) {
       const t2Count = t2Vals.length, t2Min = t2Vals.reduce((a,b)=>a+b,0);
       const needsNote = t2Count; // ≥30 phút → cần ghi chú xin phép quản lý
       // Danh sách CHÍNH XÁC những ngày bị đi trễ (chỉ liệt kê ngày có đi trễ, không phải cả lịch),
-      // sắp xếp theo ngày tăng dần, dạng "dd/mm (+Xp)" để biết trễ bao nhiêu phút ngày đó.
+      // sắp xếp theo ngày tăng dần, kèm giờ vào thực tế (suy ngược từ số phút trễ + mốc 8:05).
+      const GRACE_CUTOFF = 8*60 + 5; // 8:05
       const lateDates = Object.keys(daysObj).sort().map(iso => {
         const [y,mo,da] = iso.split('-');
-        return { iso, label: `${da}/${mo}`, min: daysObj[iso] };
+        const lateMin = daysObj[iso];
+        const checkinMin = GRACE_CUTOFF + lateMin;
+        const hh = Math.floor(checkinMin/60), mm = checkinMin%60;
+        const timeLabel = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+        return { iso, label: `${da}/${mo}`, min: lateMin, time: timeLabel };
       });
       return { name:n, dept:e.dept, code:e.code||'', totalMin, count, t1Count, t1Min, t2Count, t2Min, needsNote, lateDates };
     });
@@ -4721,37 +4731,31 @@ function renderLate() {
                y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10} } } } }
   });
 
-  // ── Table — 2 mốc riêng + Tổng ──
+  // ── Table — kiểu liệt kê: Ngày đi trễ (kèm giờ vào) trước, Tổng lượt/phút sau ──
   document.getElementById('lateTableTitle').textContent = fmtMK(activeLateMK);
   document.getElementById('lateTHead').innerHTML =
     `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
-      <th>Mốc 1: &lt;15p (lượt)</th><th>Mốc 1: &lt;15p (phút)</th>
-      <th>Mốc 2: ≥30p (lượt)</th><th>Mốc 2: ≥30p (phút)</th>
-      <th>Tổng lượt</th><th>Tổng phút</th><th>Ngày đi trễ</th><th>Ghi chú</th></tr>`;
+      <th>Ngày đi trễ</th><th>Tổng lượt</th><th>Tổng phút</th><th>Ghi chú</th></tr>`;
   document.getElementById('lateTBody').innerHTML = sortedByMin
     .filter(t => t.totalMin > 0)  // bỏ NV không đi trễ lần nào
     .map(t => {
     const flagged = t.needsNote > 0;
-    // Chỉ liệt kê NGÀY có đi trễ (không hiển thị cả lịch tháng) — ngày ≥30p tô đỏ đậm để dễ nhận biết.
+    // Liệt kê từng ngày kèm giờ vào thực tế — trễ ≥30p tô đỏ đậm để dễ nhận biết (cần xin phép).
     const datesHtml = (t.lateDates||[]).map(d =>
-      `<span title="${d.label}: trễ ${d.min}p" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}</span>`
-    ).join(', ');
+      `<span title="Trễ ${d.min} phút" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}<span style="font-family:var(--font-mono)">, ${d.time}</span></span>`
+    ).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
     return `
     <tr>
       <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${t.code||'—'}</td>
       <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
       <td style="color:var(--text2)">${t.dept}</td>
-      <td style="font-family:var(--font-mono);${t.t1Count>0?'color:#2D6CDF;font-weight:600':''}">${t.t1Count}</td>
-      <td style="font-family:var(--font-mono);${t.t1Min>0?'color:#2D6CDF;font-weight:600':''}">${t.t1Min}p</td>
-      <td style="font-family:var(--font-mono);${t.t2Count>0?'color:#C0392B;font-weight:700':''}">${t.t2Count}</td>
-      <td style="font-family:var(--font-mono);${t.t2Min>0?'color:#C0392B;font-weight:700':''}">${t.t2Min}p</td>
+      <td style="font-size:11.5px;white-space:normal;line-height:1.8">${datesHtml || '—'}</td>
       <td style="font-family:var(--font-mono);${t.count>0?'color:#B5731E;font-weight:600':''}">${t.count}</td>
       <td style="font-family:var(--font-mono);font-weight:600;${flagged?'color:#C0392B':t.totalMin>0?'color:#B5731E':''}">${t.totalMin}p</td>
-      <td style="font-size:11px;max-width:220px;white-space:normal;line-height:1.6">${datesHtml || '—'}</td>
       <td>${flagged ? `<span class="badge bd">${t.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
     </tr>`;
   }).join('') ||
-    '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+    '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 }
 
 // ── Theo Quý: tổng hợp Đi trễ theo quý × phòng ban, 2 mốc ──
@@ -4761,6 +4765,8 @@ function renderLateQuarter() {
     ['cLateQtrCount','cLateQtrMin','cLateQtrRisk'].forEach(killLateChart);
     document.getElementById('lateQtrTBody').innerHTML =
       '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
+    const lqet = document.getElementById('lateQtrEmpTBody');
+    if (lqet) lqet.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
     const lqrt = document.getElementById('lateQtrRateTBody');
     if (lqrt) lqrt.innerHTML = '<tr><td style="text-align:center;padding:14px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
     return;
@@ -4902,6 +4908,46 @@ function renderLateQuarter() {
     });
   });
   document.getElementById('lateQtrTBody').innerHTML = qRows.join('') ||
+    '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+
+  // ── Bảng chi tiết theo TỪNG NHÂN VIÊN — theo quý (gộp 3 tháng, cùng kiểu liệt kê như tab Tháng) ──
+  document.getElementById('lateQtrTableTitle').textContent = qKeys.map(fmtQK).join(', ');
+  document.getElementById('lateQtrEmpTHead').innerHTML =
+    `<tr><th>Quý</th><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
+      <th>Ngày đi trễ</th><th>Tổng lượt</th><th>Tổng phút</th><th>Ghi chú</th></tr>`;
+  const empRows = [];
+  qKeys.forEach(qk => {
+    const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
+    const byEmp = {}; // name -> { code, dept, totalMin, count, needsNote, lateDates[] }
+    mks.forEach(mk => {
+      getLateTotals(mk, '__all__').forEach(t => {
+        if (t.totalMin <= 0) return;
+        if (!byEmp[t.name]) byEmp[t.name] = { code:t.code, dept:t.dept, totalMin:0, count:0, needsNote:0, lateDates:[] };
+        const rec = byEmp[t.name];
+        rec.totalMin += t.totalMin;
+        rec.count += t.count;
+        rec.needsNote += t.needsNote;
+        rec.lateDates.push(...(t.lateDates||[]).map(d => ({...d, mLabel: fmtMK(mk)})));
+      });
+    });
+    Object.entries(byEmp).sort((a,b)=>b[1].totalMin-a[1].totalMin).forEach(([name, r]) => {
+      const flagged = r.needsNote > 0;
+      const datesHtml = r.lateDates.map(d =>
+        `<span title="${d.mLabel} — trễ ${d.min} phút" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}<span style="font-family:var(--font-mono)">, ${d.time}</span></span>`
+      ).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+      empRows.push(`<tr>
+        <td style="font-weight:500">${fmtQK(qk)}</td>
+        <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${r.code||'—'}</td>
+        <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
+        <td style="color:var(--text2)">${r.dept}</td>
+        <td style="font-size:11.5px;white-space:normal;line-height:1.8">${datesHtml || '—'}</td>
+        <td style="font-family:var(--font-mono);${r.count>0?'color:#B5731E;font-weight:600':''}">${r.count}</td>
+        <td style="font-family:var(--font-mono);font-weight:600;${flagged?'color:#C0392B':r.totalMin>0?'color:#B5731E':''}">${r.totalMin}p</td>
+        <td>${flagged ? `<span class="badge bd">${r.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
+      </tr>`);
+    });
+  });
+  document.getElementById('lateQtrEmpTBody').innerHTML = empRows.join('') ||
     '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 }
 
