@@ -669,8 +669,7 @@
     <div class="dash-chart-main card ac-top ac-blue">
       <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên</div>
       <div class="legend">
-        <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤45h</span>
-        <span><span class="ldot" style="background:#E8A33D"></span>Cảnh báo 45–70h</span>
+        <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤70h</span>
         <span><span class="ldot" style="background:#C0392B"></span>Vượt 70h</span>
       </div>
       <div style="position:relative;width:100%;height:420px"><canvas id="cBar" role="img" aria-label="OT luỹ kế nhân viên">OT nhân viên.</canvas></div>
@@ -678,7 +677,7 @@
 
     <div class="dash-warn-list card ac-top ac-red">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px">
-        <div class="card-title" style="margin-bottom:0;font-size:13.5px">Cảnh báo &amp; Vượt mức</div>
+        <div class="card-title" style="margin-bottom:0;font-size:13.5px">Vượt mức (&gt;70h)</div>
         <button class="btn" onclick="goPage('employees')" style="padding:4px 10px;font-size:11px;flex-shrink:0">
           Chi tiết <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
@@ -703,6 +702,12 @@
       <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
       <div class="legend" id="dashDeptLineLeg"></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cDashDeptLine" role="img" aria-label="Xu hướng OT theo phòng ban">Xu hướng phòng ban.</canvas></div>
+    </div>
+    <div class="card ac-top ac-blue">
+      <div class="card-title">Tần suất OT sau 22h (Night OT) — theo nhân viên</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Số ngày mỗi NV có làm việc sau 22:00 trong kỳ đang chọn — giúp biết ai thường xuyên OT khuya.</div>
+      <div id="nightOtEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Không có NV nào phát sinh OT sau 22h trong kỳ này 🎉</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cNightOtFreq" role="img" aria-label="Tần suất OT sau 22h">OT sau 22h.</canvas></div>
     </div>
   </div>
 </div>
@@ -739,7 +744,6 @@
       <select id="stFilter" onchange="renderEmployeeList()">
         <option value="all">Tất cả trạng thái</option>
         <option value="d">Vượt &gt;70h</option>
-        <option value="w">Cảnh báo 45–70h</option>
         <option value="o">Bình thường</option>
       </select>
       <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
@@ -1290,16 +1294,15 @@
       </table>
       <p style="color:var(--text2);font-size:12px">⚠️ <strong>Khác với file Excel gốc:</strong> file gốc không giảm giờ tiêu chuẩn cho ngày lễ (khiến người nghỉ đúng ngày lễ bị kéo tụt OT tháng đó một cách bất hợp lý). App đã sửa: <strong>ngày lễ/Tết được miễn giờ tiêu chuẩn (0h)</strong> — người nghỉ đúng ngày lễ sẽ không bị trừ quota ngày đó. Người <strong>vẫn đi làm</strong> đúng ngày lễ thì không đổi gì — giờ làm hôm đó vẫn được tính 100% là OT như file gốc.</p>
 
-      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn) được <strong>tách theo dõi riêng</strong> ở cột "OT sau 22h" — không cộng/trừ vào công thức OT chính ở trên, chỉ để biết ai làm việc khuya.</p>
+      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn) được <strong>tách theo dõi riêng</strong> ở cột "OT sau 22h" — không cộng/trừ vào công thức OT chính ở trên, chỉ để biết ai làm việc khuya. Trang <strong>Tổng quan OT</strong> có thêm biểu đồ <strong>"Tần suất OT sau 22h"</strong> — đếm số ngày mỗi NV có OT khuya trong kỳ đang xem, giúp phát hiện ai làm khuya thường xuyên (không chỉ 1-2 lần ngẫu nhiên).</p>
 
       <p style="margin-top:10px"><strong>Theo tháng (chu kỳ 16→15):</strong></p>
       <p style="color:var(--text2);font-size:12px">Tổng OT luỹ kế = MAX(0, tổng giờ làm − tổng giờ tiêu chuẩn) tính từ ngày 16 đầu chu kỳ đến ngày được chọn (Week 1/2/3/4).</p>
-      <p style="color:var(--text2);font-size:12px">Quy định OT: <strong>không vượt quá 45h/tháng</strong> là mức chuẩn. Từ 45h đến 70h vẫn được xem là <strong>hợp lệ</strong> (chưa vi phạm) nhưng cần theo dõi. Chỉ khi <strong>vượt quá 70h</strong> mới thật sự là cảnh báo/vượt mức cần xử lý.</p>
+      <p style="color:var(--text2);font-size:12px">Quy định OT: <strong>không vượt quá 70h/tháng</strong>. Trong mức 70h là bình thường/hợp lệ; vượt quá 70h mới thật sự là vượt mức cần xử lý.</p>
       <table style="margin-top:10px;font-size:12.5px">
         <thead><tr><th>Mức OT luỹ kế</th><th>Trạng thái</th><th>Ý nghĩa</th></tr></thead>
         <tbody>
-          <tr><td>≤ 45h</td><td><span class="badge bo">Bình thường</span></td><td>Trong mức chuẩn quy định</td></tr>
-          <tr><td>45h – 70h</td><td><span class="badge bw">Cảnh báo</span></td><td>Vượt mức chuẩn 45h nhưng vẫn <strong>hợp lệ</strong> (chưa vi phạm) — cần theo dõi</td></tr>
+          <tr><td>≤ 70h</td><td><span class="badge bo">Bình thường</span></td><td>Trong mức quy định</td></tr>
           <tr><td>&gt; 70h</td><td><span class="badge bd">Vượt mức</span></td><td>Vượt trần 70h — cần xử lý/xin duyệt</td></tr>
         </tbody>
       </table>
@@ -1495,11 +1498,10 @@ function fmtMK(mk) {
   const [y,m] = mk.split('-').map(Number);
   return `${MONTH_NAMES_EN[m-1]} ${y}`;
 }
-function stOf(t) { return t > 70 ? 'd' : t >= 45 ? 'w' : 'o'; }
+function stOf(t) { return t > 70 ? 'd' : 'o'; }
 function stBadge(t) {
   const s = stOf(t);
   return s==='d' ? '<span class="badge bd">Vượt mức</span>'
-       : s==='w' ? '<span class="badge bw">Cảnh báo</span>'
                  : '<span class="badge bo">Bình thường</span>';
 }
 function killChart(id) { if (CH[id]) { CH[id].destroy(); CH[id] = null; } }
@@ -2392,7 +2394,8 @@ function renderDash() {
   const totals = getTotals(activeMK, df, periodIdx);
   const tots = totals.map(t => t.total);
   const over = totals.filter(t => t.total > 70).length;
-  const warn = totals.filter(t => t.total >= 45 && t.total <= 70).length;
+  const nightNV = totals.filter(t => (t.nightTotal||0) > 0).length;
+  const nightTotalSum = Math.round(totals.reduce((s,t)=>s+(t.nightTotal||0),0)*10)/10;
   const avg  = tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)/tots.length) : 0;
   const mx   = tots.length ? Math.max(...tots) : 0;
   const mxNV = nvLabel(totals.find(t => t.total === mx)) || '—';
@@ -2405,22 +2408,22 @@ function renderDash() {
   document.getElementById('dashMetrics').innerHTML = `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
     <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h</div><div class="mv">${over}</div><div class="ms">cần xem lại</div></div>
-    <div class="mc amber"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="ml">Cảnh báo</div><div class="mv">${warn}</div><div class="ms">45–70h</div></div>
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
-    <div class="mc ${stOf(mx)==='d'?'red':stOf(mx)==='w'?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
 
   // Greeting header
   const now = new Date();
   document.getElementById('greetTitle').textContent = greetText();
   document.getElementById('greetSub').innerHTML =
-    `<strong style="color:var(--red)">${over} NV vượt mức</strong> · <strong style="color:var(--amber)">${warn} cảnh báo</strong> · ${totals.length} đang theo dõi <span style="color:var(--text3)">/ ${over} over limit · ${warn} warning · ${totals.length} tracked</span>`;
+    `<strong style="color:var(--red)">${over} NV vượt mức</strong> · <strong style="color:var(--amber)">${nightNV} NV có OT sau 22h</strong> · ${totals.length} đang theo dõi <span style="color:var(--text3)">/ ${over} over limit · ${nightNV} night OT · ${totals.length} tracked</span>`;
   const weekdayNames = ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
   document.getElementById('greetDate').textContent =
     `📅 ${weekdayNames[now.getDay()]}, ${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
 
   document.getElementById('barChartTitle').textContent = dashTab === 'month'
     ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}`
-    : `🟠🔴 NV Cảnh báo & Vượt mức — ${periodLabel}`;
+    : `🔴 NV Vượt mức — ${periodLabel}`;
 
   if (dashTab === 'month') renderMonthDonut(totals);
   else renderBarChart(totals, false);
@@ -2436,22 +2439,74 @@ function renderDash() {
 
   renderDashDeptLineChart();
   renderDashWarnList(totals);
+  renderNightOtFreqChart(df, periodIdx);
 }
 
-// Danh sách gọn NV cảnh báo (45–70h) & vượt mức (>70h), hiện ngay dưới biểu đồ OT đầu tiên.
+// Đếm SỐ NGÀY mỗi nhân viên có phát sinh OT sau 22h, trong đúng khoảng thời gian (period) đang xem —
+// dùng để vẽ biểu đồ tần suất OT khuya, giúp biết ai thường xuyên làm việc sau 22h (không chỉ 1-2 lần).
+function getNightOtFrequency(mk, deptFilter, pIdx) {
+  const m = DB[mk]; if (!m) return [];
+  const periods = buildPeriods(mk);
+  if (!periods.length) return [];
+  const idx = (pIdx === null || pIdx === undefined || pIdx < 0 || pIdx >= periods.length) ? periods.length-1 : pIdx;
+  const period = periods[idx];
+  return m.names
+    .filter(n => deptFilter === '__all__' || m.employees[n]?.dept === deptFilter)
+    .map(n => {
+      const e = m.employees[n];
+      const nightDays = e.nightDays || {};
+      let count = 0, hours = 0;
+      Object.entries(nightDays).forEach(([iso, h]) => {
+        const d = new Date(iso);
+        if (d >= period.start && d <= period.end) { count++; hours += h; }
+      });
+      return { name: n, dept: e.dept, staffCode: e.staffCode || '', count, hours: Math.round(hours*10)/10 };
+    })
+    .filter(x => x.count > 0);
+}
+
+function renderNightOtFreqChart(deptFilter, periodIdx) {
+  killChart('cNightOtFreq');
+  const emptyEl = document.getElementById('nightOtEmpty');
+  const canvasEl = document.getElementById('cNightOtFreq');
+  if (!activeMK || !DB[activeMK]) { if (emptyEl) emptyEl.style.display='block'; if (canvasEl) canvasEl.style.display='none'; return; }
+  const rows = getNightOtFrequency(activeMK, deptFilter, periodIdx).sort((a,b) => b.count - a.count).slice(0, 15);
+  if (!rows.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (canvasEl) canvasEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (canvasEl) canvasEl.style.display = 'block';
+  CH['cNightOtFreq'] = new Chart(canvasEl, {
+    type:'bar',
+    data:{ labels: rows.map(r => nvLabel(r)),
+           datasets:[{ data: rows.map(r=>r.count), backgroundColor:'#6B4FA0', borderWidth:0, borderRadius:4, label:'Số ngày OT sau 22h' }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ right:36, top:4, bottom:4, left:4 } },
+      plugins:{ legend:{display:false}, barValueLabels:{suffix:' ngày'},
+        tooltip:{ callbacks:{ label:c => ` ${rows[c.dataIndex].count} ngày · tổng ${rows[c.dataIndex].hours}h` } } },
+      scales:{
+        x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:11}, stepSize:1},
+            suggestedMax: Math.ceil(Math.max(...rows.map(r=>r.count)) * 1.25) },
+        y:{ grid:{display:false}, ticks:{font:{size:10}} }
+      }}
+  });
+}
+
+// Danh sách gọn NV vượt mức (>70h), hiện ngay dưới biểu đồ OT đầu tiên.
 function renderDashWarnList(totals) {
   const el = document.getElementById('dashWarnList');
   if (!el) return;
-  const flagged = totals.filter(t => t.total >= 45).sort((a,b) => b.total - a.total);
+  const flagged = totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
   el.innerHTML = flagged.map(t => {
-    const over = t.total > 70;
-    const c = over ? '#C0392B' : '#E8A33D';
+    const c = '#C0392B';
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;color:${c};font-weight:700">${t.staffCode||'—'}</td>
-      <td style="font-weight:600;color:${c}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
+      <td style="font-weight:600;color:${c}">${t.name} <span class="late-dot" title="Vượt 70h OT"></span></td>
       <td style="font-family:var(--font-mono);font-weight:700;color:${c}">${t.total}h</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text2)">Không có NV cảnh báo/vượt mức trong kỳ này 🎉</td></tr>`;
+  }).join('') || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text2)">Không có NV vượt mức trong kỳ này 🎉</td></tr>`;
 }
 
 // Biểu đồ line lên xuống: Tổng OT của từng phòng ban PHÁT SINH MỖI TUẦN (không luỹ kế)
@@ -2502,10 +2557,10 @@ function renderBarChart(totals, showAll = false) {
   const emptyEl = document.getElementById('cBarEmpty');
 
   // Month mode: show all employees sorted by total
-  // Week mode: show employees in Cảnh báo (45-70h) and Vượt mức (>70h)
+  // Week mode: show employees Vượt mức (>70h)
   const displayList = showAll
     ? [...totals].sort((a,b) => b.total - a.total)
-    : totals.filter(t => t.total >= 45).sort((a,b) => b.total - a.total);
+    : totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
 
   if (!displayList.length) {
     if (chartEl) chartEl.style.display = 'none';
@@ -2515,7 +2570,7 @@ function renderBarChart(totals, showAll = false) {
       div.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#5E7A4F;font-size:13px;font-weight:600;gap:8px;';
       div.innerHTML = showAll
         ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có dữ liệu'
-        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có NV nào trong diện Cảnh báo / Vượt mức';
+        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có NV nào Vượt mức';
       chartEl.parentNode.appendChild(div);
     } else { emptyEl.style.display = 'flex'; }
     return;
@@ -2524,7 +2579,7 @@ function renderBarChart(totals, showAll = false) {
   if (emptyEl) emptyEl.style.display = 'none';
   if (chartEl) chartEl.style.display = 'block';
 
-  const cols = displayList.map(t => t.total > 90 ? '#B14B3F' : t.total > 70 ? '#C0392B' : t.total >= 45 ? '#E8A33D' : '#7A9468');
+  const cols = displayList.map(t => t.total > 70 ? '#C0392B' : '#7A9468');
   CH['cBar'] = new Chart(chartEl, {
     type:'bar',
     data:{
@@ -2573,8 +2628,7 @@ function renderMonthDonut(totals) {
   }
 
   const groups = [
-    { key:'o', label:'Bình thường ≤45h', color:'#7A9468' },
-    { key:'w', label:'Cảnh báo 45–70h',   color:'#E8A33D' },
+    { key:'o', label:'Bình thường ≤70h', color:'#7A9468' },
     { key:'d', label:'Vượt 70h',          color:'#C0392B' }
   ];
   groups.forEach(g => { g.hours = 0; g.count = 0; });
@@ -2684,7 +2738,7 @@ function renderTrendPeriodChart(deptFilter, periodIdx) {
   legend.innerHTML = `<span style="color:var(--text2);font-weight:500">${periods[periodIdx]?.label || ''}</span>`;
 
   const data = finalTotals.map(t=>t.total);
-  const cols = finalTotals.map(t => t.total>70?'#C0392B':t.total>=45?'#E8A33D':'#7A9468');
+  const cols = finalTotals.map(t => t.total>70?'#C0392B':'#7A9468');
   const maxVal = data.length ? Math.max(...data) : 80;
   CH['cTrendPeriod'] = new Chart(document.getElementById('cTrendPeriod'), {
     type:'bar',
@@ -2884,23 +2938,20 @@ function renderDept() {
   document.getElementById('deptTableTitle').textContent = `${showDept || 'Tất cả phòng ban'} — ${periodLabel}`;
   // Bảng phòng ban: hiển thị tổng hợp theo phòng ban (không list từng NV), kèm nút Chi tiết
   document.getElementById('deptTHead').innerHTML =
-    `<tr><th>Phòng ban</th><th>Số NV</th><th>Tổng OT (h)</th><th>Vượt 70h</th><th>Cảnh báo</th><th></th></tr>`;
+    `<tr><th>Phòng ban</th><th>Số NV</th><th>Tổng OT (h)</th><th>Vượt 70h</th><th></th></tr>`;
   const deptRows = (showDept ? [showDept] : deptStats.map(d=>d.name)).map(dname => {
     const ds = deptStats.find(d=>d.name===dname);
     if (!ds) return '';
     const ci = allDepts.indexOf(dname);
     const col = DEPT_COLORS[ci % DEPT_COLORS.length];
-    const tots = getTotals(mk, dname, pIdx).map(t=>t.total);
-    const warn = tots.filter(t=>t>=45&&t<=70).length;
     return `<tr>
       <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
         <span style="width:10px;height:10px;border-radius:3px;background:${col};flex-shrink:0"></span>${dname}</span></td>
       <td>${ds.nvCount}</td>
       <td style="font-weight:700;font-family:var(--font-mono)">${ds.total}h</td>
       <td>${ds.over>0?`<span class="badge bd">${ds.over}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
-      <td>${warn>0?`<span class="badge bw">${warn}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
       <td><button class="btn" onclick="goPage('employees','${dname}')" style="padding:3px 10px;font-size:11px">Chi tiết →</button></td></tr>`;
-  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>`;
   document.getElementById('deptTBody').innerHTML = deptRows;
 }
 
@@ -3116,7 +3167,7 @@ function renderCompareMonth() {
               y:{grid:{display:false},ticks:{font:{size:10}}}}}});
 
   document.getElementById('cmpTHead').innerHTML =
-    '<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng NV</th><th>Vượt 70h</th><th>Cảnh báo</th><th>Bình thường</th><th>Tổng OT</th></tr>';
+    '<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng NV</th><th>Vượt 70h</th><th>Bình thường</th><th>Tổng OT</th></tr>';
   const cmpRows = [];
   keys.forEach(mk => {
     const allD = Object.keys(DB[mk].depts||{}).sort();
@@ -3127,13 +3178,12 @@ function renderCompareMonth() {
         <td style="font-weight:500">${fmtMK(mk)}</td>
         <td>${dept}</td><td>${nvs.length}</td>
         <td><span class="badge bd">${tots.filter(t=>t>70).length}</span></td>
-        <td><span class="badge bw">${tots.filter(t=>t>=45&&t<=70).length}</span></td>
-        <td><span class="badge bo">${tots.filter(t=>t<45).length}</span></td>
+        <td><span class="badge bo">${tots.filter(t=>t<=70).length}</span></td>
         <td style="font-weight:600;color:var(--accent)">${Math.round(tots.reduce((a,b)=>a+b,0)*10)/10}h</td></tr>`);
     });
   });
   document.getElementById('cmpTBody').innerHTML = cmpRows.join('') ||
-    '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+    '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 }
 
 // ── Quarterly compare: groups monthly cycles (mk = "YYYY-M") into calendar quarters ──
@@ -3217,26 +3267,25 @@ function renderCompareQuarter() {
 
   // Bảng tổng hợp theo Quý × phòng ban (gộp lượt từng tháng trong quý)
   document.getElementById('cmpQtrTHead').innerHTML =
-    '<tr><th>Quý</th><th>Phòng ban</th><th>Tổng NV (lượt)</th><th>Vượt 70h</th><th>Cảnh báo</th><th>Bình thường</th><th>Tổng OT</th></tr>';
+    '<tr><th>Quý</th><th>Phòng ban</th><th>Tổng NV (lượt)</th><th>Vượt 70h</th><th>Bình thường</th><th>Tổng OT</th></tr>';
   const qRows = [];
   qKeys.forEach(qk => {
     const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
     const allD = [...new Set(mks.flatMap(mk => Object.keys(DB[mk].depts || {})))].sort();
     allD.forEach(dept => {
-      let totalSum = 0, entries = 0, overCount = 0, warnCount = 0, normalCount = 0;
+      let totalSum = 0, entries = 0, overCount = 0, normalCount = 0;
       mks.forEach(mk => {
         const nvs = DB[mk].depts?.[dept] || [];
         nvs.forEach(n => {
           const t = DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0;
           totalSum += t; entries += 1;
-          if (t > 70) overCount++; else if (t >= 45) warnCount++; else normalCount++;
+          if (t > 70) overCount++; else normalCount++;
         });
       });
       qRows.push(`<tr>
         <td style="font-weight:500">${fmtQK(qk)}</td>
         <td>${dept}</td><td>${entries}</td>
         <td><span class="badge bd">${overCount}</span></td>
-        <td><span class="badge bw">${warnCount}</span></td>
         <td><span class="badge bo">${normalCount}</span></td>
         <td style="font-weight:600;color:var(--accent)">${Math.round(totalSum*10)/10}h</td></tr>`);
     });
@@ -3287,26 +3336,26 @@ function exportAll() {
       const perPeriod = periods.map((p,pi) => getTotals(mk, '__all__', pi).find(x=>x.name===n)?.total ?? 0);
       const finalTotal = perPeriod.length ? perPeriod[perPeriod.length-1] : 0;
       rows.push([n, e.dept, ...perPeriod, Math.round(finalTotal/70*100)+'%',
-                 finalTotal>70?'Vượt mức':finalTotal>=45?'Cảnh báo':'Bình thường']);
+                 finalTotal>70?'Vượt mức':'Bình thường']);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:22},{wch:16}, ...periods.map(()=>({wch:18})), {wch:14},{wch:11}];
     XLSX.utils.book_append_sheet(wb, ws, fmtMK(mk).replace(/[\/ ]/g,'_').slice(0,30));
   });
 
-  const sumRows = [['Tháng','Phòng ban','Tổng NV','Vượt 70h','Cảnh báo','Bình thường','Tổng OT (h)']];
+  const sumRows = [['Tháng','Phòng ban','Tổng NV','Vượt 70h','Bình thường','Tổng OT (h)']];
   keys.forEach(mk => {
     const allD = Object.keys(DB[mk].depts||{}).sort();
     allD.forEach(dept => {
       const nvs  = DB[mk].depts[dept];
       const tots = nvs.map(n=>Math.round(totalOf(DB[mk].employees[n])*10)/10);
       sumRows.push([fmtMK(mk), dept, nvs.length,
-        tots.filter(t=>t>70).length, tots.filter(t=>t>=45&&t<=70).length, tots.filter(t=>t<45).length,
+        tots.filter(t=>t>70).length, tots.filter(t=>t<=70).length,
         Math.round(tots.reduce((a,b)=>a+b,0)*10)/10]);
     });
   });
   const wsSum = XLSX.utils.aoa_to_sheet(sumRows);
-  wsSum['!cols'] = [{wch:14},{wch:16},{wch:8},{wch:10},{wch:10},{wch:12},{wch:11}];
+  wsSum['!cols'] = [{wch:14},{wch:16},{wch:8},{wch:10},{wch:12},{wch:11}];
   XLSX.utils.book_append_sheet(wb, wsSum, 'Tóm_tắt_phòng_ban');
 
   XLSX.writeFile(wb, `OT_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -3346,7 +3395,6 @@ function buildReportHtml(mode) {
       deptStats,
       trend,
       over: finalTotals.filter(t=>t.total>70).length,
-      warn: finalTotals.filter(t=>t.total>=45&&t.total<=70).length,
       avg: finalTotals.length ? Math.round(finalTotals.reduce((a,b)=>a+b.total,0)/finalTotals.length*10)/10 : 0
     };
   });
@@ -3432,8 +3480,8 @@ ${autoprintScript}
 const MONTHS = ${dataJson};
 const DEPT_COLORS = ${DEPT_COLORS_JSON};
 const NV_COLORS = ${NV_COLORS_JSON};
-function stOf(t){ return t>70?'d':t>=45?'w':'o'; }
-function stBadge(t){ const s=stOf(t); return s==='d'?'<span class="badge bd">Vượt mức</span>':s==='w'?'<span class="badge bw">Cảnh báo</span>':'<span class="badge bo">Bình thường</span>'; }
+function stOf(t){ return t>70?'d':'o'; }
+function stBadge(t){ const s=stOf(t); return s==='d'?'<span class="badge bd">Vượt mức</span>':'<span class="badge bo">Bình thường</span>'; }
 
 const root = document.getElementById('root');
 if (!MONTHS.length) {
@@ -3448,7 +3496,6 @@ MONTHS.forEach((m, idx) => {
     <div class="metrics">
       <div class="mc"><div class="ml">Nhân viên</div><div class="mv">\${m.totals.length}</div></div>
       <div class="mc red"><div class="ml">Vượt 70h</div><div class="mv">\${m.over}</div></div>
-      <div class="mc amber"><div class="ml">Cảnh báo 45-70h</div><div class="mv">\${m.warn}</div></div>
       <div class="mc"><div class="ml">OT trung bình</div><div class="mv">\${m.avg}h</div></div>
     </div>
     <div class="grid2">
@@ -3488,7 +3535,7 @@ MONTHS.forEach((m, idx) => {
   root.appendChild(sec);
 
   // Bar chart: final totals
-  const cols = m.totals.map(t => t.total>70?'#C0392B':t.total>=45?'#E8A33D':'#7A9468');
+  const cols = m.totals.map(t => t.total>70?'#C0392B':'#7A9468');
   new Chart(document.getElementById('bar_'+idx), {
     type:'bar',
     data:{ labels: m.totals.map(t=>t.staffCode?(t.staffCode+' - '+t.name):t.name),
