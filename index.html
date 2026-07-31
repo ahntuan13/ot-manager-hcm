@@ -197,6 +197,13 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--bg2); }
 
+  /* Bảng kẻ khung rõ (kiểu Excel) — dùng riêng cho bảng chi tiết Đi trễ để dễ nhìn từng dòng/cột */
+  .tbl-grid table { border: 1px solid var(--border2); }
+  .tbl-grid th { border: 1px solid var(--border2); background: var(--bg2); white-space: normal; }
+  .tbl-grid td { border: 1px solid var(--border2); white-space: normal; vertical-align: top; }
+  .tbl-grid tr:last-child td { border: 1px solid var(--border2); }
+  .tbl-grid tr:hover td { background: var(--accent-bg); }
+
   /* BADGES */
   .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
   .bd { background: var(--red-bg); color: var(--red); }
@@ -959,7 +966,7 @@
 
   <div class="card">
     <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateTableTitle" style="color:var(--text2);font-weight:400"></span></div>
-    <div class="tbl-wrap">
+    <div class="tbl-wrap tbl-grid">
       <table><thead id="lateTHead"></thead><tbody id="lateTBody"></tbody></table>
     </div>
   </div>
@@ -998,7 +1005,7 @@
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
-      <div class="tbl-wrap">
+      <div class="tbl-wrap tbl-grid">
         <table><thead id="lateQtrEmpTHead"></thead><tbody id="lateQtrEmpTBody"></tbody></table>
       </div>
     </div>
@@ -2770,23 +2777,25 @@ function renderDashTable(totals, periods) {
     return true;
   });
   document.getElementById('dtHead').innerHTML =
-    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>% Giới hạn <span style="font-weight:400;color:var(--text3)">/ Limit</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
+    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>OT bình thường <span style="font-weight:400;color:var(--text3)">/ Normal OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>% Giới hạn <span style="font-weight:400;color:var(--text3)">/ Limit</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
   document.getElementById('dtBody').innerHTML = rows.map(t => {
     const pct = Math.min(100, Math.round(t.total/70*100));
     const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w'?'#E8A33D':'#7A9468';
     const over = t.total > 70;
     const rc = over ? 'color:#C0392B;font-weight:700' : '';
     const night = t.nightTotal || 0;
+    const normal = Math.max(0, Math.round((t.total - night)*10)/10); // OT bình thường = Tổng − OT sau 22h
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;${over?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${t.staffCode||'—'}</td>
       <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
       <td style="color:var(--text2)">${t.dept}</td>
-      <td style="${rc || 'font-weight:500'}">${t.total}h</td>
+      <td style="color:var(--text2)">${normal}h</td>
       <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
+      <td style="${rc || 'font-weight:700'}">${t.total}h</td>
       <td><div style="font-size:10px;color:var(--text2)">${pct}%</div>
           <div class="pb"><div class="pf" style="width:${pct}%;background:${fc}"></div></div></td>
       <td>${stBadge(t.total)}</td></tr>`;
-  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
+  }).join('') || `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
 }
 
 // ============================================================
@@ -2840,7 +2849,7 @@ function renderEmployeeList() {
   if (!empMK || !DB[empMK]) {
     document.getElementById('dtHead').innerHTML = '';
     document.getElementById('dtBody').innerHTML =
-      '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Vào tab Upload để bắt đầu.</td></tr>';
+      '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Vào tab Upload để bắt đầu.</td></tr>';
     const tt = document.getElementById('empTableTitle');
     if (tt) tt.textContent = '';
     return;
@@ -3162,8 +3171,11 @@ function renderCompareMonth() {
     data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
       backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
-      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1}},
+      layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
+      plugins:{legend:{display:false}, barValueLabels:{},
+        tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
+      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
+                 suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
               y:{grid:{display:false},ticks:{font:{size:10}}}}}});
 
   document.getElementById('cmpTHead').innerHTML =
@@ -3261,8 +3273,11 @@ function renderCompareQuarter() {
     data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
       backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
-      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1}},
+      layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
+      plugins:{legend:{display:false}, barValueLabels:{},
+        tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
+      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
+                 suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
               y:{grid:{display:false},ticks:{font:{size:10}}}}}});
 
   // Bảng tổng hợp theo Quý × phòng ban (gộp lượt từng tháng trong quý)
@@ -4324,24 +4339,34 @@ function renderWlb() {
   });
 
   if (wlbTab === 'month') {
-    // ── Populate month selector ──
+    // ── Populate month selector — đánh dấu (⚠️) tháng chưa có dữ liệu Off Day ──
     const sel = document.getElementById('wlbMonthSel');
     const prevMk = sel.value;
-    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
-    if (allMks.includes(prevMk)) sel.value = prevMk; else sel.value = allMks[allMks.length-1]||'';
+    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${OFF_DB[mk]?'':' ⚠️ (chưa có Off Day)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    if (allMks.includes(prevMk)) {
+      sel.value = prevMk;
+    } else {
+      // Mặc định chọn tháng GẦN NHẤT có đủ cả OT và Off Day; nếu không có, mới rơi về tháng cuối cùng.
+      const withOff = allMks.filter(mk => OFF_DB[mk]);
+      sel.value = withOff.length ? withOff[withOff.length-1] : (allMks[allMks.length-1]||'');
+    }
     const selMk = sel.value;
     const labelEl = document.getElementById('wlbMonthSelLabel');
     if (labelEl) labelEl.textContent = selMk ? fmtMK(selMk) : '';
 
     // ── KPI tháng đang chọn ──
+    const hasOffForMonth = !!OFF_DB[selMk];
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
     const ok = ratio !== null && ratio <= THRESHOLD;
-    document.getElementById('wlbMetrics').innerHTML = selMk ? `
+    document.getElementById('wlbMetrics').innerHTML = !selMk ? '' : !hasOffForMonth ? `
+      <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">—</div><div class="ms">Chưa có dữ liệu Off Day</div></div>
+      <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
+      <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa upload Off Day cho ${fmtMK(selMk)}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (≤10)':'⚠️ Không đạt (>10)'}</div></div>` : '';
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (≤10)':'⚠️ Không đạt (>10)'}</div></div>`;
 
     // ── Biểu đồ 1: Grouped bar — OT + Off tháng đang chọn, từng phòng ban ──
     killWlbChart('cWlbMonth');
