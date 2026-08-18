@@ -204,6 +204,13 @@
   .tbl-grid tr:last-child td { border: 1px solid var(--border2); }
   .tbl-grid tr:hover td { background: var(--accent-bg); }
 
+  /* Chú thích màu cho bảng chi tiết Đi trễ — để mọi người nhìn phân biệt dễ */
+  .late-color-legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 11.5px; color: var(--text2); }
+  .late-color-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .lc-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+  .late-grid-month-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin: 14px 0 6px; }
+  .late-grid-month-title:first-child { margin-top: 0; }
+
   /* BADGES */
   .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
   .bd { background: var(--red-bg); color: var(--red); }
@@ -849,6 +856,11 @@
       </div>
       <div style="position:relative;width:100%;height:220px"><canvas id="cCmpTrend" role="img" aria-label="Xu hướng OT">Xu hướng.</canvas></div>
     </div>
+    <div class="card">
+      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tỷ trọng giờ OT của từng phòng ban trong tháng gần nhất đang có dữ liệu.</div>
+      <div style="position:relative;width:100%;height:260px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
+    </div>
     <div class="grid2">
       <div class="card">
         <div class="card-title">Tổng OT theo phòng ban × tháng</div>
@@ -901,8 +913,39 @@
 <div class="pg" id="pg-late">
   <!-- Sub-tab selector -->
   <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;width:fit-content">
+    <button id="lateTabWeek" class="wbtn" onclick="setLateTab('week')" style="font-size:13px;padding:7px 18px">📆 Theo tuần</button>
     <button id="lateTabMonth" class="wbtn active" onclick="setLateTab('month')" style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
     <button id="lateTabQuarter" class="wbtn" onclick="setLateTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+  </div>
+
+  <!-- SUB-TAB: WEEKLY (chi tiết riêng từng tuần, không luỹ kế) -->
+  <div id="late-week" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+      <select id="lateWeekMonthSel" onchange="setActiveLateWeekMK(this.value)" style="min-width:150px"></select>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select id="lateWeekDeptFilter" onchange="renderLateWeek()">
+          <option value="__all__">Tất cả phòng ban</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tuần:</span>
+      <div class="chip-row" id="lateWeekChips"></div>
+    </div>
+
+    <div class="metrics" id="lateWeekMetrics"></div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateWeekTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="late-color-legend">
+        <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+        <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
+      </div>
+      <div class="tbl-wrap tbl-grid">
+        <table><thead id="lateWeekTHead"></thead><tbody id="lateWeekTBody"></tbody></table>
+      </div>
+    </div>
   </div>
 
   <!-- SUB-TAB: MONTHLY (chi tiết tháng đang chọn) -->
@@ -966,6 +1009,10 @@
 
   <div class="card">
     <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+    <div class="late-color-legend">
+      <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+      <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
+    </div>
     <div class="tbl-wrap tbl-grid">
       <table><thead id="lateTHead"></thead><tbody id="lateTBody"></tbody></table>
     </div>
@@ -1005,9 +1052,11 @@
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
-      <div class="tbl-wrap tbl-grid">
-        <table><thead id="lateQtrEmpTHead"></thead><tbody id="lateQtrEmpTBody"></tbody></table>
+      <div class="late-color-legend">
+        <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+        <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
       </div>
+      <div id="lateQtrEmpGrid"></div>
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban</div>
@@ -1037,6 +1086,12 @@
     </div>
 
     <div class="metrics" id="wlbMetrics"></div>
+
+    <!-- Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng khỏi WLB để xem nhanh phân bổ giờ OT -->
+    <div class="card ac-top ac-amber">
+      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="position:relative;width:100%;height:260px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
+    </div>
 
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
     <div class="card ac-top ac-blue">
@@ -1301,7 +1356,7 @@
       </table>
       <p style="color:var(--text2);font-size:12px">⚠️ <strong>Khác với file Excel gốc:</strong> file gốc không giảm giờ tiêu chuẩn cho ngày lễ (khiến người nghỉ đúng ngày lễ bị kéo tụt OT tháng đó một cách bất hợp lý). App đã sửa: <strong>ngày lễ/Tết được miễn giờ tiêu chuẩn (0h)</strong> — người nghỉ đúng ngày lễ sẽ không bị trừ quota ngày đó. Người <strong>vẫn đi làm</strong> đúng ngày lễ thì không đổi gì — giờ làm hôm đó vẫn được tính 100% là OT như file gốc.</p>
 
-      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn) được <strong>tách theo dõi riêng</strong> ở cột "OT sau 22h" — không cộng/trừ vào công thức OT chính ở trên, chỉ để biết ai làm việc khuya. Trang <strong>Tổng quan OT</strong> có thêm biểu đồ <strong>"Tần suất OT sau 22h"</strong> — đếm số ngày mỗi NV có OT khuya trong kỳ đang xem, giúp phát hiện ai làm khuya thường xuyên (không chỉ 1-2 lần ngẫu nhiên).</p>
+      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn), hiển thị ở cột "OT sau 22h" trong Danh sách NV OT. Ở bảng danh sách, cột <strong>"OT bình thường" = Tổng OT − OT sau 22h</strong>, đảm bảo <strong>OT bình thường + OT sau 22h luôn = Tổng OT luỹ kế</strong> (nếu quota tháng đó đã "hấp thụ" hết OT thực làm, phần khuya cũng không còn được công nhận riêng — khớp đúng công thức Tổng OT chính thức). Trang <strong>Tổng quan OT</strong> có thêm biểu đồ <strong>"Tần suất OT sau 22h"</strong> — đếm số ngày mỗi NV có OT khuya trong kỳ đang xem, giúp phát hiện ai làm khuya thường xuyên (không chỉ 1-2 lần ngẫu nhiên).</p>
 
       <p style="margin-top:10px"><strong>Theo tháng (chu kỳ 16→15):</strong></p>
       <p style="color:var(--text2);font-size:12px">Tổng OT luỹ kế = MAX(0, tổng giờ làm − tổng giờ tiêu chuẩn) tính từ ngày 16 đầu chu kỳ đến ngày được chọn (Week 1/2/3/4).</p>
@@ -1660,6 +1715,18 @@ function buildPeriods(mk) {
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
 
+// Trả về khoảng ngày RIÊNG của 1 tuần (không tính luỹ kế từ ngày 16) — dùng cho Đi trễ tab "Theo tuần".
+// Tuần đầu tiên (idx=0): từ ngày 16 (cycleStart) đến hết tuần đó. Các tuần sau: từ ngay-sau-tuần-trước đến hết tuần đó.
+function getWeekOnlyRange(periods, idx) {
+  if (!periods.length || idx < 0 || idx >= periods.length) return null;
+  const period = periods[idx];
+  if (idx === 0) return { start: period.start, end: period.end };
+  const prevEnd = periods[idx-1].end;
+  const start = new Date(prevEnd);
+  start.setDate(start.getDate() + 1);
+  return { start, end: period.end };
+}
+
 // Sum OT hours for an employee within a date range [start,end] inclusive
 function sumDaysInRange(daysObj, start, end) {
   let sum = 0;
@@ -1777,11 +1844,14 @@ function setCmpTab(tab) {
 let lateTab = 'month';
 function setLateTab(tab) {
   lateTab = tab;
+  document.getElementById('lateTabWeek').classList.toggle('active', tab==='week');
   document.getElementById('lateTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('lateTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('late-week').style.display    = tab==='week'    ? 'block' : 'none';
   document.getElementById('late-month').style.display   = tab==='month'   ? 'block' : 'none';
   document.getElementById('late-quarter').style.display = tab==='quarter' ? 'block' : 'none';
   if (tab === 'quarter') renderLateQuarter();
+  else if (tab === 'week') renderLateWeek();
   else renderLate();
 }
 
@@ -1845,7 +1915,7 @@ function goSub(p) {
   if (pg) pg.classList.add('show');
   if (p === 'dept')    renderDept();
   if (p === 'compare') renderCompare();
-  if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else renderLate(); }
+  if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
   if (p === 'wlb')     { renderWlbSummary(); renderWlb(); }
 }
 
@@ -1871,12 +1941,20 @@ function getAllDeptsForWlb() {
 // Get totals for employees in month `mk`, cumulative up to period index `pIdx` (default: last/latest period).
 // Returns { name, dept, total } per employee — `total` = MAX(0, tổng giờ đã làm − tổng giờ tiêu chuẩn)
 // cộng dồn từ đầu chu kỳ (16) đến hết period đang xét — đúng công thức lấy từ file Excel VBA gốc.
+// Khi đang ở tab "Theo tuần", thay .total/.nightTotal (luỹ kế) bằng .deltaTotal/.deltaNightTotal
+// (chỉ riêng tuần đang xem, KHÔNG cộng dồn từ ngày 16) — áp dụng cho Dashboard & Danh sách NV OT.
+// Tab "Theo tháng" giữ nguyên luỹ kế như cũ (không gọi hàm này).
+function applyWeekDelta(totals) {
+  return totals.map(t => ({ ...t, total: t.deltaTotal, nightTotal: t.deltaNightTotal }));
+}
+
 function getTotals(mk, deptFilter = '__all__', pIdx = null) {
   const m = DB[mk]; if (!m) return [];
   const periods = buildPeriods(mk);
   if (!periods.length) return [];
   const idx = (pIdx === null || pIdx < 0 || pIdx >= periods.length) ? periods.length-1 : pIdx;
   const period = periods[idx];
+  const prevPeriod = idx > 0 ? periods[idx-1] : null;
   return m.names
     .filter(n => deptFilter === '__all__' || m.employees[n]?.dept === deptFilter)
     .map(n => {
@@ -1894,7 +1972,19 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
         const q = sumDaysInRange(quotaDays, p.start, p.end);
         return Math.round(Math.max(0, w - q)*10)/10;
       });
-      return { name: n, dept: e.dept, staffCode: e.staffCode || '', weeks: segVals, total: tot, nightTotal: nightTot };
+      // ── deltaTotal/deltaNightTotal: OT PHÁT SINH RIÊNG trong đúng tuần đang xem (KHÔNG luỹ kế từ
+      // ngày 16) = luỹ kế tại mốc này − luỹ kế tại mốc trước đó. Dùng cho tab "Theo tuần" —
+      // tab "Theo tháng" vẫn dùng .total (luỹ kế đầy đủ) như trước, chỉ có ý nghĩa khi tháng đã đủ dữ liệu.
+      let deltaTotal = tot, deltaNightTotal = nightTot;
+      if (prevPeriod) {
+        const prevWorked = sumDaysInRange(days, prevPeriod.start, prevPeriod.end);
+        const prevQuota = sumDaysInRange(quotaDays, prevPeriod.start, prevPeriod.end);
+        const prevTot = Math.max(0, prevWorked - prevQuota);
+        deltaTotal = Math.round(Math.max(0, (workedUpTo - quotaUpTo) - prevTot)*10)/10;
+        const prevNight = sumDaysInRange(nightDays, prevPeriod.start, prevPeriod.end);
+        deltaNightTotal = Math.round(Math.max(0, sumDaysInRange(nightDays, period.start, period.end) - prevNight)*10)/10;
+      }
+      return { name: n, dept: e.dept, staffCode: e.staffCode || '', weeks: segVals, total: tot, nightTotal: nightTot, deltaTotal, deltaNightTotal };
     });
 }
 
@@ -2099,7 +2189,10 @@ function tryParseCheckinOutFormat(ws) {
       if (!monthMaxIso[mk] || dc.iso > monthMaxIso[mk]) monthMaxIso[mk] = dc.iso;
 
       // Auto-derive "đi trễ" (late arrival) from the same In/Out columns — no separate upload needed.
-      if (typeof LATE_ALLOWED_DEPTS !== 'undefined' && LATE_ALLOWED_DEPTS.has(dept)) {
+      // CHỈ áp dụng Thứ 2 - Thứ 6 (Sat/Sun không tính đi trễ, kể cả nếu có giờ chấm công hôm đó).
+      const dowForLate = new Date(dc.iso + 'T00:00:00').getDay(); // 0=CN, 6=T7
+      const isWeekdayForLate = dowForLate >= 1 && dowForLate <= 5;
+      if (typeof LATE_ALLOWED_DEPTS !== 'undefined' && LATE_ALLOWED_DEPTS.has(dept) && isWeekdayForLate) {
         const lateM = computeLateMinutes(row[dc.inCol]);
         if (!LATE_DB[mk]) LATE_DB[mk] = { employees:{}, names:[], depts:{} };
         if (!LATE_DB[mk].employees[name]) {
@@ -2113,6 +2206,9 @@ function tryParseCheckinOutFormat(ws) {
         if (!LATE_DB[mk].depts[dept]) LATE_DB[mk].depts[dept] = [];
         if (!LATE_DB[mk].depts[dept].includes(name)) LATE_DB[mk].depts[dept].push(name);
         lateMonths.add(mk);
+      } else if (typeof LATE_ALLOWED_DEPTS !== 'undefined' && LATE_ALLOWED_DEPTS.has(dept) && !isWeekdayForLate) {
+        // Đảm bảo dữ liệu cũ (nếu re-upload đè lên) không còn sót ngày cuối tuần bị ghi nhận nhầm trước đây.
+        if (LATE_DB[mk] && LATE_DB[mk].employees[name]) delete LATE_DB[mk].employees[name].days[dc.iso];
       }
     });
   }
@@ -2396,9 +2492,11 @@ function renderDash() {
   const df = document.getElementById('deptFilterDash').value;
   const periods = buildPeriods(activeMK);
 
-  // In month mode: always use last period (Week 4)
+  // In month mode: always use last period (Week 4) & show CUMULATIVE (luỹ kế đủ tháng).
+  // In week mode: show CHỈ RIÊNG tuần đang xem (không cộng dồn từ ngày 16).
   const periodIdx = dashTab==='month' ? periods.length-1 : activePeriod;
-  const totals = getTotals(activeMK, df, periodIdx);
+  let totals = getTotals(activeMK, df, periodIdx);
+  if (dashTab === 'week') totals = applyWeekDelta(totals);
   const tots = totals.map(t => t.total);
   const over = totals.filter(t => t.total > 70).length;
   const nightNV = totals.filter(t => (t.nightTotal||0) > 0).length;
@@ -2430,10 +2528,10 @@ function renderDash() {
 
   document.getElementById('barChartTitle').textContent = dashTab === 'month'
     ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}`
-    : `🔴 NV Vượt mức — ${periodLabel}`;
+    : `📊 Tổng OT tuần này — ${periodLabel}`;
 
   if (dashTab === 'month') renderMonthDonut(totals);
-  else renderBarChart(totals, false);
+  else renderBarChart(totals, true);
 
   if (dashTab === 'week') {
     renderTrendPeriodChart(df, periodIdx);
@@ -2739,7 +2837,7 @@ function renderTrendPeriodChart(deptFilter, periodIdx) {
   if (!periods.length) return;
   if (periodIdx === undefined || periodIdx === null || periodIdx >= periods.length) periodIdx = periods.length - 1;
 
-  const finalTotals = getTotals(activeMK, deptFilter, periodIdx)
+  const finalTotals = applyWeekDelta(getTotals(activeMK, deptFilter, periodIdx))
     .sort((a,b)=>b.total-a.total).slice(0,8);
   const legend = document.getElementById('trendLegend');
   legend.innerHTML = `<span style="color:var(--text2);font-weight:500">${periods[periodIdx]?.label || ''}</span>`;
@@ -2783,8 +2881,12 @@ function renderDashTable(totals, periods) {
     const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w'?'#E8A33D':'#7A9468';
     const over = t.total > 70;
     const rc = over ? 'color:#C0392B;font-weight:700' : '';
-    const night = t.nightTotal || 0;
-    const normal = Math.max(0, Math.round((t.total - night)*10)/10); // OT bình thường = Tổng − OT sau 22h
+    const rawNight = t.nightTotal || 0;
+    // OT sau 22h hiển thị KHÔNG được vượt quá Tổng OT chính thức (Tổng = MAX(0, giờ làm − quota) —
+    // nếu quota đã "hấp thụ" hết OT tháng đó, phần giờ khuya thô cũng không còn được công nhận riêng).
+    // Cách này đảm bảo LUÔN ĐÚNG: OT bình thường + OT sau 22h = Tổng OT luỹ kế (không còn lệch số).
+    const night = Math.min(rawNight, t.total);
+    const normal = Math.round((t.total - night)*10)/10;
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;${over?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${t.staffCode||'—'}</td>
       <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
@@ -2857,7 +2959,8 @@ function renderEmployeeList() {
   const df = document.getElementById('empDeptFilter')?.value || '__all__';
   const periods = buildPeriods(empMK);
   const periodIdx = empTab === 'month' ? periods.length-1 : empPeriod;
-  const totals = getTotals(empMK, df, periodIdx);
+  let totals = getTotals(empMK, df, periodIdx);
+  if (empTab === 'week') totals = applyWeekDelta(totals);
   const tt = document.getElementById('empTableTitle');
   if (tt) tt.textContent = empTab === 'month' ? fmtMK(empMK) : (periods[periodIdx] ? periods[periodIdx].label : '');
   renderDashTable(totals, periods);
@@ -3139,6 +3242,23 @@ function renderCompareMonth() {
 
   document.getElementById('cmpDeptLeg').innerHTML =
     allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
+
+  // ── Biểu đồ tròn: Tổng OT từng phòng ban (dự án) — tháng gần nhất ──
+  const latestMk = keys[keys.length-1];
+  const lbl = document.getElementById('cmpProjMonthLabel');
+  if (lbl) lbl.textContent = fmtMK(latestMk);
+  const projData = allDepts.map(d => {
+    const nvs = DB[latestMk].depts?.[d] || [];
+    return Math.round(nvs.reduce((s,n)=> s + (DB[latestMk].employees[n] ? totalOf(DB[latestMk].employees[n]) : 0), 0)*10)/10;
+  });
+  killChart('cCmpProjPie');
+  CH['cCmpProjPie'] = new Chart(document.getElementById('cCmpProjPie'), {
+    type:'doughnut',
+    data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:2, borderColor:'var(--bg)' }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:true, position:'right', labels:{font:{size:11}, boxWidth:12, padding:10}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
+  });
 
   killChart('cCmpDept');
   CH['cCmpDept'] = new Chart(document.getElementById('cCmpDept'), {
@@ -3981,6 +4101,8 @@ const LATE_ALLOWED_DEPTS = new Set(['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED']);
 const LATE_DEPT_LIST = ['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED'];
 let LATE_DB = {};
 let activeLateMK = null;
+let activeLateWeekMK = null;
+let activeLateWeekIdx = null;
 let CHL = {};
 
 // ============================================================
@@ -4368,6 +4490,21 @@ function renderWlb() {
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (≤10)':'⚠️ Không đạt (>10)'}</div></div>`;
 
+    // ── Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng, dễ nhìn phân bổ OT thuần tuý ──
+    const projLbl = document.getElementById('wlbProjMonthLabel');
+    if (projLbl) projLbl.textContent = selMk ? fmtMK(selMk) : '';
+    killWlbChart('cWlbProjPie');
+    if (selMk && allDepts.length) {
+      const projData = allDepts.map(d => Math.round(getTotalOT(selMk,d)));
+      WLB_CH['cWlbProjPie'] = new Chart(document.getElementById('cWlbProjPie'), {
+        type:'doughnut',
+        data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:2, borderColor:'var(--bg)' }] },
+        options:{ responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{display:true, position:'right', labels:{font:{size:11}, boxWidth:12, padding:10}},
+            tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
+      });
+    }
+
     // ── Biểu đồ 1: Grouped bar — OT + Off tháng đang chọn, từng phòng ban ──
     killWlbChart('cWlbMonth');
     if (selMk && allDepts.length) {
@@ -4420,10 +4557,13 @@ function renderWlb() {
     }
 
     // ── Bảng: Tổng OT + Off Day + WLB theo tháng × phòng ban ──
+    // Chỉ hiển thị các tháng ĐÃ CÓ ĐỦ dữ liệu Off Day upload (bỏ qua tháng chỉ có OT mà chưa
+    // có Off Day, tránh hiện dòng "0 ngày nghỉ / 0 WLB / Đạt" gây hiểu lầm là đã đạt chuẩn).
     document.getElementById('wlbMonthTHead').innerHTML =
       `<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const rows = [];
-    allMks.forEach(mk => {
+    const mksWithOff = allMks.filter(mk => OFF_DB[mk]);
+    mksWithOff.forEach(mk => {
       // Dòng tổng công ty
       const coOT = Math.round(getTotalOT(mk,'__all__')); const coOff = Math.round(getOffDays(mk,'__all__'));
       if (coOT || coOff) {
@@ -4530,11 +4670,14 @@ function renderWlb() {
     }
 
     // ── Bảng: Tổng OT + Off Day + WLB theo quý × phòng ban ──
+    // Chỉ tính các tháng trong quý ĐÃ CÓ Off Day (bỏ qua tháng chỉ có OT), và bỏ hẳn quý nào
+    // không có tháng nào đủ dữ liệu — tránh hiện dòng "0/0/Đạt" gây hiểu lầm.
     document.getElementById('wlbQtrTHead').innerHTML =
       `<tr><th>Quý</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const qRows = [];
     qKeys.forEach(qk => {
-      const mks = qMks(qk);
+      const mks = qMks(qk).filter(mk => OFF_DB[mk]);
+      if (!mks.length) return; // quý này chưa có tháng nào đủ dữ liệu Off Day
       // Dòng tổng công ty
       const coOT = Math.round(mks.reduce((s,mk)=>s+getTotalOT(mk,'__all__'),0));
       const coOff= Math.round(mks.reduce((s,mk)=>s+getOffDays(mk,'__all__'),0));
@@ -4606,13 +4749,21 @@ function computeLateMinutes(inVal) {
 // Returns per-employee: chia 2 mốc — Mốc 1: <15 phút (đi trễ nhẹ, phổ biến nhất),
 // Mốc 2: ≥30 phút (cần xin phép quản lý). Khoảng 15–29 phút không thuộc mốc nào,
 // chỉ tính vào Tổng (không hiển thị riêng vì NV ít rơi vào khoảng này).
-function getLateTotals(mk, deptFilter) {
+// dateRange (tuỳ chọn) = {start, end} (Date objects) — nếu truyền vào, CHỈ tính những ngày đi trễ
+// nằm trong khoảng đó (dùng cho tab "Theo tuần"). Không truyền = tính cả tháng (như trước giờ).
+function getLateTotals(mk, deptFilter, dateRange) {
   const m = LATE_DB[mk]; if (!m) return [];
   return m.names
     .filter(n => deptFilter==='__all__' || m.employees[n].dept === deptFilter)
     .map(n => {
       const e = m.employees[n];
-      const daysObj = e.days || {};
+      const fullDaysObj = e.days || {};
+      const daysObj = dateRange
+        ? Object.fromEntries(Object.entries(fullDaysObj).filter(([iso]) => {
+            const d = new Date(iso+'T00:00:00');
+            return d >= dateRange.start && d <= dateRange.end;
+          }))
+        : fullDaysObj;
       const dayVals = Object.values(daysObj);
       const totalMin = dayVals.reduce((a,b)=>a+b,0);
       const count = dayVals.length;
@@ -4636,15 +4787,196 @@ function getLateTotals(mk, deptFilter) {
     });
 }
 
+// ============================================================
+//  BẢNG LƯỚI LỊCH ĐI TRỄ — kiểu "BẢNG THEO DÕI ĐI TRỄ" (Excel-style), thay cho kiểu liệt kê cũ.
+//  Mỗi cột = 1 ngày CÓ ít nhất 1 NV đi trễ (hợp của tất cả ngày trễ trong danh sách NV truyền vào),
+//  ô hiển thị GIỜ VÀO thực tế (vd "08:07"), tô màu theo mức độ trễ:
+//    · Trễ ≥30 phút (tính từ mốc 8:05) → ĐỎ, cần xin phép
+//    · Trễ 5–29 phút → CAM
+//    · Trễ <5 phút → màu chữ mặc định (không tô)
+// ============================================================
+const WEEKDAY_ABBR_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function buildLateDateUnion(empList) {
+  const set = new Set();
+  empList.forEach(t => (t.lateDates||[]).forEach(d => set.add(d.iso)));
+  return [...set].sort();
+}
+
+function lateCellColor(min) {
+  if (min >= 30) return { color:'#C0392B', weight:'700' };
+  if (min >= 5)  return { color:'#E8890C', weight:'700' };
+  return { color:'var(--text)', weight:'500' };
+}
+
+// Vẽ 1 bảng lưới lịch hoàn chỉnh (thead+tbody) vào 2 element id cho trước.
+function renderLateGridTable(theadId, tbodyId, empList) {
+  const theadEl = document.getElementById(theadId);
+  const tbodyEl = document.getElementById(tbodyId);
+  if (!theadEl || !tbodyEl) return;
+  const dates = buildLateDateUnion(empList);
+  if (!dates.length || !empList.length) {
+    theadEl.innerHTML = '';
+    tbodyEl.innerHTML = '<tr><td style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+    return;
+  }
+  const dateColsHtml = dates.map(iso => {
+    const d = new Date(iso+'T00:00:00');
+    const dow = d.getDay();
+    const isWeekend = dow===0 || dow===6;
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    return `<th style="text-align:center;min-width:56px;${isWeekend?'background:var(--red-bg)':'background:var(--accent-bg)'}">
+      <div style="font-size:9px;color:var(--text2);font-weight:700;text-transform:none">${WEEKDAY_ABBR_EN[dow]}</div>
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--text)">${dd}/${mm}</div>
+    </th>`;
+  }).join('');
+  theadEl.innerHTML = `<tr>
+    <th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
+    ${dateColsHtml}
+    <th style="background:var(--amber-bg);text-align:center">Tổng lượt</th>
+    <th style="background:var(--amber-bg);text-align:center">Tổng phút</th>
+    <th>Ghi chú</th>
+  </tr>`;
+
+  tbodyEl.innerHTML = empList.map(t => {
+    const flagged = t.needsNote > 0;
+    const byIso = {};
+    (t.lateDates||[]).forEach(d => { byIso[d.iso] = d; });
+    const cells = dates.map(iso => {
+      const rec = byIso[iso];
+      if (!rec) return `<td style="text-align:center;color:var(--text3)"></td>`;
+      const c = lateCellColor(rec.min);
+      return `<td style="text-align:center;font-family:var(--font-mono);color:${c.color};font-weight:${c.weight}" title="Trễ ${rec.min} phút (tính từ 8:05)">${rec.time}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${t.code||'—'}</td>
+      <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
+      <td style="color:var(--text2)">${t.dept}</td>
+      ${cells}
+      <td style="font-family:var(--font-mono);text-align:center;${t.count>0?'color:#B5731E;font-weight:600':''}">${t.count}</td>
+      <td style="font-family:var(--font-mono);text-align:center;font-weight:600;${flagged?'color:#C0392B':t.totalMin>0?'color:#B5731E':''}">${t.totalMin}p</td>
+      <td>${flagged ? `<span class="badge bd">${t.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Biến thể trả về HTML string (không set trực tiếp vào thead/tbody) — dùng khi cần ghép
+// NHIỀU bảng lưới lịch liên tiếp vào 1 container (vd: tab Quý, mỗi tháng 1 bảng riêng vì
+// số cột ngày khác nhau giữa các tháng).
+function buildLateGridTableHTML(empList) {
+  const dates = buildLateDateUnion(empList);
+  if (!dates.length || !empList.length) {
+    return '<div style="text-align:center;padding:14px;color:var(--text2);font-size:12.5px">Không có dữ liệu.</div>';
+  }
+  const dateColsHtml = dates.map(iso => {
+    const d = new Date(iso+'T00:00:00');
+    const dow = d.getDay();
+    const isWeekend = dow===0 || dow===6;
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    return `<th style="text-align:center;min-width:56px;${isWeekend?'background:var(--red-bg)':'background:var(--accent-bg)'}">
+      <div style="font-size:9px;color:var(--text2);font-weight:700;text-transform:none">${WEEKDAY_ABBR_EN[dow]}</div>
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--text)">${dd}/${mm}</div>
+    </th>`;
+  }).join('');
+  const rowsHtml = empList.map(t => {
+    const flagged = t.needsNote > 0;
+    const byIso = {};
+    (t.lateDates||[]).forEach(d => { byIso[d.iso] = d; });
+    const cells = dates.map(iso => {
+      const rec = byIso[iso];
+      if (!rec) return `<td style="text-align:center;color:var(--text3)"></td>`;
+      const c = lateCellColor(rec.min);
+      return `<td style="text-align:center;font-family:var(--font-mono);color:${c.color};font-weight:${c.weight}" title="Trễ ${rec.min} phút (tính từ 8:05)">${rec.time}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${t.code||'—'}</td>
+      <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
+      <td style="color:var(--text2)">${t.dept}</td>
+      ${cells}
+      <td style="font-family:var(--font-mono);text-align:center;${t.count>0?'color:#B5731E;font-weight:600':''}">${t.count}</td>
+      <td style="font-family:var(--font-mono);text-align:center;font-weight:600;${flagged?'color:#C0392B':t.totalMin>0?'color:#B5731E':''}">${t.totalMin}p</td>
+      <td>${flagged ? `<span class="badge bd">${t.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="tbl-wrap tbl-grid"><table><thead><tr>
+    <th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
+    ${dateColsHtml}
+    <th style="background:var(--amber-bg);text-align:center">Tổng lượt</th>
+    <th style="background:var(--amber-bg);text-align:center">Tổng phút</th>
+    <th>Ghi chú</th>
+  </tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+}
+
+function setActiveLateWeekMK(mk) { activeLateWeekMK = mk; activeLateWeekIdx = null; renderLateWeek(); }
+function setLateWeekIdx(idx) { activeLateWeekIdx = idx; renderLateWeek(); }
+
+// Tab "Theo tuần" — Đi trễ CHỈ riêng tuần đang chọn (không cộng dồn từ ngày 16), giống kiểu W1-W4 bên OT.
+function renderLateWeek() {
+  const keys = Object.keys(LATE_DB).sort();
+  const sel = document.getElementById('lateWeekMonthSel');
+  if (sel) {
+    const prevMk = sel.value;
+    sel.innerHTML = keys.map(mk=>`<option value="${mk}">${fmtMK(mk)}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    if (keys.includes(prevMk) && prevMk) { sel.value = prevMk; activeLateWeekMK = prevMk; }
+    else if (!activeLateWeekMK || !keys.includes(activeLateWeekMK)) { activeLateWeekMK = keys[keys.length-1] || null; }
+    if (activeLateWeekMK) sel.value = activeLateWeekMK;
+  }
+
+  const chipsEl = document.getElementById('lateWeekChips');
+  if (!activeLateWeekMK || !LATE_DB[activeLateWeekMK]) {
+    if (chipsEl) chipsEl.innerHTML = '<span style="font-size:12px;color:var(--text2)">Chưa có dữ liệu</span>';
+    document.getElementById('lateWeekMetrics').innerHTML = '';
+    document.getElementById('lateWeekTHead').innerHTML = '';
+    document.getElementById('lateWeekTBody').innerHTML = '<tr><td style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
+    return;
+  }
+
+  const periods = buildPeriods(activeLateWeekMK);
+  if (!periods.length) return;
+  if (activeLateWeekIdx === null || activeLateWeekIdx >= periods.length) activeLateWeekIdx = periods.length - 1;
+  if (chipsEl) {
+    chipsEl.innerHTML = periods.map((p,i) => {
+      const shortLbl = p.label.split(' · ')[0]; // "W1", "W2"...
+      return `<button class="chip ${i===activeLateWeekIdx?'active':''}" onclick="setLateWeekIdx(${i})" title="${p.label}">${shortLbl}</button>`;
+    }).join('');
+  }
+
+  const range = getWeekOnlyRange(periods, activeLateWeekIdx);
+  const df = document.getElementById('lateWeekDeptFilter')?.value || '__all__';
+  const totals = getLateTotals(activeLateWeekMK, df, range);
+  const sortedByMin = [...totals].sort((a,b)=>b.totalMin-a.totalMin);
+  const lateCnt = totals.filter(t=>t.totalMin>0).length;
+  const totalOccurrences = totals.reduce((a,b)=>a+b.count,0);
+  const t2Total = totals.reduce((a,b)=>a+b.t2Count,0);
+  const totalMinAll = totals.reduce((a,b)=>a+b.totalMin,0);
+
+  document.getElementById('lateWeekMetrics').innerHTML = `
+    <div class="mc"><div class="ml">NV đi trễ tuần này</div><div class="mv">${lateCnt}</div><div class="ms">/ ${totals.length} NV</div></div>
+    <div class="mc"><div class="ml">Tổng số lần</div><div class="mv">${totalOccurrences}</div><div class="ms">${totalMinAll} phút tổng</div></div>
+    <div class="mc ${t2Total>0?'red':''}"><div class="ml">Cần xin phép (≥30p)</div><div class="mv">${t2Total}</div><div class="ms">lượt trong tuần này</div></div>`;
+
+  const periodLabel = periods[activeLateWeekIdx]?.label || '';
+  document.getElementById('lateWeekTableTitle').textContent = `${periodLabel} — ${fmtMK(activeLateWeekMK)}`;
+  const empList = sortedByMin.filter(t => t.totalMin > 0);
+  renderLateGridTable('lateWeekTHead', 'lateWeekTBody', empList);
+}
+
 function rebuildLateUI() {
   updateLateSelects();
-  renderLate();
+  if (lateTab === 'quarter') renderLateQuarter();
+  else if (lateTab === 'week') renderLateWeek();
+  else renderLate();
 }
 
 function updateLateSelects() {
   const keys = Object.keys(LATE_DB).sort();
   const sel = document.getElementById('lateDeptFilter');
   sel.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' +
+    LATE_DEPT_LIST.map(d=>`<option value="${d}">${d}</option>`).join('');
+  const wSel = document.getElementById('lateWeekDeptFilter');
+  if (wSel) wSel.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' +
     LATE_DEPT_LIST.map(d=>`<option value="${d}">${d}</option>`).join('');
   const mSel = document.getElementById('lateMonthSel');
   if (!keys.length) { mSel.innerHTML = '<option>Chưa có dữ liệu</option>'; return; }
@@ -4668,6 +5000,7 @@ function renderLate() {
     document.getElementById('lateMetrics').innerHTML =
       '<div style="grid-column:1/-1;font-size:13px;color:var(--text2);padding:8px 0">Chưa có dữ liệu. Upload file chấm công bên dưới để bắt đầu.</div>';
     killLateChart('cLateDeptMin'); killLateChart('cLateDeptCount'); killLateChart('cLateBar'); killLateChart('cLateTrend');
+    document.getElementById('lateTHead').innerHTML = '';
     document.getElementById('lateTBody').innerHTML = '';
     const lrt = document.getElementById('lateRateTBody');
     if (lrt) lrt.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
@@ -4803,31 +5136,10 @@ function renderLate() {
                y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10} } } } }
   });
 
-  // ── Table — kiểu liệt kê: Ngày đi trễ (kèm giờ vào) trước, Tổng lượt/phút sau ──
+  // ── Table — kiểu lưới lịch (Excel-style): mỗi cột 1 ngày trễ, ô hiển thị giờ vào, tô màu theo mức độ ──
   document.getElementById('lateTableTitle').textContent = fmtMK(activeLateMK);
-  document.getElementById('lateTHead').innerHTML =
-    `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
-      <th>Ngày đi trễ</th><th>Tổng lượt</th><th>Tổng phút</th><th>Ghi chú</th></tr>`;
-  document.getElementById('lateTBody').innerHTML = sortedByMin
-    .filter(t => t.totalMin > 0)  // bỏ NV không đi trễ lần nào
-    .map(t => {
-    const flagged = t.needsNote > 0;
-    // Liệt kê từng ngày kèm giờ vào thực tế — trễ ≥30p tô đỏ đậm để dễ nhận biết (cần xin phép).
-    const datesHtml = (t.lateDates||[]).map(d =>
-      `<span title="Trễ ${d.min} phút" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}<span style="font-family:var(--font-mono)">, ${d.time}</span></span>`
-    ).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
-    return `
-    <tr>
-      <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${t.code||'—'}</td>
-      <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
-      <td style="color:var(--text2)">${t.dept}</td>
-      <td style="font-size:11.5px;white-space:normal;line-height:1.8">${datesHtml || '—'}</td>
-      <td style="font-family:var(--font-mono);${t.count>0?'color:#B5731E;font-weight:600':''}">${t.count}</td>
-      <td style="font-family:var(--font-mono);font-weight:600;${flagged?'color:#C0392B':t.totalMin>0?'color:#B5731E':''}">${t.totalMin}p</td>
-      <td>${flagged ? `<span class="badge bd">${t.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
-    </tr>`;
-  }).join('') ||
-    '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+  const lateEmpList = sortedByMin.filter(t => t.totalMin > 0); // bỏ NV không đi trễ lần nào
+  renderLateGridTable('lateTHead', 'lateTBody', lateEmpList);
 }
 
 // ── Theo Quý: tổng hợp Đi trễ theo quý × phòng ban, 2 mốc ──
@@ -4837,8 +5149,8 @@ function renderLateQuarter() {
     ['cLateQtrCount','cLateQtrMin','cLateQtrRisk'].forEach(killLateChart);
     document.getElementById('lateQtrTBody').innerHTML =
       '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
-    const lqet = document.getElementById('lateQtrEmpTBody');
-    if (lqet) lqet.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
+    const lqet = document.getElementById('lateQtrEmpGrid');
+    if (lqet) lqet.innerHTML = '<div style="text-align:center;padding:14px;color:var(--text2);font-size:12.5px">Chưa có dữ liệu.</div>';
     const lqrt = document.getElementById('lateQtrRateTBody');
     if (lqrt) lqrt.innerHTML = '<tr><td style="text-align:center;padding:14px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
     return;
@@ -4982,45 +5294,19 @@ function renderLateQuarter() {
   document.getElementById('lateQtrTBody').innerHTML = qRows.join('') ||
     '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 
-  // ── Bảng chi tiết theo TỪNG NHÂN VIÊN — theo quý (gộp 3 tháng, cùng kiểu liệt kê như tab Tháng) ──
+  // ── Bảng chi tiết theo TỪNG NHÂN VIÊN — theo quý: 1 bảng lưới lịch riêng cho MỖI THÁNG trong quý
+  // (vì mỗi tháng có số cột ngày khác nhau, không gộp chung 1 bảng được) ──
   document.getElementById('lateQtrTableTitle').textContent = qKeys.map(fmtQK).join(', ');
-  document.getElementById('lateQtrEmpTHead').innerHTML =
-    `<tr><th>Quý</th><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th>
-      <th>Ngày đi trễ</th><th>Tổng lượt</th><th>Tổng phút</th><th>Ghi chú</th></tr>`;
-  const empRows = [];
-  qKeys.forEach(qk => {
-    const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
-    const byEmp = {}; // name -> { code, dept, totalMin, count, needsNote, lateDates[] }
-    mks.forEach(mk => {
-      getLateTotals(mk, '__all__').forEach(t => {
-        if (t.totalMin <= 0) return;
-        if (!byEmp[t.name]) byEmp[t.name] = { code:t.code, dept:t.dept, totalMin:0, count:0, needsNote:0, lateDates:[] };
-        const rec = byEmp[t.name];
-        rec.totalMin += t.totalMin;
-        rec.count += t.count;
-        rec.needsNote += t.needsNote;
-        rec.lateDates.push(...(t.lateDates||[]).map(d => ({...d, mLabel: fmtMK(mk)})));
-      });
-    });
-    Object.entries(byEmp).sort((a,b)=>b[1].totalMin-a[1].totalMin).forEach(([name, r]) => {
-      const flagged = r.needsNote > 0;
-      const datesHtml = r.lateDates.map(d =>
-        `<span title="${d.mLabel} — trễ ${d.min} phút" style="${d.min>=30?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${d.label}<span style="font-family:var(--font-mono)">, ${d.time}</span></span>`
-      ).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
-      empRows.push(`<tr>
-        <td style="font-weight:500">${fmtQK(qk)}</td>
-        <td style="font-family:var(--font-mono);${flagged?'color:#C0392B;font-weight:700':''}">${r.code||'—'}</td>
-        <td style="${flagged?'font-weight:700;color:#C0392B':'font-weight:500'}">${name}${flagged ? ' <span class="late-dot" title="Cần xin phép quản lý / evident"></span>' : ''}</td>
-        <td style="color:var(--text2)">${r.dept}</td>
-        <td style="font-size:11.5px;white-space:normal;line-height:1.8">${datesHtml || '—'}</td>
-        <td style="font-family:var(--font-mono);${r.count>0?'color:#B5731E;font-weight:600':''}">${r.count}</td>
-        <td style="font-family:var(--font-mono);font-weight:600;${flagged?'color:#C0392B':r.totalMin>0?'color:#B5731E':''}">${r.totalMin}p</td>
-        <td>${flagged ? `<span class="badge bd">${r.needsNote} lượt — cần xin phép/evident</span>` : '<span style="color:var(--text3)">—</span>'}</td>
-      </tr>`);
-    });
-  });
-  document.getElementById('lateQtrEmpTBody').innerHTML = empRows.join('') ||
-    '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+  const gridEl = document.getElementById('lateQtrEmpGrid');
+  if (gridEl) {
+    const monthsInRange = keys.filter(mk => qKeys.includes(quarterKeyOf(mk)));
+    const sectionsHtml = monthsInRange.map(mk => {
+      const empList = getLateTotals(mk, '__all__').filter(t => t.totalMin > 0).sort((a,b)=>b.totalMin-a.totalMin);
+      if (!empList.length) return '';
+      return `<div class="late-grid-month-title">${fmtMK(mk)}</div>${buildLateGridTableHTML(empList)}`;
+    }).filter(Boolean).join('');
+    gridEl.innerHTML = sectionsHtml || '<div style="text-align:center;padding:14px;color:var(--text2);font-size:12.5px">Không có dữ liệu.</div>';
+  }
 }
 
 // ============================================================
