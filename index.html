@@ -691,7 +691,7 @@
 
     <div class="dash-warn-list card ac-top ac-red">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px">
-        <div class="card-title" style="margin-bottom:0;font-size:13.5px">Vượt mức (&gt;70h)</div>
+        <div class="card-title" id="dashWarnListTitle" style="margin-bottom:0;font-size:13.5px">Vượt mức (&gt;70h)</div>
         <button class="btn" onclick="goPage('employees')" style="padding:4px 10px;font-size:11px;flex-shrink:0">
           Chi tiết <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
@@ -787,15 +787,15 @@
     <div id="deptPeriodBtns" style="display:flex;gap:5px;flex-wrap:wrap"></div>
   </div>
   <div class="metrics" id="deptMetrics"></div>
-  <div class="grid2">
+  <div class="grid2" id="deptChartsGrid">
     <div class="card">
       <div class="card-title" id="deptAvgTitle">Tổng OT luỹ kế theo phòng ban</div>
       <div class="legend" id="deptLegend"></div>
-      <div style="position:relative;width:100%;height:220px"><canvas id="cDeptAvg" role="img" aria-label="Tổng OT phòng ban">Phòng ban.</canvas></div>
+      <div style="position:relative;width:100%;height:260px"><canvas id="cDeptAvg" role="img" aria-label="Tổng OT phòng ban">Phòng ban.</canvas></div>
     </div>
-    <div class="card">
+    <div class="card" id="deptOverCard">
       <div class="card-title">% nhân viên vượt 70h theo phòng ban</div>
-      <div style="position:relative;height:240px"><canvas id="cDeptOver" role="img" aria-label="Tỷ lệ vượt giới hạn">Vượt mức.</canvas></div>
+      <div style="position:relative;height:260px"><canvas id="cDeptOver" role="img" aria-label="Tỷ lệ vượt giới hạn">Vượt mức.</canvas></div>
     </div>
   </div>
   <div class="card">
@@ -859,7 +859,7 @@
     <div class="card">
       <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tỷ trọng giờ OT của từng phòng ban trong tháng gần nhất đang có dữ liệu.</div>
-      <div style="position:relative;width:100%;height:260px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
+      <div style="position:relative;width:100%;height:340px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -1090,7 +1090,7 @@
     <!-- Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng khỏi WLB để xem nhanh phân bổ giờ OT -->
     <div class="card ac-top ac-amber">
       <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="position:relative;width:100%;height:260px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
+      <div style="position:relative;width:100%;height:340px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
     </div>
 
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
@@ -1513,6 +1513,58 @@ const barValueLabelsPlugin = {
   }
 };
 Chart.register(barValueLabelsPlugin);
+
+// Plugin vẽ NHÃN KÉO RA (leader line) cho biểu đồ tròn/doughnut — mỗi lát cắt có 1 đường thẳng
+// kéo từ mép lát cắt ra ngoài, kèm nhãn "Tên: giá trị" — dễ đọc hơn nhét chữ vào trong lát nhỏ.
+// Bật qua options.plugins.pieLeaderLabels = { formatLabel: (label, val, pct) => `${label}: ${val}h` }.
+const pieLeaderLabelsPlugin = {
+  id: 'pieLeaderLabels',
+  afterDraw(chart) {
+    const opts = chart.options.plugins && chart.options.plugins.pieLeaderLabels;
+    if (!opts) return;
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data.length) return;
+    const dataset = chart.data.datasets[0];
+    const total = dataset.data.reduce((a,b)=>a+(b||0),0);
+    if (!total) return;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = '600 11px Inter, -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    const lineColor = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim() || '#9CA3AF';
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#1A1D29';
+    meta.data.forEach((arc, i) => {
+      const val = dataset.data[i];
+      if (!val) return;
+      const pct = Math.round(val/total*100);
+      const { x, y } = arc.getCenterPoint();
+      const angle = (arc.startAngle + arc.endAngle) / 2;
+      const outerR = arc.outerRadius;
+      const sx = x + Math.cos(angle) * outerR;
+      const sy = y + Math.sin(angle) * outerR;
+      const ex = x + Math.cos(angle) * (outerR + 16);
+      const ey = y + Math.sin(angle) * (outerR + 16);
+      const isRight = Math.cos(angle) >= 0;
+      const tx = ex + (isRight ? 18 : -18);
+      const ty = ey;
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+
+      ctx.fillStyle = textColor;
+      ctx.textAlign = isRight ? 'left' : 'right';
+      const label = opts.formatLabel ? opts.formatLabel(chart.data.labels[i], val, pct) : `${val}`;
+      ctx.fillText(label, tx + (isRight?4:-4), ty);
+    });
+    ctx.restore();
+  }
+};
+Chart.register(pieLeaderLabelsPlugin);
 
 // Draws ONE clear total value above each stacked bar group (instead of cluttered per-segment text)
 const stackedTotalLabelPlugin = {
@@ -2510,7 +2562,12 @@ function renderDash() {
     : (periods[periodIdx] ? periods[periodIdx].label : '');
   const periodSubLabel = dashTab==='month' ? fmtCompanyMK(activeMK) : periodLabel;
 
-  document.getElementById('dashMetrics').innerHTML = `
+  const isWeek = dashTab === 'week';
+  document.getElementById('dashMetrics').innerHTML = isWeek ? `
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>` : `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
     <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h</div><div class="mv">${over}</div><div class="ms">cần xem lại</div></div>
     <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
@@ -2528,7 +2585,7 @@ function renderDash() {
 
   document.getElementById('barChartTitle').textContent = dashTab === 'month'
     ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}`
-    : `📊 Tổng OT tuần này — ${periodLabel}`;
+    : `📊 Top 5 NV có OT cao nhất — ${periodLabel}`;
 
   if (dashTab === 'month') renderMonthDonut(totals);
   else renderBarChart(totals, true);
@@ -2599,19 +2656,25 @@ function renderNightOtFreqChart(deptFilter, periodIdx) {
   });
 }
 
-// Danh sách gọn NV vượt mức (>70h), hiện ngay dưới biểu đồ OT đầu tiên.
+// Theo tháng: danh sách NV vượt mức (>70h). Theo tuần: Top 5 NV có OT cao nhất tuần đó
+// (ngưỡng 70h là mốc THÁNG, không có ý nghĩa khi xem riêng 1 tuần).
 function renderDashWarnList(totals) {
   const el = document.getElementById('dashWarnList');
   if (!el) return;
-  const flagged = totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
+  const isWeek = dashTab === 'week';
+  const titleEl = document.getElementById('dashWarnListTitle');
+  if (titleEl) titleEl.textContent = isWeek ? 'Top 5 NV OT cao nhất tuần' : 'Vượt mức (>70h)';
+  const flagged = isWeek
+    ? [...totals].filter(t => t.total > 0).sort((a,b) => b.total - a.total).slice(0, 5)
+    : totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
   el.innerHTML = flagged.map(t => {
-    const c = '#C0392B';
+    const c = isWeek ? '#2D6CDF' : '#C0392B';
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;color:${c};font-weight:700">${t.staffCode||'—'}</td>
-      <td style="font-weight:600;color:${c}">${t.name} <span class="late-dot" title="Vượt 70h OT"></span></td>
+      <td style="font-weight:600;color:${c}">${t.name}${isWeek ? '' : ' <span class="late-dot" title="Vượt 70h OT"></span>'}</td>
       <td style="font-family:var(--font-mono);font-weight:700;color:${c}">${t.total}h</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text2)">Không có NV vượt mức trong kỳ này 🎉</td></tr>`;
+  }).join('') || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text2)">${isWeek ? 'Chưa có dữ liệu OT trong tuần này' : 'Không có NV vượt mức trong kỳ này 🎉'}</td></tr>`;
 }
 
 // Biểu đồ line lên xuống: Tổng OT của từng phòng ban PHÁT SINH MỖI TUẦN (không luỹ kế)
@@ -2661,11 +2724,13 @@ function renderBarChart(totals, showAll = false) {
   const chartEl = document.getElementById('cBar');
   const emptyEl = document.getElementById('cBarEmpty');
 
-  // Month mode: show all employees sorted by total
-  // Week mode: show employees Vượt mức (>70h)
-  const displayList = showAll
-    ? [...totals].sort((a,b) => b.total - a.total)
-    : totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
+  // Theo tuần: CHỈ hiện Top 5 NV có OT cao nhất tuần đó (không liệt kê hết, tránh vỡ layout).
+  const TOP_N = 5;
+  const displayList = [...totals].sort((a,b) => b.total - a.total).slice(0, TOP_N);
+
+  // Resize khung chart cho vừa đúng 5 cột (không để trống thừa / không bị bóp chữ).
+  const chartWrap = chartEl ? chartEl.parentElement : null;
+  if (chartWrap) chartWrap.style.height = '300px';
 
   if (!displayList.length) {
     if (chartEl) chartEl.style.display = 'none';
@@ -2673,9 +2738,7 @@ function renderBarChart(totals, showAll = false) {
       const div = document.createElement('div');
       div.id = 'cBarEmpty';
       div.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#5E7A4F;font-size:13px;font-weight:600;gap:8px;';
-      div.innerHTML = showAll
-        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có dữ liệu'
-        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có NV nào Vượt mức';
+      div.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Không có dữ liệu';
       chartEl.parentNode.appendChild(div);
     } else { emptyEl.style.display = 'flex'; }
     return;
@@ -2696,13 +2759,14 @@ function renderBarChart(totals, showAll = false) {
     },
     options:{
       responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top:24 } },
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:c=>` ${c.raw}h · ${displayList[c.dataIndex]?.name}`}},
         barValueLabels:{ suffix:'h' }
       },
       scales:{
-        x:{grid:{display:false}, ticks:{font:{size:10},autoSkip:true,maxRotation:35}},
+        x:{grid:{display:false}, ticks:{font:{size:11},autoSkip:false,maxRotation:20}},
         y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
            min:0, max:Math.max(90, maxTot(displayList)+8)}
       }
@@ -2717,6 +2781,7 @@ function renderMonthDonut(totals) {
 
   const chartEl = document.getElementById('cBar');
   const emptyEl = document.getElementById('cBarEmpty');
+  if (chartEl && chartEl.parentElement) chartEl.parentElement.style.height = '420px';
   if (emptyEl) emptyEl.style.display = 'none';
   if (chartEl) chartEl.style.display = 'block';
 
@@ -3008,7 +3073,7 @@ function renderDept() {
         <span style="width:9px;height:9px;border-radius:2px;background:${d.color};flex-shrink:0"></span>${d.name}
       </div>
       <div class="mv">${d.total}h</div>
-      <div class="ms">${d.nvCount} NV &middot; ${d.over} vượt 70h</div>
+      <div class="ms">${d.nvCount} NV${deptTab==='week' ? '' : ` &middot; ${d.over} vượt 70h`}</div>
     </div>`).join('');
 
   document.getElementById('deptLegend').innerHTML =
@@ -3025,26 +3090,38 @@ function renderDept() {
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, suggestedMax: Math.ceil(deptAvgMax*1.18)}}}});
 
-  killChart('cDeptOver');
-  CH['cDeptOver'] = new Chart(document.getElementById('cDeptOver'), {
-    type:'bar',
-    data:{
-      labels: deptStats.map(d => d.name),
-      datasets:[{
-        data: deptStats.map(d => d.overPct),
-        backgroundColor: deptStats.map(d => d.overPct > 50 ? '#C0392B' : d.overPct > 20 ? '#E8A33D' : '#7A9468'),
-        borderWidth: 0, borderRadius: 4, label:'% vượt 70h'
-      }]
-    },
-    options:{
-      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => ` ${c.raw}% nhân viên vượt 70h`}}, barValueLabels:{ suffix:'%' }},
-      scales:{
-        x:{ grid:{color:'rgba(128,128,128,0.1)'}, ticks:{font:{size:10}}, max:100 },
-        y:{ grid:{display:false}, ticks:{font:{size:11}} }
+  // "% NV vượt 70h" chỉ có ý nghĩa ở tab THÁNG (ngưỡng 70h/tháng) — ẩn hẳn khi đang xem Theo tuần.
+  const overCard = document.getElementById('deptOverCard');
+  const chartsGrid = document.getElementById('deptChartsGrid');
+  if (deptTab === 'week') {
+    if (overCard) overCard.style.display = 'none';
+    if (chartsGrid) chartsGrid.style.gridTemplateColumns = '1fr';
+    killChart('cDeptOver');
+  } else {
+    if (overCard) overCard.style.display = '';
+    if (chartsGrid) chartsGrid.style.gridTemplateColumns = '';
+    killChart('cDeptOver');
+    CH['cDeptOver'] = new Chart(document.getElementById('cDeptOver'), {
+      type:'bar',
+      data:{
+        labels: deptStats.map(d => d.name),
+        datasets:[{
+          data: deptStats.map(d => d.overPct),
+          backgroundColor: deptStats.map(d => d.overPct > 50 ? '#C0392B' : d.overPct > 20 ? '#E8A33D' : '#7A9468'),
+          borderWidth: 0, borderRadius: 4, label:'% vượt 70h'
+        }]
+      },
+      options:{
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => ` ${c.raw}% nhân viên vượt 70h`}}, barValueLabels:{ suffix:'%' }},
+        scales:{
+          x:{ grid:{color:'rgba(128,128,128,0.1)'}, ticks:{font:{size:10}}, max:100 },
+          y:{ grid:{display:false}, ticks:{font:{size:11}} }
+        }
       }
-    }
-  });
+    });
+  }
 
   const showDept = dSel === '__all__' ? null : dSel;
   document.getElementById('deptTableTitle').textContent = `${showDept || 'Tất cả phòng ban'} — ${periodLabel}`;
@@ -3254,9 +3331,11 @@ function renderCompareMonth() {
   killChart('cCmpProjPie');
   CH['cCmpProjPie'] = new Chart(document.getElementById('cCmpProjPie'), {
     type:'doughnut',
-    data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:2, borderColor:'var(--bg)' }] },
+    data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:true, position:'right', labels:{font:{size:11}, boxWidth:12, padding:10}},
+      layout:{ padding:{ left:80, right:80, top:20, bottom:20 } },
+      plugins:{ legend:{display:false},
+        pieLeaderLabels:{ formatLabel:(label,val,pct)=>`${label}: ${val}h (${pct}%)` },
         tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
   });
 
@@ -4498,9 +4577,11 @@ function renderWlb() {
       const projData = allDepts.map(d => Math.round(getTotalOT(selMk,d)));
       WLB_CH['cWlbProjPie'] = new Chart(document.getElementById('cWlbProjPie'), {
         type:'doughnut',
-        data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:2, borderColor:'var(--bg)' }] },
+        data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
         options:{ responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{display:true, position:'right', labels:{font:{size:11}, boxWidth:12, padding:10}},
+          layout:{ padding:{ left:80, right:80, top:20, bottom:20 } },
+          plugins:{ legend:{display:false},
+            pieLeaderLabels:{ formatLabel:(label,val,pct)=>`${label}: ${val}h (${pct}%)` },
             tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
       });
     }
