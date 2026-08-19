@@ -3188,10 +3188,15 @@ function renderWlb() {
             tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'':'  ('+((c.raw??'—')<=THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
-            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left',
+            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0,
+               suggestedMax: Math.max(10, ...otData),
                title:{display:true, text:'Tổng OT (giờ)', font:{size:10}, color:'#2D6CDF'}},
-            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right',
-               title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}, min:0},
+            // suggestedMax bắt buộc phải có giá trị KHÁC 0 — nếu tháng đó chưa có Off Day (toàn bộ = 0),
+            // trục sẽ co về khoảng [0,0] khiến Chart.js tính layout ra NaN và làm TRẮNG CẢ BIỂU ĐỒ
+            // (kể cả cột OT vốn có dữ liệu) dù không báo lỗi gì. suggestedMax:5 đảm bảo trục luôn có khoảng hợp lệ.
+            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0,
+               suggestedMax: Math.max(5, ...offData),
+               title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}},
             y2:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', offset:true,
                title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, suggestedMax:Math.max(12,THRESHOLD*1.5)} }}
       });
@@ -3301,10 +3306,12 @@ function renderWlb() {
             tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
-            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left',
+            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0,
+               suggestedMax: Math.max(10, ...otData),
                title:{display:true, text:'Tổng OT (giờ)', font:{size:10}, color:'#2D6CDF'}},
-            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right',
-               title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}, min:0},
+            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0,
+               suggestedMax: Math.max(5, ...offData),
+               title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}},
             y2:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', offset:true,
                title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, suggestedMax:Math.max(12,THRESHOLD*1.5)} }}
       });
