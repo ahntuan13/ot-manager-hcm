@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OT Manager HCM — Theo dõi tăng ca</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Thư viện bên thứ 3 — lưu local trong js/vendor/, KHÔNG tải qua CDN (tránh bị mạng công ty chặn) -->
+<script src="js/vendor/chart.umd.js"></script>
+<script src="js/vendor/xlsx.full.min.js"></script>
+<script src="js/vendor/jspdf.umd.min.js"></script>
+<script src="js/vendor/html2canvas.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════
+     ROOT FLEX WRAPPER (sidebar + main full width)
+══════════════════════════════════════ -->
+<div class="app-root">
+
+<!-- ══════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════ -->
+<aside class="sidebar">
+
+  <!-- Brand -->
+  <div class="sb-brand">
+    <div class="sb-brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </div>
+    <div>
+      <h1>OT Manager HCM <span class="beta-badge">Beta</span></h1>
+      <p title="Dữ liệu được tính theo chu kỳ lương hàng tháng, từ ngày 16 của tháng hiện tại đến ngày 15 của tháng kế tiếp.">Chu kỳ 16→15 · OT 70h/tháng</p>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="sb-nav">
+    <span class="sb-section-label">Tổng quan <i>/ Overview</i></span>
+    <button class="nt active" data-page="dash" onclick="goPage('dash')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span class="nt-label"><span class="nt-vi">Tổng quan OT</span><span class="nt-en">Overview</span></span>
+    </button>
+
+    <span class="sb-section-label">Quản lý <i>/ Manage</i></span>
+    <button class="nt" data-page="dept" onclick="goPage('dept')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+      <span class="nt-label"><span class="nt-vi">OT phòng ban</span><span class="nt-en">By Department</span></span>
+    </button>
+    <button class="nt" data-page="employees" onclick="goPage('employees')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+      <span class="nt-label"><span class="nt-vi">Danh sách NV OT</span><span class="nt-en">Employee List</span></span>
+    </button>
+    <button class="nt" data-page="compare" onclick="goPage('compare')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="nt-label"><span class="nt-vi">So sánh OT</span><span class="nt-en">Compare</span></span>
+    </button>
+    <button class="nt" data-page="late" onclick="goPage('late')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="nt-label"><span class="nt-vi">Đi trễ</span><span class="nt-en">Late Arrival</span></span>
+    </button>
+    <button class="nt" data-page="wlb" onclick="goPage('wlb')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 010 20"/><path d="M12 2a14.5 14.5 0 000 20"/></svg>
+      <span class="nt-label"><span class="nt-vi">WLB</span><span class="nt-en">Work-Life Balance</span></span>
+    </button>
+
+    <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
+    <button class="nt" data-page="report" onclick="goPage('report')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="nt-label"><span class="nt-vi">Báo cáo</span><span class="nt-en">Reports</span></span>
+    </button>
+    <button class="nt" data-page="formula" onclick="goPage('formula')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      <span class="nt-label"><span class="nt-vi">Công thức tính</span><span class="nt-en">Formulas</span></span>
+    </button>
+  </nav>
+
+  <!-- Actions -->
+  <div class="sb-actions">
+  </div>
+
+  <!-- Admin-only: Cài đặt — đặt cuối sidebar, tách riêng khỏi các mục dùng chung -->
+  <div class="sb-admin">
+    <span class="sb-admin-label">Chỉ dành cho Admin <i>/ Admin only</i></span>
+    <button class="nt" data-page="settings" onclick="goPage('settings')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009.2 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.2a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852 1 1.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span class="nt-label"><span class="nt-vi">Cài đặt</span><span class="nt-en">Settings</span></span>
+    </button>
+  </div>
+
+  <!-- Sync status -->
+  <div class="sb-sync">
+    <span id="syncStatus" class="sync-badge sync-off" onclick="goPage('settings')" title="Bấm để cấu hình">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span id="syncStatusText">Chưa kết nối</span>
+    </span>
+  </div>
+
+</aside>
+
+<!-- ══════════════════════════════════════
+     MAIN CONTENT
+══════════════════════════════════════ -->
+<main class="main">
+
+<!-- ══════════════════════════════════════
+     HEADER (cố định, hiện ở mọi trang)
+══════════════════════════════════════ -->
+<header class="top-header">
+  <div class="th-title-block">
+    <div class="greet-sub" id="greetSub" style="font-size:13px">Đang tải dữ liệu...</div>
+  </div>
+  <div class="th-right">
+    <div class="th-greet">
+      <div class="greet-title" id="greetTitle">Xin chào 👋</div>
+      <div class="greet-date" id="greetDate"></div>
+    </div>
+    <div class="icon-row">
+      <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Đổi giao diện sáng/tối · Toggle theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      </button>
+      <button class="btn-pull-sheet" onclick="syncLoad()" title="Tải dữ liệu mới nhất từ Google Sheet · Pull latest from Sheet">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Update data</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="main-scroll">
+<div class="shell">
+<div class="main-panel">
+
+<!-- old header kept for JS compatibility but hidden via CSS -->
+<div class="app-header" style="display:none">
+  <div class="header-actions">
+    <div class="nav">
+      <button class="nt active" data-page="dash" onclick="goPage('dash')">Dashboard</button>
+      <button class="nt" data-page="dept" onclick="goPage('dept')">Phòng ban</button>
+      <button class="nt" data-page="compare" onclick="goPage('compare')">So sánh</button>
+      <button class="nt" data-page="settings" onclick="goPage('settings')">Settings</button>
+      <button class="nt" data-page="sync" onclick="goPage('settings')">Sync</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="loadingState" class="loading" style="display:none">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  Đang tải dữ liệu...
+</div>
+
+<div id="appBody" style="display:none">
+
+<!-- ====== DASHBOARD ====== -->
+<div class="pg show" id="pg-dash">
+
+  <!-- Controls bar -->
+  <div class="dash-controls">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+      <select id="monthDashSel" onchange="setActiveMK(this.value)" style="min-width:140px"></select>
+      <button class="btn btn-danger" onclick="deleteMonth(document.getElementById('monthDashSel').value)" title="Xóa tháng" style="padding:5px 8px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+      </button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <select id="deptFilterDash" onchange="renderDash()">
+        <option value="__all__">Tất cả phòng ban</option>
+      </select>
+      <div class="tab-pill">
+        <button id="dashTabWeek"  class="wbtn active" onclick="setDashTab('week')"  style="font-size:12px;padding:5px 14px">Theo tuần</button>
+        <button id="dashTabMonth" class="wbtn"        onclick="setDashTab('month')" style="font-size:12px;padding:5px 14px">Theo tháng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Period chips (week mode) -->
+  <div id="dashWeekBar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Tuần:</span>
+    <div class="chip-row" id="periodChips"></div>
+  </div>
+
+  <!-- KPI metrics -->
+  <div class="metrics" id="dashMetrics"></div>
+
+  <!-- ROW 1: Main chart (left ~63%) + Warning list (right ~37%) -->
+  <div class="dash-row1">
+    <div class="dash-chart-main card ac-top ac-blue">
+      <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên</div>
+      <div class="legend">
+        <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤70h</span>
+        <span><span class="ldot" style="background:#C0392B"></span>Vượt 70h</span>
+      </div>
+      <div style="position:relative;width:100%;height:420px"><canvas id="cBar" role="img" aria-label="OT luỹ kế nhân viên">OT nhân viên.</canvas></div>
+    </div>
+
+    <div class="dash-warn-list card ac-top ac-red">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px">
+        <div class="card-title" id="dashWarnListTitle" style="margin-bottom:0;font-size:13.5px">Vượt mức (&gt;70h)</div>
+        <button class="btn" onclick="goPage('employees')" style="padding:4px 10px;font-size:11px;flex-shrink:0">
+          Chi tiết <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+      <div class="tbl-wrap">
+        <table style="font-size:12px">
+          <thead><tr><th>Code</th><th>Nhân viên</th><th>OT</th></tr></thead>
+          <tbody id="dashWarnList"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2: Bottom full-width chart -->
+  <div class="dash-row2">
+    <div id="dashTrendCard" class="card ac-top ac-amber">
+      <div class="card-title">OT theo tuần đang chọn — Top 8 nhân viên cao nhất</div>
+      <div class="legend" id="trendLegend"></div>
+      <div style="position:relative;width:100%;height:300px"><canvas id="cTrendPeriod" role="img" aria-label="OT từng khoảng theo mốc">Xu hướng.</canvas></div>
+    </div>
+    <div class="card ac-top ac-green">
+      <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
+      <div class="legend" id="dashDeptLineLeg"></div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cDashDeptLine" role="img" aria-label="Xu hướng OT theo phòng ban">Xu hướng phòng ban.</canvas></div>
+    </div>
+    <div class="card ac-top ac-blue">
+      <div class="card-title">Tần suất OT sau 22h (Night OT) — theo nhân viên</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Số ngày mỗi NV có làm việc sau 22:00 trong kỳ đang chọn — giúp biết ai thường xuyên OT khuya.</div>
+      <div id="nightOtEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Không có NV nào phát sinh OT sau 22h trong kỳ này 🎉</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cNightOtFreq" role="img" aria-label="Tần suất OT sau 22h">OT sau 22h.</canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== DANH SÁCH NHÂN VIÊN OT ====== -->
+<div class="pg" id="pg-employees">
+  <div class="page-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+    <span>Danh sách nhân viên OT <span style="font-size:12px;color:var(--text2);font-weight:400">/ Employee OT List</span></span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+    <select id="empMonthSel" onchange="setEmpMK(this.value)" style="min-width:150px"></select>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <select id="empDeptFilter" onchange="renderEmployeeList()">
+        <option value="__all__">Tất cả phòng ban</option>
+      </select>
+      <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
+        <button id="empTabWeek"  class="wbtn" onclick="setEmpTab('week')"  style="font-size:12px;padding:5px 12px">Theo tuần</button>
+        <button id="empTabMonth" class="wbtn active" onclick="setEmpTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="empWeekBar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Xem theo mốc:</span>
+    <div class="chip-row" id="empPeriodChips"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="empTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+    <div class="action-row">
+      <select id="stFilter" onchange="renderEmployeeList()">
+        <option value="all">Tất cả trạng thái</option>
+        <option value="d">Vượt &gt;70h</option>
+        <option value="o">Bình thường</option>
+      </select>
+      <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
+    </div>
+    <div class="tbl-wrap">
+      <table><thead id="dtHead"></thead><tbody id="dtBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ====== PHÒNG BAN ====== -->
+<div class="pg" id="pg-dept">
+  <div class="dept-bar">
+    <label>Phòng ban:</label>
+    <select id="deptSel" onchange="renderDept()"><option value="__all__">Tất cả</option></select>
+    <label>Tháng:</label>
+    <select id="deptMonthSel" onchange="renderDept()"></select>
+    <!-- sub-tab: week vs month -->
+    <div style="margin-left:auto;display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
+      <button id="deptTabWeek" class="wbtn active" onclick="setDeptTab('week')" style="font-size:12px;padding:5px 12px">Theo tuần</button>
+      <button id="deptTabMonth" class="wbtn" onclick="setDeptTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng</button>
+    </div>
+  </div>
+  <!-- Week view: show period selector -->
+  <div id="deptWeekBar" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    <label style="font-size:12px;color:var(--text2)">Tuần:</label>
+    <div id="deptPeriodBtns" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+  </div>
+  <div class="metrics" id="deptMetrics"></div>
+  <div class="grid2" id="deptChartsGrid">
+    <div class="card">
+      <div class="card-title" id="deptAvgTitle">Tổng OT luỹ kế theo phòng ban</div>
+      <div class="legend" id="deptLegend"></div>
+      <div style="position:relative;width:100%;height:260px"><canvas id="cDeptAvg" role="img" aria-label="Tổng OT phòng ban">Phòng ban.</canvas></div>
+    </div>
+    <div class="card" id="deptOverCard">
+      <div class="card-title">% nhân viên vượt 70h theo phòng ban</div>
+      <div style="position:relative;height:260px"><canvas id="cDeptOver" role="img" aria-label="Tỷ lệ vượt giới hạn">Vượt mức.</canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">
+      Tổng hợp theo phòng ban — <span id="deptTableTitle" style="color:var(--text2);font-weight:400"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table><thead id="deptTHead"></thead><tbody id="deptTBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SO SÁNH ====== -->
+<div class="pg" id="pg-compare">
+  <!-- Sub-tab selector -->
+  <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;width:fit-content">
+    <button id="cmpTabWeek" class="wbtn active" onclick="setCmpTab('week')" style="font-size:13px;padding:7px 18px">📊 Theo tuần</button>
+    <button id="cmpTabMonth" class="wbtn" onclick="setCmpTab('month')" style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
+    <button id="cmpTabQuarter" class="wbtn" onclick="setCmpTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+  </div>
+
+  <!-- SUB-TAB: WEEKLY -->
+  <div id="cmp-week">
+    <!-- Month selector row -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+      <select id="cmpMonthSel" onchange="renderCompareWeek()"></select>
+    </div>
+    <!-- Chart 1: Grouped bar — OT từng tuần theo phòng ban (KHÔNG luỹ kế, phát sinh riêng từng tuần) -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Tổng OT từng tuần theo phòng ban (không luỹ kế) — so sánh ngang nhau</div>
+      <div class="legend" id="periodDeptLeg"></div>
+      <div style="position:relative;width:100%;height:320px"><canvas id="cPeriodDept" role="img" aria-label="So sánh phòng ban từng tuần">So sánh tuần.</canvas></div>
+    </div>
+    <!-- Chart 2: Bar — Tổng OT toàn công ty, phát sinh riêng từng tuần -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Tổng OT toàn công ty — từng tuần (không luỹ kế)</div>
+      <div class="legend">
+        <span><span style="width:18px;height:18px;background:#2D6CDF;display:inline-block;vertical-align:middle;border-radius:3px"></span>&nbsp;Tổng OT trong tuần (h)</span>
+      </div>
+      <div style="position:relative;width:100%;height:240px"><canvas id="cPeriodTrend" role="img" aria-label="Tổng OT từng tuần">Tổng tuần.</canvas></div>
+    </div>
+    <!-- Table -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết theo tuần × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="periodTHead"></thead><tbody id="periodTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUB-TAB: MONTHLY -->
+  <div id="cmp-month" style="display:none">
+    <div class="card">
+      <div class="card-title">Tổng OT toàn công ty theo tháng</div>
+      <div class="legend">
+        <span><span style="width:18px;height:2px;background:#2D6CDF;display:inline-block;vertical-align:middle"></span>&nbsp;Tổng OT công ty (h)</span>
+      </div>
+      <div style="position:relative;width:100%;height:220px"><canvas id="cCmpTrend" role="img" aria-label="Xu hướng OT">Xu hướng.</canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tỷ trọng giờ OT của từng phòng ban trong tháng gần nhất đang có dữ liệu.</div>
+      <div style="position:relative;width:100%;height:340px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Tổng OT theo phòng ban × tháng</div>
+        <div class="legend" id="cmpDeptLeg"></div>
+        <div style="position:relative;width:100%;height:220px"><canvas id="cCmpDept" role="img" aria-label="So sánh phòng ban">So sánh.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Nhân viên hay vượt mức nhất</div>
+        <div style="position:relative;height:220px"><canvas id="cRisk" role="img" aria-label="Nhân viên rủi ro">Rủi ro.</canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo tháng × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="cmpTHead"></thead><tbody id="cmpTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUB-TAB: QUARTERLY -->
+  <div id="cmp-quarter" style="display:none">
+    <div class="card">
+      <div class="card-title">Tổng OT toàn công ty theo Quý</div>
+      <div class="legend">
+        <span><span style="width:18px;height:2px;background:#2D6CDF;display:inline-block;vertical-align:middle"></span>&nbsp;Tổng OT công ty (h)</span>
+      </div>
+      <div style="position:relative;width:100%;height:220px"><canvas id="cQtrTrend" role="img" aria-label="Xu hướng OT theo quý">Xu hướng quý.</canvas></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Tổng OT theo phòng ban × Quý</div>
+        <div class="legend" id="cmpQtrDeptLeg"></div>
+        <div style="position:relative;width:100%;height:220px"><canvas id="cQtrDept" role="img" aria-label="So sánh phòng ban theo quý">So sánh quý.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Nhân viên hay vượt mức nhất (theo quý)</div>
+        <div style="position:relative;height:220px"><canvas id="cQtrRisk" role="img" aria-label="Nhân viên rủi ro theo quý">Rủi ro quý.</canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="cmpQtrTHead"></thead><tbody id="cmpQtrTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== ĐI TRỄ ====== -->
+<div class="pg" id="pg-late">
+  <!-- Sub-tab selector -->
+  <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;width:fit-content">
+    <button id="lateTabWeek" class="wbtn" onclick="setLateTab('week')" style="font-size:13px;padding:7px 18px">📆 Theo tuần</button>
+    <button id="lateTabMonth" class="wbtn active" onclick="setLateTab('month')" style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
+    <button id="lateTabQuarter" class="wbtn" onclick="setLateTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+  </div>
+
+  <!-- SUB-TAB: WEEKLY (chi tiết riêng từng tuần, không luỹ kế) -->
+  <div id="late-week" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+      <select id="lateWeekMonthSel" onchange="setActiveLateWeekMK(this.value)" style="min-width:150px"></select>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select id="lateWeekDeptFilter" onchange="renderLateWeek()">
+          <option value="__all__">Tất cả phòng ban</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">Tuần:</span>
+      <div class="chip-row" id="lateWeekChips"></div>
+    </div>
+
+    <div class="metrics" id="lateWeekMetrics"></div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateWeekTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="late-color-legend">
+        <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+        <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
+      </div>
+      <div class="tbl-wrap tbl-grid">
+        <table><thead id="lateWeekTHead"></thead><tbody id="lateWeekTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUB-TAB: MONTHLY (chi tiết tháng đang chọn) -->
+  <div id="late-month">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+    <select id="lateMonthSel" onchange="setActiveLateMK(this.value)" style="min-width:150px"></select>
+    <button class="btn btn-danger" onclick="deleteLateMonth(document.getElementById('lateMonthSel').value)" title="Xóa tháng đang chọn" style="padding:6px 8px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+    </button>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <select id="lateDeptFilter" onchange="renderLate()">
+        <option value="__all__">Tất cả phòng ban</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="metrics" id="lateMetrics"></div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo tháng</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ ÷ Tổng số NV trong phòng ban × 100%, tính trong tháng đang chọn.</div>
+    <div class="tbl-wrap">
+      <table style="font-size:12.5px"><thead id="lateRateTHead"></thead><tbody id="lateRateTBody"></tbody></table>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Tổng số phút đi trễ — theo phòng ban (2 mốc)</div>
+      <div class="legend">
+        <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
+        <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
+      </div>
+      <div style="position:relative;width:100%;height:320px"><canvas id="cLateDeptMin" role="img" aria-label="Tổng phút đi trễ theo phòng ban">Phút đi trễ.</canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Số lần đi trễ — theo phòng ban (2 mốc)</div>
+      <div class="legend">
+        <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
+        <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
+      </div>
+      <div style="position:relative;width:100%;height:320px"><canvas id="cLateDeptCount" role="img" aria-label="Số lần đi trễ theo phòng ban">Số lần đi trễ.</canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" id="lateBarTitle">Nhân viên đi trễ nhiều nhất</div>
+    <div class="legend">
+      <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
+      <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
+    </div>
+    <div style="position:relative;width:100%;height:420px"><canvas id="cLateBar" role="img" aria-label="Nhân viên đi trễ nhiều nhất">Đi trễ NV.</canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">So sánh xu hướng theo Tháng — từng phòng ban</div>
+    <div class="legend" id="lateTrendLeg"></div>
+    <div style="position:relative;width:100%;height:320px"><canvas id="cLateTrend" role="img" aria-label="Xu hướng đi trễ theo tháng">Xu hướng tháng.</canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+    <div class="late-color-legend">
+      <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+      <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
+    </div>
+    <div class="tbl-wrap tbl-grid">
+      <table><thead id="lateTHead"></thead><tbody id="lateTBody"></tbody></table>
+    </div>
+  </div>
+  </div>
+
+  <!-- SUB-TAB: QUARTERLY -->
+  <div id="late-quarter" style="display:none">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo quý</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ (ít nhất 1 lần trong quý) ÷ Tổng số NV trong phòng ban × 100%.</div>
+      <div class="tbl-wrap">
+        <table style="font-size:12.5px"><thead id="lateQtrRateTHead"></thead><tbody id="lateQtrRateTBody"></tbody></table>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Số lần đi trễ toàn công ty × Quý (2 mốc)</div>
+        <div class="legend">
+          <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
+          <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
+        </div>
+        <div style="position:relative;width:100%;height:320px"><canvas id="cLateQtrCount" role="img" aria-label="Số lần đi trễ theo quý">Số lần quý.</canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Tổng phút đi trễ toàn công ty × Quý (2 mốc)</div>
+        <div class="legend">
+          <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
+          <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
+        </div>
+        <div style="position:relative;width:100%;height:320px"><canvas id="cLateQtrMin" role="img" aria-label="Tổng phút đi trễ theo quý">Phút quý.</canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Nhân viên cần xin phép nhiều nhất (≥30p) — theo quý</div>
+      <div style="position:relative;height:220px"><canvas id="cLateQtrRisk" role="img" aria-label="Nhân viên cần xin phép theo quý">Rủi ro quý.</canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="late-color-legend">
+        <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
+        <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
+      </div>
+      <div id="lateQtrEmpGrid"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="lateQtrTHead"></thead><tbody id="lateQtrTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== WLB ====== -->
+<div class="pg" id="pg-wlb">
+  <div id="offDaySummary" style="margin-bottom:14px"></div>
+
+  <!-- Sub-tab selector -->
+  <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;width:fit-content">
+    <button id="wlbTabMonth"   class="wbtn active" onclick="setWlbTab('month')"   style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
+    <button id="wlbTabQuarter" class="wbtn"         onclick="setWlbTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+  </div>
+
+  <!-- TAB: MONTH -->
+  <div id="wlb-month">
+    <!-- Controls: chọn tháng xem chi tiết -->
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <span style="font-size:12px;color:var(--text2)">Tháng chi tiết:</span>
+      <select id="wlbMonthSel" onchange="renderWlb()" style="min-width:150px"></select>
+    </div>
+
+    <div class="metrics" id="wlbMetrics"></div>
+
+    <!-- Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng khỏi WLB để xem nhanh phân bổ giờ OT -->
+    <div class="card ac-top ac-amber">
+      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="position:relative;width:100%;height:340px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
+    </div>
+
+    <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
+    <div class="card ac-top ac-blue">
+      <div class="card-title">WLB từng phòng ban — <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">≤10 Đạt</span> <span class="badge bd">&gt;10 Không đạt</span></div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
+    </div>
+
+    <!-- Biểu đồ 2: So sánh WLB các tháng (line chart) — từng phòng ban -->
+    <div class="card ac-top ac-green">
+      <div class="card-title">So sánh WLB giữa các tháng — từng phòng ban</div>
+      <div class="legend" id="wlbMonthCmpLeg"></div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbMonthCmp" role="img">So sánh WLB tháng.</canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo tháng × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="wlbMonthTHead"></thead><tbody id="wlbMonthTBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- Bảng WLB theo từng nhân viên -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="action-row" style="margin-bottom:10px">
+        <select id="wlbEmpMonthDept" onchange="refreshWlbEmpTableMonth()">
+          <option value="__all__">Tất cả phòng ban</option>
+        </select>
+        <input type="text" id="wlbEmpMonthSearch" placeholder="Tìm nhân viên..." oninput="refreshWlbEmpTableMonth()" style="width:180px">
+      </div>
+      <div class="tbl-wrap">
+        <table><thead id="wlbEmpMonthTHead"></thead><tbody id="wlbEmpMonthTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: QUARTER -->
+  <div id="wlb-quarter" style="display:none">
+    <!-- Controls: chọn quý xem chi tiết -->
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <span style="font-size:12px;color:var(--text2)">Quý chi tiết:</span>
+      <select id="wlbQtrSel" onchange="renderWlb()" style="min-width:150px"></select>
+    </div>
+
+    <!-- Biểu đồ 1: WLB quý đang chọn — từng phòng ban -->
+    <div class="card ac-top ac-amber">
+      <div class="card-title">WLB từng phòng ban — <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">≤10 Đạt</span> <span class="badge bd">&gt;10 Không đạt</span></div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
+    </div>
+
+    <!-- Biểu đồ 2: So sánh WLB giữa các quý (line chart) -->
+    <div class="card ac-top ac-red">
+      <div class="card-title">So sánh WLB giữa các quý — từng phòng ban</div>
+      <div class="legend" id="wlbQtrCmpLeg"></div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQtrCmp" role="img">So sánh WLB quý.</canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo quý × phòng ban</div>
+      <div class="tbl-wrap">
+        <table><thead id="wlbQtrTHead"></thead><tbody id="wlbQtrTBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- Bảng WLB theo từng nhân viên -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="action-row" style="margin-bottom:10px">
+        <select id="wlbEmpQtrDept" onchange="refreshWlbEmpTableQtr()">
+          <option value="__all__">Tất cả phòng ban</option>
+        </select>
+        <input type="text" id="wlbEmpQtrSearch" placeholder="Tìm nhân viên..." oninput="refreshWlbEmpTableQtr()" style="width:180px">
+      </div>
+      <div class="tbl-wrap">
+        <table><thead id="wlbEmpQtrTHead"></thead><tbody id="wlbEmpQtrTBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SETTINGS (Sync Google Sheets) ====== -->
+<div class="pg" id="pg-settings">
+  <div class="info-box">
+    <strong>Sync qua Google Sheets:</strong> Dán URL Web App (Apps Script) bên dưới để đồng bộ dữ liệu OT giữa nhiều người/máy. Mọi người dùng cùng URL sẽ chia sẻ chung 1 nguồn dữ liệu.<br>
+    <strong>Lưu ý:</strong> Khi <em>Tải lên (Save)</em>, dữ liệu trên Sheet sẽ bị <strong>ghi đè</strong> bằng dữ liệu hiện tại của bạn. Khi <em>Tải xuống (Load)</em>, dữ liệu local sẽ bị thay bằng dữ liệu trên Sheet.
+  </div>
+  <div class="card">
+    <div class="card-title">Cấu hình kết nối</div>
+    <div class="action-row" style="margin-bottom:12px">
+      <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" style="flex:1;min-width:280px">
+      <button class="btn btn-primary" onclick="saveSyncUrl()">Lưu URL</button>
+    </div>
+    <div id="syncInfo" style="font-size:12px;color:var(--text2);margin-bottom:14px"></div>
+    <div class="action-row" style="gap:10px">
+      <button class="btn btn-primary" onclick="syncSave()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Tải lên Sheet (ghi đè)
+      </button>
+      <button class="btn" onclick="syncLoad()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Tải xuống từ Sheet
+      </button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-left:auto;cursor:pointer">
+        <input type="checkbox" id="autoSyncChk" onchange="toggleAutoSync()" style="width:auto">
+        Tự động tải lên sau mỗi thay đổi
+      </label>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">📧 Gửi thông báo cho Quản lý</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
+      Sau khi Update data tuần mới (Tải lên Sheet), bấm nút bên dưới để gửi email thông báo tới các Anh/Chị quản lý — nội dung tự điền theo tuần dữ liệu mới nhất.
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:5px">Email người nhận (cách nhau bằng dấu phẩy)</label>
+      <textarea id="notifyRecipients" rows="2" placeholder="vd: anh.a@taikisha-vn.com, chi.b@taikisha-vn.com" style="width:100%;font-size:12.5px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius);font-family:inherit;resize:vertical" oninput="saveNotifyRecipients()"></textarea>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;font-size:11.5px">
+      <div style="color:var(--text2);margin-bottom:4px"><strong style="color:var(--text)">Xem trước nội dung</strong> — tự động theo dữ liệu mới nhất:</div>
+      <div style="color:var(--text);font-weight:600;margin-bottom:4px" id="notifySubjectPreview">—</div>
+      <div style="color:var(--text2);white-space:pre-wrap;font-family:var(--font-mono);font-size:10.5px;max-height:140px;overflow-y:auto" id="notifyBodyPreview">—</div>
+    </div>
+    <div class="action-row" style="gap:10px">
+      <button class="btn btn-primary" onclick="sendNotifyMailto()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Soạn email (mở Outlook/Gmail)
+      </button>
+      <button class="btn" onclick="sendNotifyAuto()" title="Cần cấu hình thêm Apps Script — xem ghi chú bên dưới">
+        Gửi tự động qua Apps Script
+      </button>
+    </div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.6">
+      ⚠️ "Soạn email" mở sẵn email nháp trên trình quản lý mail của máy bạn (Outlook/Gmail) — bạn chỉ cần bấm Gửi.
+      "Gửi tự động" cần Apps Script (cùng URL Sheet ở trên) đã thêm action <code>sendNotifyEmail</code> dùng <code>MailApp.sendEmail()</code> để tự gửi từ tài khoản anhtuan@taikisha-vn.com mà không cần mở email cá nhân.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Hướng dẫn quy trình hàng tuần</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.9">
+      1. Mỗi tuần, upload file Excel chấm công ở mục <strong style="color:var(--text)">Upload dữ liệu</strong> bên dưới<br>
+      2. Bấm <strong style="color:var(--text)">Tải lên Sheet</strong> ở đây để đồng bộ cho mọi người cùng xem<br>
+      3. Người khác mở app (đã cấu hình cùng URL) → bấm <strong style="color:var(--text)">Tải xuống từ Sheet</strong> để lấy data mới nhất<br>
+      4. Nếu bật <em>tự động tải lên</em>, mọi thay đổi (upload, xóa tháng...) sẽ tự sync ngay
+    </div>
+  </div>
+
+  <!-- Upload dữ liệu (gộp từ trang Upload cũ) -->
+  <div class="card settings-subcard">
+    <div class="card-title">Upload dữ liệu</div>
+    <div class="info-box">
+      <strong>Hỗ trợ 2 định dạng file:</strong><br>
+      1) File chấm công In/Out (như file gốc) — app tự tính OT theo công thức: <strong>MAX(0, Tổng giờ đã làm cả kỳ − Tổng giờ tiêu chuẩn cả kỳ)</strong> (8h/ngày thường, 4h/thứ 7, 0h/CN). Xem chi tiết ở mục "Công thức tính".<br>
+      2) File đơn giản: Tên NV &middot; Phòng Ban &middot; Ngày &middot; Giờ OT (đã có sẵn số giờ OT).<br>
+      <strong>Chu kỳ tháng công ty:</strong> mỗi "tháng" tính từ ngày 16 đến ngày 15 tháng sau.<br>
+      <strong>Upload theo từng mốc luỹ kế:</strong> mỗi lần upload, file chứa dữ liệu từ 16 đến ngày bất kỳ (ví dụ 16-26/04, lần sau 16/04-03/05, lần sau 16/04-10/05...). App lưu OT theo từng ngày cụ thể và ghi nhận mỗi lần upload là 1 "mốc" — vào tab Dashboard có nút chọn xem lại từng mốc, mốc cuối cùng (xa nhất) = báo cáo luỹ kế cả tháng.<br>
+      <strong>Lưu ý:</strong> Dữ liệu lưu trong trình duyệt này (localStorage). Dùng nút <em>Xuất Excel</em> hoặc <em>Xuất báo cáo (có chart)</em> ở mục Báo cáo để backup định kỳ.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="up-zone" onclick="document.getElementById('fi').click()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="ut">Upload file Excel</div>
+        <div class="us">.xlsx &nbsp;&middot;&nbsp; .xls &nbsp;&middot;&nbsp; .csv &nbsp;&middot;&nbsp; Có thể chọn nhiều file</div>
+      </div>
+      <div class="up-zone" onclick="loadDemo()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <div class="ut">Dùng dữ liệu mẫu</div>
+        <div class="us">4 phòng ban &nbsp;&middot;&nbsp; 3 tháng gần nhất</div>
+      </div>
+    </div>
+    <input type="file" id="fi" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFile(this)">
+    <div id="upLog" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+    <div id="savedMonths"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:0.5px solid var(--border);display:flex;gap:10px;align-items:center">
+      <button class="btn btn-danger" onclick="clearAll()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        Xóa toàn bộ dữ liệu OT
+      </button>
+      <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
+    </div>
+  </div>
+
+  <!-- Upload Off Day (WLB) -->
+  <div class="card settings-subcard">
+    <div class="card-title">Upload file Off Day <span style="font-size:11.5px;font-weight:400;color:var(--text2)">— dùng để tính WLB (Work-Life Balance)</span></div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
+      File danh sách ngày nghỉ (Off day) của nhân viên — <strong>khác với file chấm công OT</strong>. Hỗ trợ file dạng bảng tổng hợp theo tháng (mỗi NV 1 dòng, các cột <strong>Jan, Feb, Mar...</strong> ghi số ngày nghỉ của tháng đó — đúng định dạng "LIST OF STAFF UNDER MONITORING"), hoặc file dạng mỗi dòng = 1 ngày nghỉ (Staff Code, Họ tên, Phòng ban, Ngày nghỉ). Chỉ cần upload <strong>1 file duy nhất chứa tất cả các tháng</strong> — app tự tách và cộng dồn theo từng tháng.<br>
+      <strong>Tổng OT</strong> dùng để tính WLB được lấy tự động từ dữ liệu chấm công OT đã upload ở trên (không cần nhập lại) — khớp theo đúng chu kỳ lương 16→15 của từng tháng.
+    </div>
+    <div class="up-zone" onclick="document.getElementById('fiOffDay').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <div class="ut">Upload file Off Day (Excel)</div>
+      <div class="us">.xlsx · .xls · .csv · Có thể chọn nhiều file</div>
+    </div>
+    <input type="file" id="fiOffDay" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleOffDayFile(this)">
+    <div id="offDayLog" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+    <div id="offDayMonths" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+    <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);display:flex;gap:10px;align-items:center">
+      <button class="btn btn-danger" onclick="clearOffDay()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        Xóa toàn bộ dữ liệu Off Day
+      </button>
+      <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
+    </div>
+  </div>
+</div>
+
+<!-- ====== REPORT (Xuất báo cáo) ====== -->
+<div class="pg" id="pg-report">
+  <div class="report-grid">
+    <div class="report-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <h3>Xuất Excel</h3>
+      <p>Toàn bộ dữ liệu OT theo tháng, phòng ban — định dạng .xlsx để lưu trữ hoặc gửi báo cáo.</p>
+      <button class="btn btn-primary" onclick="exportAll()" style="width:100%;justify-content:center">Xuất Excel</button>
+    </div>
+    <div class="report-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="13" y2="11"/></svg>
+      <h3>Xuất PDF</h3>
+      <p>Báo cáo trực quan kèm biểu đồ, sẵn sàng để in hoặc chia sẻ qua email.</p>
+      <button class="btn btn-primary" onclick="exportPdfReport()" style="width:100%;justify-content:center">Xuất PDF</button>
+    </div>
+    <div class="report-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      <h3>Báo cáo HTML</h3>
+      <p>Trang báo cáo tương tác, mở trực tiếp trên trình duyệt, dễ chia sẻ link nội bộ.</p>
+      <button class="btn btn-primary" onclick="exportHtmlReport()" style="width:100%;justify-content:center">Xuất HTML</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== CÔNG THỨC TÍNH ====== -->
+<div class="pg" id="pg-formula">
+  <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">Công thức tính</div>
+  <div style="font-size:12.5px;color:var(--text2);margin-bottom:18px">Giải thích cách hệ thống tính OT, đi trễ và WLB — để các số liệu trên Dashboard, Phòng ban, So sánh và Đi trễ đều nhất quán với nhau.</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title" style="margin-bottom:10px">🟣 Cách tính OT <span style="font-size:11px;font-weight:400;color:var(--text2)">— theo file Excel VBA gốc công ty dùng trước đây (macro WT2)</span></div>
+    <div style="font-size:13px;line-height:1.7;color:var(--text)">
+      <p><strong>Công thức tổng quát (tính theo cả kỳ, không phải "vượt ngưỡng mỗi ngày" như trước):</strong></p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        OT = MAX(0, Tổng giờ ĐÃ LÀM trong kỳ − Tổng giờ TIÊU CHUẨN trong kỳ)
+      </p>
+      <p style="color:var(--text2);font-size:12px">Mỗi ngày chỉ đóng góp 2 con số: <strong>giờ đã làm</strong> và <strong>giờ tiêu chuẩn</strong>. OT chỉ thật sự "lộ ra" ở phần <strong>chênh lệch cộng dồn</strong> của cả kỳ — không giới hạn theo từng ngày riêng lẻ.</p>
+
+      <p style="margin-top:10px"><strong>1. Giờ đã làm mỗi ngày</strong> (tự động trừ giờ nghỉ trưa 12h-13h, <u>có tính cả giờ đến sớm</u>):</p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        Giờ làm = max(0, min(12h, Giờ ra) − Giờ vào) + max(0, Giờ ra − max(13h, Giờ vào))
+      </p>
+      <p style="color:var(--text2);font-size:12px">Giờ vào/ra được <strong>làm tròn 2 bước</strong> trước khi tính: làm tròn LÊN 15 phút, rồi làm tròn XUỐNG 30 phút. Ví dụ 7:32 → 7:45 → 7:30.</p>
+      <p style="color:var(--text2);font-size:12px">Thiếu dữ liệu chấm công: <strong>thiếu 1 trong 2 (thiếu giờ vào HOẶC thiếu giờ ra)</strong> → ngày đó đóng góp <strong>0 giờ làm</strong> (không có giả định 8:00/17:00 nào — khớp đúng file gốc công ty đã kiểm chứng), nhưng vẫn tính đủ giờ tiêu chuẩn của ngày đó (xem bên dưới) — nên ngày thiếu chấm công sẽ làm giảm OT cộng dồn của kỳ.</p>
+
+      <p style="margin-top:10px"><strong>2. Giờ tiêu chuẩn mỗi ngày</strong> (luôn cộng dồn dù có đi làm hay không):</p>
+      <table style="margin:8px 0;font-size:12.5px">
+        <thead><tr><th>Loại ngày</th><th>Giờ tiêu chuẩn</th></tr></thead>
+        <tbody>
+          <tr><td>Thứ 2 – Thứ 6</td><td style="font-family:var(--font-mono)">8h</td></tr>
+          <tr><td>Thứ 7</td><td style="font-family:var(--font-mono)">4h</td></tr>
+          <tr><td>Chủ nhật</td><td style="font-family:var(--font-mono)">0h</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--text2);font-size:12px">⚠️ <strong>Khác với file Excel gốc:</strong> file gốc không giảm giờ tiêu chuẩn cho ngày lễ (khiến người nghỉ đúng ngày lễ bị kéo tụt OT tháng đó một cách bất hợp lý). App đã sửa: <strong>ngày lễ/Tết được miễn giờ tiêu chuẩn (0h)</strong> — người nghỉ đúng ngày lễ sẽ không bị trừ quota ngày đó. Người <strong>vẫn đi làm</strong> đúng ngày lễ thì không đổi gì — giờ làm hôm đó vẫn được tính 100% là OT như file gốc.</p>
+
+      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>OT sau 22h (Night OT)</strong>: phần giờ làm sau 22:00 (đã làm tròn), hiển thị ở cột "OT sau 22h" trong Danh sách NV OT. Ở bảng danh sách, cột <strong>"OT bình thường" = Tổng OT − OT sau 22h</strong>, đảm bảo <strong>OT bình thường + OT sau 22h luôn = Tổng OT luỹ kế</strong> (nếu quota tháng đó đã "hấp thụ" hết OT thực làm, phần khuya cũng không còn được công nhận riêng — khớp đúng công thức Tổng OT chính thức). Trang <strong>Tổng quan OT</strong> có thêm biểu đồ <strong>"Tần suất OT sau 22h"</strong> — đếm số ngày mỗi NV có OT khuya trong kỳ đang xem, giúp phát hiện ai làm khuya thường xuyên (không chỉ 1-2 lần ngẫu nhiên).</p>
+
+      <p style="margin-top:10px"><strong>Theo tháng (chu kỳ 16→15):</strong></p>
+      <p style="color:var(--text2);font-size:12px">Tổng OT luỹ kế = MAX(0, tổng giờ làm − tổng giờ tiêu chuẩn) tính từ ngày 16 đầu chu kỳ đến ngày được chọn (Week 1/2/3/4).</p>
+      <p style="color:var(--text2);font-size:12px">Quy định OT: <strong>không vượt quá 70h/tháng</strong>. Trong mức 70h là bình thường/hợp lệ; vượt quá 70h mới thật sự là vượt mức cần xử lý.</p>
+      <table style="margin-top:10px;font-size:12.5px">
+        <thead><tr><th>Mức OT luỹ kế</th><th>Trạng thái</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td>≤ 70h</td><td><span class="badge bo">Bình thường</span></td><td>Trong mức quy định</td></tr>
+          <tr><td>&gt; 70h</td><td><span class="badge bd">Vượt mức</span></td><td>Vượt trần 70h — cần xử lý/xin duyệt</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;color:var(--text2);font-size:12px"><strong>% Giới hạn</strong> = Tổng OT luỹ kế ÷ 70h × 100%. Dùng chung công thức này ở mọi tab: Tổng quan OT, OT phòng ban — chỉ khác cách lấy mốc thời gian (theo tuần hoặc theo cả tháng).</p>
+      <p style="margin-top:10px"><strong>Mục "OT phòng ban" và "So sánh OT" (Tuần / Tháng / Quý):</strong></p>
+      <p style="color:var(--text2);font-size:12px">Các biểu đồ/bảng ở đây hiển thị <strong>Tổng OT</strong> (cộng dồn toàn bộ giờ OT của các NV trong phòng ban/công ty), không phải số trung bình:</p>
+      <table style="margin:8px 0;font-size:12.5px">
+        <thead><tr><th>Tab</th><th>Cách tính</th></tr></thead>
+        <tbody>
+          <tr><td>OT phòng ban</td><td>Tổng OT luỹ kế của từng phòng ban, theo tuần đang chọn hoặc cả tháng</td></tr>
+          <tr><td>So sánh — Tuần</td><td>Tổng OT <strong>phát sinh riêng trong từng tuần</strong> (không cộng dồn từ tuần trước) của từng phòng ban</td></tr>
+          <tr><td>So sánh — Tháng</td><td>Tổng OT cả tháng của từng phòng ban</td></tr>
+          <tr><td>So sánh — Quý</td><td>Tổng OT của 3 tháng trong quý, cộng lại theo từng phòng ban</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--text2);font-size:12px">Ý nghĩa: <strong>Tổng OT</strong> cho biết phòng ban/công ty đang "tiêu tốn" bao nhiêu giờ OT thực tế trong kỳ — phù hợp để theo dõi chi phí OT, áp lực nhân sự theo quy mô phòng ban.</p>
+      <p style="color:var(--text2);font-size:12px"><em>Ghi chú (chưa áp dụng):</em> Nếu muốn xem theo <strong>trung bình</strong> (Tổng OT ÷ số NV trong phòng ban), số liệu sẽ cho biết mức OT bình quân mỗi người đang gánh — phù hợp để so sánh áp lực giữa các phòng ban có quy mô nhân sự khác nhau (vì phòng 50 người luôn có Tổng OT lớn hơn phòng 5 người, dù mỗi người làm OT ít hơn). Hiện bản này tạm bỏ chỉ số trung bình, chỉ hiển thị Tổng — có thể bổ sung lại nếu cần.</p>
+      <p style="margin-top:10px;color:var(--text2);font-size:12px">Trang <strong>Tổng quan OT</strong> có thêm biểu đồ đường "Xu hướng Tổng OT theo phòng ban" — thể hiện tổng giờ OT <strong>phát sinh riêng mỗi tuần</strong> (không cộng dồn) của từng phòng ban, giúp thấy rõ tuần nào tăng/giảm.</p>
+      <p style="color:var(--text2);font-size:12px">Tên nhân viên trên mọi biểu đồ trong toàn app hiển thị theo dạng <strong>"Mã NV - Tên"</strong> (ví dụ: <em>NV0123 - Nguyễn Văn A</em>) để dễ tra cứu, tránh nhầm lẫn giữa các NV trùng tên.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title" style="margin-bottom:10px">🟠 Cách tính đi trễ</div>
+    <div style="font-size:13px;line-height:1.7;color:var(--text)">
+      <p><strong>Mỗi ngày (có 5 phút ân hạn):</strong></p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        Số phút trễ = max(0, Giờ vào − 8:05)
+      </p>
+      <p style="color:var(--text2);font-size:12px">Vào trước hoặc đúng 8:05 sáng → <strong>không</strong> tính trễ (khoảng 8:00-8:05 là thời gian ân hạn). Vào sau 8:05 mới bắt đầu tính phút trễ.</p>
+      <p style="color:var(--text2);font-size:12px">Dữ liệu lấy <strong>tự động</strong> từ file chấm công In/Out đã upload ở mục OT (không cần upload riêng) — chỉ tính cho 6 phòng ban được phép theo dõi đi trễ: <strong>S-AD, S-AZ, S-PD, S-PU, S-QC, S-ED</strong>.</p>
+      <p style="margin-top:10px"><strong>Chia 2 mốc:</strong></p>
+      <table style="margin:8px 0;font-size:12.5px">
+        <thead><tr><th>Mốc</th><th>Điều kiện</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td>Mốc 1</td><td>&lt; 15 phút</td><td>Đi trễ nhẹ — phổ biến nhất (NV thường chỉ trễ 5–10p)</td></tr>
+          <tr><td>Mốc 2</td><td>≥ 30 phút</td><td><span class="badge bd">Cần xin phép quản lý / evident</span> — tô đỏ + icon nhấp nháy</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--text2);font-size:12px">Khoảng 15–29 phút không thuộc mốc nào (ít gặp), chỉ được cộng vào <strong>Tổng số lần / Tổng phút</strong> chung — không hiển thị thành cột riêng. Số lần và tổng phút được tính riêng cho từng mốc, sau đó mới cộng lại thành Tổng.</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Bảng chi tiết đi trễ hiển thị theo kiểu <strong>liệt kê</strong>: mỗi NV 1 dòng, cột <strong>"Ngày đi trễ"</strong> ghi CHÍNH XÁC những ngày NV đó đi trễ kèm giờ vào thực tế (vd "28/06, 8:03"), không hiển thị cả lịch tháng. Ngày trễ ≥30 phút được tô đỏ đậm để dễ nhận biết. Cột "Tổng lượt"/"Tổng phút" đặt sau cột ngày đi trễ. Áp dụng cho cả tab Theo tháng và Theo quý (tab Quý gộp dữ liệu 3 tháng, ghi rõ tháng nào khi hover vào từng ngày).</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Các biểu đồ tổng hợp (số lần/tổng phút theo phòng ban) vẫn chia theo 2 mốc <strong>Mốc 1 (&lt;15p)</strong> / <strong>Mốc 2 (≥30p)</strong> để dễ so sánh trực quan giữa các phòng ban — riêng bảng chi tiết từng NV thì không cần chia mốc nữa vì đã thấy rõ từng ngày cụ thể.</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Biểu đồ "Top NV đi trễ nhiều nhất" ưu tiên hiển thị <strong>Mốc 1 (&lt;15p)</strong> làm phần chính của cột (vì đây là tình trạng phổ biến nhất), phần Mốc 2 xếp chồng phía trên bằng màu đỏ để dễ nhận biết các trường hợp cần xin phép.</p>
+      <p style="margin-top:8px;color:var(--text2);font-size:12px">Mục Đi trễ có 2 tab: <strong>Theo tháng</strong> (chi tiết từng tháng đang chọn) và <strong>Theo Quý</strong> (tổng hợp 3 tháng/quý theo từng phòng ban, 2 mốc) — tương tự cách xem theo Tuần/Tháng/Quý ở mục So sánh OT.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:10px">🟢 Cách tính WLB (Work-Life Balance)</div>
+    <div style="font-size:13px;line-height:1.7;color:var(--text)">
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
+        WLB = Ngày nghỉ (off) tích luỹ ÷ Giờ OT tích luỹ
+      </p>
+      <table style="margin-top:10px;font-size:12.5px">
+        <thead><tr><th>Tỷ lệ</th><th>Kết quả</th></tr></thead>
+        <tbody>
+          <tr><td>≤ 10</td><td><span class="badge bo">Đạt</span></td></tr>
+          <tr><td>&gt; 10</td><td><span class="badge bd">Không đạt</span></td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;color:var(--text2);font-size:12px">⚠️ Tab WLB hiện đang ở giai đoạn "Sắp ra mắt" vì hệ thống <strong>chưa có nguồn dữ liệu "ngày nghỉ"</strong> được upload. Khi có file/cột ngày nghỉ, công thức trên sẽ được kích hoạt tính tự động theo từng NV và từng quý.</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- /appBody -->
+</div><!-- /main-panel -->
+</div><!-- /shell -->
+</div><!-- /main-scroll -->
+</main><!-- /main -->
+
+</div><!-- /app-root -->
+
+<script src="js/app.js"></script>
+</body>
+</html>
