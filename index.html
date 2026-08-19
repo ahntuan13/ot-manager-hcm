@@ -1118,10 +1118,10 @@
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div class="action-row" style="margin-bottom:10px">
-        <select id="wlbEmpMonthDept" onchange="renderWlb()">
+        <select id="wlbEmpMonthDept" onchange="refreshWlbEmpTableMonth()">
           <option value="__all__">Tất cả phòng ban</option>
         </select>
-        <input type="text" id="wlbEmpMonthSearch" placeholder="Tìm nhân viên..." oninput="renderWlb()" style="width:180px">
+        <input type="text" id="wlbEmpMonthSearch" placeholder="Tìm nhân viên..." oninput="refreshWlbEmpTableMonth()" style="width:180px">
       </div>
       <div class="tbl-wrap">
         <table><thead id="wlbEmpMonthTHead"></thead><tbody id="wlbEmpMonthTBody"></tbody></table>
@@ -1162,10 +1162,10 @@
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div class="action-row" style="margin-bottom:10px">
-        <select id="wlbEmpQtrDept" onchange="renderWlb()">
+        <select id="wlbEmpQtrDept" onchange="refreshWlbEmpTableQtr()">
           <option value="__all__">Tất cả phòng ban</option>
         </select>
-        <input type="text" id="wlbEmpQtrSearch" placeholder="Tìm nhân viên..." oninput="renderWlb()" style="width:180px">
+        <input type="text" id="wlbEmpQtrSearch" placeholder="Tìm nhân viên..." oninput="refreshWlbEmpTableQtr()" style="width:180px">
       </div>
       <div class="tbl-wrap">
         <table><thead id="wlbEmpQtrTHead"></thead><tbody id="wlbEmpQtrTBody"></tbody></table>
@@ -4447,74 +4447,96 @@ function renderWlbSummary() {
   }
 }
 
+const WLB_THRESHOLD = 10;
+function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*10)/10 : null; }
+function wlbColor(v) { return v===null?'var(--text3)':v<=WLB_THRESHOLD?'var(--green)':'var(--red)'; }
+function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v<=WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
+
+// Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
+// (nếu cả 2 nguồn đều có mã), fallback theo tên nếu thiếu mã. Trả về mảng đã tính WLB, sắp xếp
+// NV không đạt (WLB cao nhất) lên đầu để quản lý dễ xem ai cần chú ý trước.
+function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
+  const rowsMap = {};
+  mks.forEach(mk => {
+    if (DB[mk]) {
+      DB[mk].names.forEach(n => {
+        const e = DB[mk].employees[n]; if (!e) return;
+        const key = e.staffCode ? ('C:'+e.staffCode) : ('N:'+n);
+        if (!rowsMap[key]) rowsMap[key] = { name:n, code:e.staffCode||'', dept:e.dept||'', ot:0, off:0 };
+        rowsMap[key].ot += totalOf(e);
+        if (!rowsMap[key].dept && e.dept) rowsMap[key].dept = e.dept;
+        if (e.staffCode && !rowsMap[key].code) rowsMap[key].code = e.staffCode;
+      });
+    }
+    if (OFF_DB[mk]) {
+      OFF_DB[mk].names.forEach(n => {
+        const e = OFF_DB[mk].employees[n]; if (!e) return;
+        const key = e.code ? ('C:'+e.code) : ('N:'+n);
+        if (!rowsMap[key]) rowsMap[key] = { name:n, code:e.code||'', dept:e.dept||'', ot:0, off:0 };
+        rowsMap[key].off += (typeof e.offTotal === 'number' ? e.offTotal : 0);
+        if (!rowsMap[key].dept && e.dept) rowsMap[key].dept = e.dept;
+        if (e.code && !rowsMap[key].code) rowsMap[key].code = e.code;
+      });
+    }
+  });
+  let rows = Object.values(rowsMap);
+  if (deptFilter && deptFilter !== '__all__') rows = rows.filter(r => r.dept === deptFilter);
+  if (searchTerm) {
+    const q = searchTerm.trim().toLowerCase();
+    if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || (r.code||'').toLowerCase().includes(q));
+  }
+  rows.forEach(r => { r.ot = Math.round(r.ot); r.off = Math.round(r.off); r.wlb = wlbRatio(r.off, r.ot); });
+  rows.sort((a,b) => {
+    if (a.wlb===null && b.wlb===null) return a.name.localeCompare(b.name);
+    if (a.wlb===null) return 1;
+    if (b.wlb===null) return -1;
+    return b.wlb - a.wlb; // WLB cao (không đạt) lên đầu
+  });
+  return rows;
+}
+
+function renderEmployeeWlbTable(theadId, tbodyId, rows) {
+  document.getElementById(theadId).innerHTML =
+    `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
+  document.getElementById(tbodyId).innerHTML = rows.map(r => `<tr>
+    <td style="font-family:var(--font-mono);font-size:11px;color:var(--text2)">${r.code||'—'}</td>
+    <td style="font-weight:500">${r.name}</td>
+    <td style="color:var(--text2)">${r.dept||'—'}</td>
+    <td style="font-family:var(--font-mono)">${r.ot}h</td>
+    <td style="font-family:var(--font-mono)">${r.off}</td>
+    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}">${r.wlb??'—'}</td>
+    <td>${wlbBadge(r.wlb)}</td></tr>`).join('') ||
+    '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy nhân viên phù hợp.</td></tr>';
+}
+
+// Refresh NHẸ — chỉ cập nhật lại BẢNG nhân viên (không đụng tới biểu đồ) — dùng cho ô tìm kiếm/lọc,
+// để gõ tìm kiếm không bị giật/lag do phải phá-dựng lại toàn bộ Chart.js mỗi lần gõ phím.
+function refreshWlbEmpTableMonth() {
+  const selMk = document.getElementById('wlbMonthSel')?.value;
+  if (!selMk) return;
+  const df = document.getElementById('wlbEmpMonthDept')?.value || '__all__';
+  const q = document.getElementById('wlbEmpMonthSearch')?.value || '';
+  renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', buildEmployeeWlbRows([selMk], df, q));
+}
+function refreshWlbEmpTableQtr() {
+  const selQk = document.getElementById('wlbQtrSel')?.value;
+  if (!selQk) return;
+  const offKeys = Object.keys(OFF_DB).sort();
+  const otKeys  = Object.keys(DB).sort();
+  const allMks  = [...new Set([...offKeys,...otKeys])].sort();
+  const mks = allMks.filter(mk => quarterKeyOf(mk) === selQk);
+  const df = document.getElementById('wlbEmpQtrDept')?.value || '__all__';
+  const q = document.getElementById('wlbEmpQtrSearch')?.value || '';
+  renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', buildEmployeeWlbRows(mks, df, q));
+}
+
 function renderWlb() {
   const offKeys = Object.keys(OFF_DB).sort();
   const otKeys  = Object.keys(DB).sort();
   const allMks  = [...new Set([...offKeys,...otKeys])].sort();
   const allDepts = getAllDeptsForWlb();
-  const THRESHOLD = 10;
+  const THRESHOLD = WLB_THRESHOLD;
   const EMPTY = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Upload file OT và Off Day để bắt đầu.</td></tr>';
-
-  const wlbRatio = (off, ot) => ot ? Math.round((off/ot)*10)/10 : null; // làm tròn 1 chữ số thập phân
-  const wlbColor = (v) => v===null?'var(--text3)':v<=THRESHOLD?'var(--green)':'var(--red)';
-  const wlbBadge = (v) => v===null?'<span style="color:var(--text3)">—</span>':v<=THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>';
-
-  // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
-  // (nếu cả 2 nguồn đều có mã), fallback theo tên nếu thiếu mã. Trả về mảng đã tính WLB, sắp xếp
-  // NV không đạt (WLB cao nhất) lên đầu để quản lý dễ xem ai cần chú ý trước.
-  function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
-    const rowsMap = {};
-    mks.forEach(mk => {
-      if (DB[mk]) {
-        DB[mk].names.forEach(n => {
-          const e = DB[mk].employees[n]; if (!e) return;
-          const key = e.staffCode ? ('C:'+e.staffCode) : ('N:'+n);
-          if (!rowsMap[key]) rowsMap[key] = { name:n, code:e.staffCode||'', dept:e.dept||'', ot:0, off:0 };
-          rowsMap[key].ot += totalOf(e);
-          if (!rowsMap[key].dept && e.dept) rowsMap[key].dept = e.dept;
-          if (e.staffCode && !rowsMap[key].code) rowsMap[key].code = e.staffCode;
-        });
-      }
-      if (OFF_DB[mk]) {
-        OFF_DB[mk].names.forEach(n => {
-          const e = OFF_DB[mk].employees[n]; if (!e) return;
-          const key = e.code ? ('C:'+e.code) : ('N:'+n);
-          if (!rowsMap[key]) rowsMap[key] = { name:n, code:e.code||'', dept:e.dept||'', ot:0, off:0 };
-          rowsMap[key].off += (typeof e.offTotal === 'number' ? e.offTotal : 0);
-          if (!rowsMap[key].dept && e.dept) rowsMap[key].dept = e.dept;
-          if (e.code && !rowsMap[key].code) rowsMap[key].code = e.code;
-        });
-      }
-    });
-    let rows = Object.values(rowsMap);
-    if (deptFilter && deptFilter !== '__all__') rows = rows.filter(r => r.dept === deptFilter);
-    if (searchTerm) {
-      const q = searchTerm.trim().toLowerCase();
-      if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || (r.code||'').toLowerCase().includes(q));
-    }
-    rows.forEach(r => { r.ot = Math.round(r.ot); r.off = Math.round(r.off); r.wlb = wlbRatio(r.off, r.ot); });
-    rows.sort((a,b) => {
-      if (a.wlb===null && b.wlb===null) return a.name.localeCompare(b.name);
-      if (a.wlb===null) return 1;
-      if (b.wlb===null) return -1;
-      return b.wlb - a.wlb; // WLB cao (không đạt) lên đầu
-    });
-    return rows;
-  }
-
-  function renderEmployeeWlbTable(theadId, tbodyId, rows) {
-    document.getElementById(theadId).innerHTML =
-      `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
-    document.getElementById(tbodyId).innerHTML = rows.map(r => `<tr>
-      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text2)">${r.code||'—'}</td>
-      <td style="font-weight:500">${r.name}</td>
-      <td style="color:var(--text2)">${r.dept||'—'}</td>
-      <td style="font-family:var(--font-mono)">${r.ot}h</td>
-      <td style="font-family:var(--font-mono)">${r.off}</td>
-      <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}">${r.wlb??'—'}</td>
-      <td>${wlbBadge(r.wlb)}</td></tr>`).join('') ||
-      '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy nhân viên phù hợp.</td></tr>';
-  }
 
   // Shared bar chart options (1 tháng/quý đang chọn)
   const barOpts = (yTitle) => ({
