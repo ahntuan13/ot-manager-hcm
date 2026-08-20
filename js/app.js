@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.2';
+const APP_VERSION = '2026.3';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -171,6 +171,32 @@ let empMK = null;
 let empPeriod = null;
 let empTab = 'month'; // 'week' | 'month' — trang Danh sách nhân viên OT, độc lập với dashTab
 let CH = {};
+
+// ============================================================
+//  FIX TỔNG QUÁT: biểu đồ trắng do được tạo lúc trang/tab đang ẩn (display:none)
+// ============================================================
+// Chart.js đo kích thước canvas TẠI THỜI ĐIỂM tạo — nếu container đang ẩn lúc đó, nó đo ra 0×0
+// và KHÔNG tự đo lại sau này dù trang có hiện lại. Đây là nguyên nhân gốc gây ra hiện tượng biểu
+// đồ trắng lặp đi lặp lại ở nhiều trang (Dashboard, So sánh OT, Đi trễ, WLB...) — thay vì vá từng
+// chỗ một, hàm này ép TẤT CẢ chart hiện có (trong cả 3 kho: CH, CHL, WLB_CH) đo lại kích thước
+// thật ngay khi có, gọi ngay sau MỌI lần chuyển trang/tab để đảm bảo container đã hiện ra rồi.
+function forceResizeAllCharts() {
+  [CH, typeof CHL !== 'undefined' ? CHL : {}, typeof WLB_CH !== 'undefined' ? WLB_CH : {}].forEach(store => {
+    Object.values(store).forEach(chart => {
+      if (chart && typeof chart.resize === 'function') {
+        try { chart.resize(); } catch(e) {}
+      }
+    });
+  });
+}
+// Gọi resize 2 lần cách nhau 1 khung hình — lần đầu ngay khi CSS display đổi (browser có thể chưa
+// kịp tính layout xong), lần 2 sau khi chắc chắn layout đã ổn định (an toàn tuyệt đối, không tốn kém).
+function scheduleChartResize() {
+  requestAnimationFrame(() => {
+    forceResizeAllCharts();
+    requestAnimationFrame(forceResizeAllCharts);
+  });
+}
 
 // ============================================================
 //  UTILS
@@ -443,6 +469,7 @@ function setDashTab(tab) {
   document.getElementById('dashTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('dashWeekBar').style.display = tab==='week' ? 'flex' : 'none';
   renderDash();
+  scheduleChartResize();
 }
 
 function setDeptTab(tab) {
@@ -451,6 +478,7 @@ function setDeptTab(tab) {
   document.getElementById('deptTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('deptWeekBar').style.display = tab==='week' ? 'flex' : 'none';
   renderDept();
+  scheduleChartResize();
 }
 
 function setCmpTab(tab) {
@@ -464,6 +492,7 @@ function setCmpTab(tab) {
   if (tab === 'week') renderCompareWeek();
   else if (tab === 'quarter') renderCompareQuarter();
   else renderCompareMonth();
+  scheduleChartResize();
 }
 
 let lateTab = 'month';
@@ -478,6 +507,7 @@ function setLateTab(tab) {
   if (tab === 'quarter') renderLateQuarter();
   else if (tab === 'week') renderLateWeek();
   else renderLate();
+  scheduleChartResize();
 }
 
 // ============================================================
@@ -529,6 +559,7 @@ function goPage(p, deptFilter) {
     }
     renderEmployeeList();
   }
+  scheduleChartResize();
 }
 
 function goSub(p) {
@@ -548,6 +579,9 @@ function goSub(p) {
   if (p === 'compare') renderCompare();
   if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
   if (p === 'wlb')     { renderWlbSummary(); renderWlb(); }
+  // Lưới an toàn cuối cùng: dù render function ở trên có tính đúng kích thước hay không, ép TẤT
+  // CẢ chart hiện có đo lại kích thước thật ngay khi trang này đã thực sự hiện ra trên màn hình.
+  scheduleChartResize();
 }
 
 // ============================================================
@@ -2799,6 +2833,7 @@ async function syncLoad() {
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
+      scheduleChartResize();
       const parts = [];
       if (Object.keys(DB).length)     parts.push('OT');
       if (Object.keys(LATE_DB).length) parts.push('Đi trễ');
@@ -2884,6 +2919,7 @@ function setWlbTab(tab) {
   document.getElementById('wlb-month').style.display   = tab==='month'   ? 'block' : 'none';
   document.getElementById('wlb-quarter').style.display = tab==='quarter' ? 'block' : 'none';
   renderWlb();
+  scheduleChartResize();
 }
 
 // Đọc file Off day: mỗi dòng = 1 ngày nghỉ của 1 NV. Cột: Staff Code, Tên, Phòng ban, Ngày nghỉ (dd/mm/yyyy)
