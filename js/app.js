@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.3';
+const APP_VERSION = '2026.4';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -19,6 +19,11 @@ Chart.defaults.plugins.tooltip.bodyColor = '#F3EFE8';
 Chart.defaults.plugins.tooltip.padding = 10;
 Chart.defaults.plugins.tooltip.cornerRadius = 8;
 Chart.defaults.plugins.tooltip.displayColors = false;
+// Tắt hẳn animation — biểu đồ hiện dữ liệu NGAY LẬP TỨC thay vì "mọc dần". Lý do: biểu đồ tròn/
+// donut dùng animation xoay mặc định của Chart.js, nếu bị chụp/đóng băng giữa chừng (hoặc bị
+// resize() ngắt animation) sẽ hiện thành hình méo/vỡ dạng miếng bánh dở dang thay vì hình tròn đủ.
+// Tắt animation loại bỏ hẳn khả năng này, đồng thời giúp chuyển trang/tab cảm giác nhanh hơn.
+Chart.defaults.animation = false;
 
 // ============================================================
 //  CONFIG & STATE
