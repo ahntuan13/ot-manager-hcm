@@ -1,4 +1,13 @@
 // ============================================================
+//  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
+// ============================================================
+const APP_VERSION = '2026.1';
+(() => {
+  const el = document.getElementById('appVersionBadge');
+  if (el) el.textContent = 'v' + APP_VERSION;
+})();
+
+// ============================================================
 //  CHART.JS GLOBAL DEFAULTS — earthy palette + Inter font
 // ============================================================
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -338,13 +347,18 @@ function getWeekOnlyRange(periods, idx) {
   return { start, end: period.end };
 }
 
-// Sum OT hours for an employee within a date range [start,end] inclusive
+// Sum OT hours for an employee within a date range [start,end] inclusive.
+// Tối ưu hiệu năng: so sánh CHUỖI ISO (YYYY-MM-DD) thay vì tạo `new Date()` cho từng entry —
+// vì key ngày đã ở dạng ISO nên so sánh chuỗi cho kết quả CHÍNH XÁC như so sánh Date, nhưng nhanh
+// hơn nhiều lần (không tốn chi phí tạo object Date) — quan trọng khi có hàng trăm NV × nhiều tháng.
 function sumDaysInRange(daysObj, start, end) {
+  if (!daysObj) return 0;
+  const startIso = typeof start === 'string' ? start : isoDate(start);
+  const endIso = typeof end === 'string' ? end : isoDate(end);
   let sum = 0;
-  Object.entries(daysObj || {}).forEach(([dt, h]) => {
-    const d = new Date(dt);
-    if (d >= start && d <= end) sum += h;
-  });
+  for (const dt in daysObj) {
+    if (dt >= startIso && dt <= endIso) sum += daysObj[dt];
+  }
   return sum;
 }
 // Total OT hours for an employee record — theo công thức mới: MAX(0, tổng giờ đã làm − tổng giờ tiêu chuẩn).
@@ -566,6 +580,12 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
   const idx = (pIdx === null || pIdx < 0 || pIdx >= periods.length) ? periods.length-1 : pIdx;
   const period = periods[idx];
   const prevPeriod = idx > 0 ? periods[idx-1] : null;
+  // Tính sẵn chuỗi ISO ranh giới MỘT LẦN cho cả lượt gọi (không phải mỗi nhân viên) — vì
+  // period.start/end giống nhau cho mọi NV, tránh gọi isoDate() lặp lại hàng trăm lần không cần thiết.
+  const startIso = isoDate(period.start), endIso = isoDate(period.end);
+  const prevStartIso = prevPeriod ? isoDate(prevPeriod.start) : null;
+  const prevEndIso = prevPeriod ? isoDate(prevPeriod.end) : null;
+  const sumIso = (obj, s, e) => { let sum=0; for (const k in obj) { if (k>=s && k<=e) sum+=obj[k]; } return sum; };
   return m.names
     .filter(n => deptFilter === '__all__' || m.employees[n]?.dept === deptFilter)
     .map(n => {
@@ -573,29 +593,23 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
       const days = e.days || {};
       const quotaDays = e.quotaDays || {};
       const nightDays = e.nightDays || {};
-      const workedUpTo = sumDaysInRange(days, period.start, period.end);
-      const quotaUpTo = sumDaysInRange(quotaDays, period.start, period.end);
+      const workedUpTo = sumIso(days, startIso, endIso);
+      const quotaUpTo = sumIso(quotaDays, startIso, endIso);
       const tot = Math.round(Math.max(0, workedUpTo - quotaUpTo)*10)/10;
-      const nightTot = Math.round(sumDaysInRange(nightDays, period.start, period.end)*10)/10;
-      // Per-period breakdown (OT cộng dồn tính đến hết từng mốc tuần, không phải phát sinh riêng từng tuần)
-      const segVals = periods.map(p => {
-        const w = sumDaysInRange(days, p.start, p.end);
-        const q = sumDaysInRange(quotaDays, p.start, p.end);
-        return Math.round(Math.max(0, w - q)*10)/10;
-      });
+      const nightTot = Math.round(sumIso(nightDays, startIso, endIso)*10)/10;
       // ── deltaTotal/deltaNightTotal: OT PHÁT SINH RIÊNG trong đúng tuần đang xem (KHÔNG luỹ kế từ
       // ngày 16) = luỹ kế tại mốc này − luỹ kế tại mốc trước đó. Dùng cho tab "Theo tuần" —
       // tab "Theo tháng" vẫn dùng .total (luỹ kế đầy đủ) như trước, chỉ có ý nghĩa khi tháng đã đủ dữ liệu.
       let deltaTotal = tot, deltaNightTotal = nightTot;
       if (prevPeriod) {
-        const prevWorked = sumDaysInRange(days, prevPeriod.start, prevPeriod.end);
-        const prevQuota = sumDaysInRange(quotaDays, prevPeriod.start, prevPeriod.end);
+        const prevWorked = sumIso(days, prevStartIso, prevEndIso);
+        const prevQuota = sumIso(quotaDays, prevStartIso, prevEndIso);
         const prevTot = Math.max(0, prevWorked - prevQuota);
         deltaTotal = Math.round(Math.max(0, (workedUpTo - quotaUpTo) - prevTot)*10)/10;
-        const prevNight = sumDaysInRange(nightDays, prevPeriod.start, prevPeriod.end);
-        deltaNightTotal = Math.round(Math.max(0, sumDaysInRange(nightDays, period.start, period.end) - prevNight)*10)/10;
+        const prevNight = sumIso(nightDays, prevStartIso, prevEndIso);
+        deltaNightTotal = Math.round(Math.max(0, nightTot - prevNight)*10)/10;
       }
-      return { name: n, dept: e.dept, staffCode: e.staffCode || '', weeks: segVals, total: tot, nightTotal: nightTot, deltaTotal, deltaNightTotal };
+      return { name: n, dept: e.dept, staffCode: e.staffCode || '', total: tot, nightTotal: nightTot, deltaTotal, deltaNightTotal };
     });
 }
 
@@ -1136,8 +1150,9 @@ function renderDash() {
   // Greeting header
   const now = new Date();
   document.getElementById('greetTitle').textContent = greetText();
-  document.getElementById('greetSub').innerHTML =
-    `<strong style="color:var(--red)">${over} NV vượt mức</strong> · <strong style="color:var(--amber)">${nightNV} NV có OT sau 22h</strong> · ${totals.length} đang theo dõi <span style="color:var(--text3)">/ ${over} over limit · ${nightNV} night OT · ${totals.length} tracked</span>`;
+  document.getElementById('greetSub').innerHTML = isWeek
+    ? `${totals.length} NV đang theo dõi · <strong style="color:var(--amber)">${nightNV} NV có OT sau 22h</strong> trong tuần này <span style="color:var(--text3)">/ ${totals.length} tracked · ${nightNV} night OT this week</span>`
+    : `<strong style="color:var(--red)">${over} NV vượt mức</strong> · <strong style="color:var(--amber)">${nightNV} NV có OT sau 22h</strong> · ${totals.length} đang theo dõi <span style="color:var(--text3)">/ ${over} over limit · ${nightNV} night OT · ${totals.length} tracked</span>`;
   const weekdayNames = ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
   document.getElementById('greetDate').textContent =
     `📅 ${weekdayNames[now.getDay()]}, ${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
@@ -1145,6 +1160,8 @@ function renderDash() {
   document.getElementById('barChartTitle').textContent = dashTab === 'month'
     ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}`
     : `📊 Top 5 NV có OT cao nhất — ${periodLabel}`;
+  const barLegendEl = document.getElementById('dashBarLegend');
+  if (barLegendEl) barLegendEl.style.display = dashTab === 'month' ? 'flex' : 'none';
 
   if (dashTab === 'month') renderMonthDonut(totals);
   else renderBarChart(totals, true);
@@ -1161,6 +1178,51 @@ function renderDash() {
   renderDashDeptLineChart();
   renderDashWarnList(totals);
   renderNightOtFreqChart(df, periodIdx);
+  renderDashOverBarChart(totals);
+}
+
+// Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng (lấy đúng danh sách
+// từ khung "Vượt mức" bên cạnh, vẽ dạng cột cho dễ so sánh giữa nhiều người cùng lúc).
+function renderDashOverBarChart(totals) {
+  const card = document.getElementById('dashOverBarCard');
+  const emptyEl = document.getElementById('dashOverBarEmpty');
+  const canvasEl = document.getElementById('cDashOverBar');
+  if (!card) return;
+
+  if (dashTab !== 'month') {
+    card.style.display = 'none';
+    killChart('cDashOverBar');
+    return;
+  }
+  card.style.display = 'block';
+
+  const over = totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
+  killChart('cDashOverBar');
+
+  if (!over.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (canvasEl) canvasEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (canvasEl) canvasEl.style.display = 'block';
+
+  const barH = Math.max(340, over.length * 26 + 60);
+  canvasEl.parentElement.style.height = barH + 'px';
+  CH['cDashOverBar'] = new Chart(canvasEl, {
+    type: 'bar',
+    data: { labels: over.map(t => nvLabel(t)),
+      datasets: [{ data: over.map(t => t.total), backgroundColor: '#C0392B', borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
+      plugins: { legend: { display: false }, barValueLabels: { suffix: 'h' },
+        tooltip: { callbacks: { label: c => ` ${c.raw}h · ${over[c.dataIndex]?.name}` } } },
+      scales: {
+        x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
+             suggestedMax: Math.ceil(Math.max(...over.map(t=>t.total)) * 1.15) },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    }
+  });
 }
 
 // Đếm SỐ NGÀY mỗi nhân viên có phát sinh OT sau 22h, trong đúng khoảng thời gian (period) đang xem —
@@ -1171,16 +1233,16 @@ function getNightOtFrequency(mk, deptFilter, pIdx) {
   if (!periods.length) return [];
   const idx = (pIdx === null || pIdx === undefined || pIdx < 0 || pIdx >= periods.length) ? periods.length-1 : pIdx;
   const period = periods[idx];
+  const startIso = isoDate(period.start), endIso = isoDate(period.end);
   return m.names
     .filter(n => deptFilter === '__all__' || m.employees[n]?.dept === deptFilter)
     .map(n => {
       const e = m.employees[n];
       const nightDays = e.nightDays || {};
       let count = 0, hours = 0;
-      Object.entries(nightDays).forEach(([iso, h]) => {
-        const d = new Date(iso);
-        if (d >= period.start && d <= period.end) { count++; hours += h; }
-      });
+      for (const iso in nightDays) {
+        if (iso >= startIso && iso <= endIso) { count++; hours += nightDays[iso]; }
+      }
       return { name: n, dept: e.dept, staffCode: e.staffCode || '', count, hours: Math.round(hours*10)/10 };
     })
     .filter(x => x.count > 0);
@@ -1722,10 +1784,10 @@ function renderCompare() {
   if (keys.includes(prevVal)) cmpMonthSel.value = prevVal;
   else cmpMonthSel.value = keys[keys.length-1];
 
-  // Render whichever sub-tab is active
-  renderCompareWeek();
-  renderCompareMonth();
-  renderCompareQuarter();
+  // Chỉ render đúng tab đang active (tránh dựng dư 3 lần biểu đồ cho cả 3 tab mỗi lần vào trang).
+  if (cmpTab === 'week') renderCompareWeek();
+  else if (cmpTab === 'quarter') renderCompareQuarter();
+  else renderCompareMonth();
 }
 
 // ── Weekly compare: OT per individual week window (incremental, not cumulative) ──
@@ -3009,8 +3071,8 @@ function renderWlbSummary() {
 
 const WLB_THRESHOLD = 10;
 function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*10)/10 : null; }
-function wlbColor(v) { return v===null?'var(--text3)':v<=WLB_THRESHOLD?'var(--green)':'var(--red)'; }
-function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v<=WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
+function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
+function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 
 // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
 // (nếu cả 2 nguồn đều có mã), fallback theo tên nếu thiếu mã. Trả về mảng đã tính WLB, sắp xếp
@@ -3142,14 +3204,14 @@ function renderWlb() {
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
-    const ok = ratio !== null && ratio <= THRESHOLD;
+    const ok = ratio !== null && ratio > THRESHOLD;
     document.getElementById('wlbMetrics').innerHTML = !selMk ? '' : !hasOffForMonth ? `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">—</div><div class="ms">Chưa có dữ liệu Off Day</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa upload Off Day cho ${fmtMK(selMk)}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (≤10)':'⚠️ Không đạt (>10)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (>10)':'⚠️ Không đạt (≤10)'}</div></div>`;
 
     // ── Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng, dễ nhìn phân bổ OT thuần tuý ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -3185,7 +3247,7 @@ function renderWlb() {
           ]},
         options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
           plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'':'  ('+((c.raw??'—')<=THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
+            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'':'  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
             y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0,
@@ -3274,16 +3336,25 @@ function renderWlb() {
 
   } else {
     // ── TAB QUARTER ──
-    const qKeys = [...new Set(allMks.map(quarterKeyOf))].sort();
-    const qMks  = (qk) => allMks.filter(mk=>quarterKeyOf(mk)===qk);
+    // WLB tính theo Quý kiểu CHỒNG LẤP 3 tháng liên tiếp (không phải quý lịch chuẩn Jan-Mar/Apr-Jun):
+    //   Quý 1 = tháng 1+2+3, Quý 2 = tháng 3+4+5, Quý 3 = tháng 5+6+7... (mỗi quý sau lùi lại 1 tháng
+    //   trùng với quý trước) — đúng theo công thức WLB Q1/Q2 công ty cung cấp.
+    const wlbQGroups = [];
+    for (let i = 0; i + 2 < allMks.length; i += 2) {
+      const mks = [allMks[i], allMks[i+1], allMks[i+2]];
+      wlbQGroups.push({ key: 'RQ'+(wlbQGroups.length+1), label: `Quý ${wlbQGroups.length+1} (${fmtMK(mks[0])} – ${fmtMK(mks[2])})`, mks });
+    }
+    const qKeys = wlbQGroups.map(g => g.key);
+    const qLabel = {}; wlbQGroups.forEach(g => { qLabel[g.key] = g.label; });
+    const qMks = (qk) => (wlbQGroups.find(g => g.key === qk) || {mks:[]}).mks;
 
     const sel = document.getElementById('wlbQtrSel');
     const prevQk = sel.value;
-    sel.innerHTML = qKeys.map(qk=>`<option value="${qk}">${fmtQK(qk)}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    sel.innerHTML = qKeys.map(qk=>`<option value="${qk}">${qLabel[qk]}</option>`).join('') || '<option value="">— Chưa có dữ liệu (cần tối thiểu 3 tháng dữ liệu) —</option>';
     if (qKeys.includes(prevQk)) sel.value = prevQk; else sel.value = qKeys[qKeys.length-1]||'';
     const selQk = sel.value;
     const labelEl2 = document.getElementById('wlbQtrSelLabel');
-    if (labelEl2) labelEl2.textContent = selQk ? fmtQK(selQk) : '';
+    if (labelEl2) labelEl2.textContent = selQk ? qLabel[selQk] : '';
 
     // ── Biểu đồ 1: Grouped bar — OT + Off quý đang chọn, từng phòng ban ──
     killWlbChart('cWlbQuarter');
@@ -3324,7 +3395,7 @@ function renderWlb() {
     if (qKeys.length && allDepts.length) {
       WLB_CH['cWlbQtrCmp'] = new Chart(document.getElementById('cWlbQtrCmp'), {
         type:'line',
-        data:{ labels: qKeys.map(fmtQK),
+        data:{ labels: qKeys.map(qk=>qLabel[qk]),
           datasets:[
             ...allDepts.map((d,i)=>({
               label:d,
@@ -3354,7 +3425,7 @@ function renderWlb() {
       if (coOT || coOff) {
         const v = wlbRatio(coOff, coOT);
         qRows.push(`<tr style="background:var(--bg2)">
-          <td style="font-weight:600${qk===selQk?';color:var(--accent)':''}">${fmtQK(qk)}${qk===selQk?' ◀':''}</td>
+          <td style="font-weight:600${qk===selQk?';color:var(--accent)':''}">${qLabel[qk]}${qk===selQk?' ◀':''}</td>
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
@@ -3368,7 +3439,7 @@ function renderWlb() {
         if (!ot && !off) return;
         const v = wlbRatio(off, ot);
         qRows.push(`<tr>
-          <td style="color:var(--text3);font-size:11px;padding-left:18px">${fmtQK(qk)}</td>
+          <td style="color:var(--text3);font-size:11px;padding-left:18px">${qLabel[qk]}</td>
           <td>${d}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
@@ -3386,7 +3457,7 @@ function renderWlb() {
       if ([...empDeptSelQ.options].some(o=>o.value===prevD)) empDeptSelQ.value = prevD;
     }
     const empLabelQ = document.getElementById('wlbEmpQtrLabel');
-    if (empLabelQ) empLabelQ.textContent = selQk ? `— ${fmtQK(selQk)}` : '';
+    if (empLabelQ) empLabelQ.textContent = selQk ? `— ${qLabel[selQk]}` : '';
     const empRowsQ = selQk ? buildEmployeeWlbRows(qMks(selQk), empDeptSelQ?.value, document.getElementById('wlbEmpQtrSearch')?.value) : [];
     renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', empRowsQ);
   }
