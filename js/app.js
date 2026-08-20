@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.5';
+const APP_VERSION = '2026.6';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -188,9 +188,23 @@ let CH = {};
 function forceResizeAllCharts() {
   [CH, typeof CHL !== 'undefined' ? CHL : {}, typeof WLB_CH !== 'undefined' ? WLB_CH : {}].forEach(store => {
     Object.values(store).forEach(chart => {
-      if (chart && typeof chart.resize === 'function') {
-        try { chart.resize(); } catch(e) {}
-      }
+      if (!chart || typeof chart.resize !== 'function') return;
+      try {
+        // Tự đo kích thước khung chứa bằng DOM thuần (getBoundingClientRect) rồi TRUYỀN THẲNG
+        // vào resize(width, height) — không dựa vào Chart.js tự đo, vì cơ chế responsive tự động
+        // của nó bị lỗi trong kiến trúc SPA này (canvas bị kẹt ở kích thước mặc định 300×150 của
+        // HTML5 <canvas> khi Chart.js chưa từng đo được kích thước thật của khung chứa lúc tạo).
+        const canvasEl = chart.canvas;
+        const wrap = canvasEl && canvasEl.parentElement;
+        if (wrap) {
+          const rect = wrap.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            chart.resize(rect.width, rect.height);
+            return;
+          }
+        }
+        chart.resize(); // fallback nếu không đo được container (hiếm khi xảy ra)
+      } catch(e) {}
     });
   });
 }
