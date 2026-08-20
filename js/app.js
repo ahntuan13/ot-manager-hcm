@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.1';
+const APP_VERSION = '2026.2';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -2097,19 +2097,28 @@ function renderCompareQuarter() {
   })).filter(x => x.count > 0).sort((a,b) => b.count - a.count).slice(0, 8);
 
   killChart('cQtrRisk');
-  const riskH = Math.max(160, risk.length*36+60);
-  document.getElementById('cQtrRisk').parentElement.style.height = riskH+'px';
-  CH['cQtrRisk'] = new Chart(document.getElementById('cQtrRisk'), {
-    type:'bar',
-    data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
-      backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
-      plugins:{legend:{display:false}, barValueLabels:{},
-        tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
-      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
-                 suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
-              y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+  const riskEmptyEl = document.getElementById('cQtrRiskEmpty');
+  const riskCanvasEl = document.getElementById('cQtrRisk');
+  if (!risk.length) {
+    if (riskEmptyEl) riskEmptyEl.style.display = 'flex';
+    if (riskCanvasEl) riskCanvasEl.style.display = 'none';
+  } else {
+    if (riskEmptyEl) riskEmptyEl.style.display = 'none';
+    if (riskCanvasEl) riskCanvasEl.style.display = 'block';
+    const riskH = Math.max(160, risk.length*36+60);
+    riskCanvasEl.parentElement.style.height = riskH+'px';
+    CH['cQtrRisk'] = new Chart(riskCanvasEl, {
+      type:'bar',
+      data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
+        backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
+        plugins:{legend:{display:false}, barValueLabels:{},
+          tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
+        scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
+                   suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
+                y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+  }
 
   // Bảng tổng hợp theo Quý × phòng ban (gộp lượt từng tháng trong quý)
   document.getElementById('cmpQtrTHead').innerHTML =
