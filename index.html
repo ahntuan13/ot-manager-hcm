@@ -34,7 +34,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     </div>
     <div>
-      <h1>OT Manager HCM <span class="beta-badge">Beta</span></h1>
+      <h1>OT Manager HCM <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
       <p title="Dữ liệu được tính theo chu kỳ lương hàng tháng, từ ngày 16 của tháng hiện tại đến ngày 15 của tháng kế tiếp.">Chu kỳ 16→15 · OT 70h/tháng</p>
     </div>
   </div>
@@ -193,7 +193,7 @@
   <div class="dash-row1">
     <div class="dash-chart-main card ac-top ac-blue">
       <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên</div>
-      <div class="legend">
+      <div class="legend" id="dashBarLegend">
         <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤70h</span>
         <span><span class="ldot" style="background:#C0392B"></span>Vượt 70h</span>
       </div>
@@ -214,6 +214,13 @@
         </table>
       </div>
     </div>
+  </div>
+
+  <!-- Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng -->
+  <div class="card ac-top ac-red" id="dashOverBarCard" style="display:none">
+    <div class="card-title">🔴 Nhân viên vượt mức (&gt;70h) — dạng cột</div>
+    <div id="dashOverBarEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Không có NV vượt mức trong kỳ này 🎉</div>
+    <div style="position:relative;width:100%;height:340px"><canvas id="cDashOverBar" role="img" aria-label="Nhân viên vượt mức">Vượt mức.</canvas></div>
   </div>
 
   <!-- ROW 2: Bottom full-width chart -->
@@ -607,7 +614,7 @@
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
     <div class="card ac-top ac-blue">
       <div class="card-title">WLB từng phòng ban — <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">≤10 Đạt</span> <span class="badge bd">&gt;10 Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;10 Đạt</span> <span class="badge bd">≤10 Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
     </div>
 
@@ -651,7 +658,7 @@
     <!-- Biểu đồ 1: WLB quý đang chọn — từng phòng ban -->
     <div class="card ac-top ac-amber">
       <div class="card-title">WLB từng phòng ban — <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">≤10 Đạt</span> <span class="badge bd">&gt;10 Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;10 Đạt</span> <span class="badge bd">≤10 Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
     </div>
 
