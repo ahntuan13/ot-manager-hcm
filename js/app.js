@@ -538,6 +538,12 @@ function goSub(p) {
   });
   const pg = document.getElementById('pg-' + p);
   if (pg) pg.classList.add('show');
+  // QUAN TRỌNG: phải re-render lại biểu đồ MỖI LẦN điều hướng vào 1 trang (kể cả 'dash') —
+  // nếu chỉ hiện lại trang bằng CSS mà không gọi lại hàm render, biểu đồ nào từng được build
+  // trong lúc trang đó đang ẩn (display:none) sẽ bị Chart.js đo kích thước = 0×0 và render TRẮNG
+  // mãi mãi (Chart.js không tự đo lại khi container chuyển từ ẩn sang hiện). Đây là nguyên nhân
+  // gốc gây ra hiện tượng "biểu đồ Dashboard trắng sau khi Update data ở trang khác".
+  if (p === 'dash')    renderDash();
   if (p === 'dept')    renderDept();
   if (p === 'compare') renderCompare();
   if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
@@ -1335,7 +1341,12 @@ function renderDashDeptLineChart() {
         } } },
       scales:{ x:{ grid:{display:false}, ticks:{font:{size:11}} },
                y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-                   title:{display:true, text:'Tổng OT phát sinh trong tuần (h)', font:{size:10}, color:'var(--text2)'} } } }
+                   title:{display:true, text:'Tổng OT phát sinh trong tuần (h)', font:{size:10},
+                     // Canvas KHÔNG hiểu cú pháp CSS "var(--xxx)" — phải resolve ra màu thật (hex) trước khi
+                     // truyền vào Chart.js, nếu không plugin vẽ text/tiêu đề trục sẽ âm thầm lỗi (không throw,
+                     // chỉ không vẽ được) — đây từng là nguyên nhân y hệt gây lỗi viền đen ở biểu đồ tròn trước đó.
+                     color: getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280'
+                   } } } }
   });
 }
 
@@ -1437,7 +1448,7 @@ function renderMonthDonut(totals) {
       datasets:[{
         data: groups.map(g=>g.hours),
         backgroundColor: groups.map(g=>g.color),
-        borderColor: 'var(--bg)'.startsWith('var') ? '#ffffff' : '#ffffff',
+        borderColor: '#ffffff',
         borderWidth: 3,
         hoverOffset: 6
       }]
