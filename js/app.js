@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.4';
+const APP_VERSION = '2026.5';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -1356,13 +1356,13 @@ function renderDashDeptLineChart() {
   document.getElementById('dashDeptLineLeg').innerHTML =
     allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
 
-  // Tổng luỹ kế tại mỗi mốc, theo phòng ban
-  const cumByDept = allDepts.map(d => periods.map((p,pi) => {
-    const tots = getTotals(activeMK, d, pi).map(t=>t.total);
-    return tots.length ? tots.reduce((a,b)=>a+b,0) : 0;
+  // Tổng OT PHÁT SINH RIÊNG mỗi tuần, theo phòng ban — dùng ĐÚNG field deltaTotal có sẵn trong
+  // getTotals() (đã tính đúng, dùng chung khắp app) thay vì tự tính lại (cum[i]-cum[i-1]) ở đây,
+  // để tránh 2 nơi tính ra 2 kết quả khác nhau cho cùng 1 tuần.
+  const weeklyByDept = allDepts.map(d => periods.map((p,pi) => {
+    const tots = getTotals(activeMK, d, pi).map(t=>t.deltaTotal);
+    return Math.round((tots.length ? tots.reduce((a,b)=>a+b,0) : 0)*10)/10;
   }));
-  // Quy đổi sang phát sinh riêng từng tuần = luỹ kế[tuần n] − luỹ kế[tuần n-1]
-  const weeklyByDept = cumByDept.map(cum => cum.map((v,i) => i===0 ? Math.round(v*10)/10 : Math.round(Math.max(0, v-cum[i-1])*10)/10));
 
   CH['cDashDeptLine'] = new Chart(document.getElementById('cDashDeptLine'), {
     type:'line',
@@ -2034,19 +2034,28 @@ function renderCompareMonth() {
   })).filter(x=>x.count>0).sort((a,b)=>b.count-a.count).slice(0,8);
 
   killChart('cRisk');
-  const riskH = Math.max(160, risk.length*36+60);
-  document.getElementById('cRisk').parentElement.style.height = riskH+'px';
-  CH['cRisk'] = new Chart(document.getElementById('cRisk'), {
-    type:'bar',
-    data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
-      backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
-      plugins:{legend:{display:false}, barValueLabels:{},
-        tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
-      scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
-                 suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
-              y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+  const riskEmptyEl = document.getElementById('cRiskEmpty');
+  const riskCanvasEl = document.getElementById('cRisk');
+  if (!risk.length) {
+    if (riskEmptyEl) riskEmptyEl.style.display = 'flex';
+    if (riskCanvasEl) riskCanvasEl.style.display = 'none';
+  } else {
+    if (riskEmptyEl) riskEmptyEl.style.display = 'none';
+    if (riskCanvasEl) riskCanvasEl.style.display = 'block';
+    const riskH = Math.max(160, risk.length*36+60);
+    riskCanvasEl.parentElement.style.height = riskH+'px';
+    CH['cRisk'] = new Chart(riskCanvasEl, {
+      type:'bar',
+      data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
+        backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
+        plugins:{legend:{display:false}, barValueLabels:{},
+          tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
+        scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
+                   suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
+                y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+  }
 
   document.getElementById('cmpTHead').innerHTML =
     '<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng NV</th><th>Vượt 70h</th><th>Bình thường</th><th>Tổng OT</th></tr>';
@@ -3326,25 +3335,35 @@ function renderWlb() {
     }
 
     // ── Biểu đồ 2: Line — WLB các tháng, từng phòng ban ──
+    // Chỉ dùng tháng ĐÃ CÓ Off Day (khớp với bảng bên dưới) — tránh vẽ đường WLB=0 giả cho tháng
+    // chưa upload Off Day (trước đây dùng allMks khiến đường kẻ bị kéo về 0 sai lệch).
     killWlbChart('cWlbMonthCmp');
+    const cmpMks = allMks.filter(mk => OFF_DB[mk]);
     document.getElementById('wlbMonthCmpLeg').innerHTML =
       allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
-    if (allMks.length && allDepts.length) {
-      WLB_CH['cWlbMonthCmp'] = new Chart(document.getElementById('cWlbMonthCmp'), {
+    const cmpEmptyEl = document.getElementById('cWlbMonthCmpEmpty');
+    const cmpCanvasEl = document.getElementById('cWlbMonthCmp');
+    if (cmpMks.length && allDepts.length) {
+      if (cmpEmptyEl) cmpEmptyEl.style.display = 'none';
+      if (cmpCanvasEl) cmpCanvasEl.style.display = 'block';
+      WLB_CH['cWlbMonthCmp'] = new Chart(cmpCanvasEl, {
         type:'line',
-        data:{ labels: allMks.map(fmtMK),
+        data:{ labels: cmpMks.map(fmtMK),
           datasets:[
             ...allDepts.map((d,i)=>({
               label:d,
-              data: allMks.map(mk=>wlbRatio(getOffDays(mk,d), getTotalOT(mk,d))),
+              data: cmpMks.map(mk=>wlbRatio(getOffDays(mk,d), getTotalOT(mk,d))),
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 10', data:allMks.map(()=>THRESHOLD),
+            { label:'Ngưỡng 10', data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
       });
+    } else {
+      if (cmpEmptyEl) cmpEmptyEl.style.display = 'flex';
+      if (cmpCanvasEl) cmpCanvasEl.style.display = 'none';
     }
 
     // ── Bảng: Tổng OT + Off Day + WLB theo tháng × phòng ban ──
