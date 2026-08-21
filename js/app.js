@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.6';
+const APP_VERSION = '2026.10';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -208,13 +208,37 @@ function forceResizeAllCharts() {
     });
   });
 }
-// Gọi resize 2 lần cách nhau 1 khung hình — lần đầu ngay khi CSS display đổi (browser có thể chưa
-// kịp tính layout xong), lần 2 sau khi chắc chắn layout đã ổn định (an toàn tuyệt đối, không tốn kém).
+// Gọi resize nhiều lần sau khi CSS display đổi — lần đầu browser có thể chưa kịp layout
+// (đặc biệt chart nằm trong CSS grid vừa hiện từ display:none → width tạm = 0).
+// Thêm setTimeout 50/200ms để bắt chắc layout ổn định trên mọi trình duyệt.
 function scheduleChartResize() {
   requestAnimationFrame(() => {
     forceResizeAllCharts();
-    requestAnimationFrame(forceResizeAllCharts);
+    requestAnimationFrame(() => {
+      forceResizeAllCharts();
+      setTimeout(forceResizeAllCharts, 50);
+      setTimeout(forceResizeAllCharts, 200);
+    });
   });
+}
+
+// Tạo chart an toàn: reset size canvas cũ → new Chart trong try/catch.
+// Một chart lỗi không được làm đứt cả hàm render (tránh các khối sau bị trắng).
+function safeMakeChart(store, killFn, id, canvasEl, config) {
+  if (!canvasEl) return null;
+  try {
+    killFn(id);
+    canvasEl.removeAttribute('width');
+    canvasEl.removeAttribute('height');
+    canvasEl.style.width = '';
+    canvasEl.style.height = '';
+    store[id] = new Chart(canvasEl, config);
+    return store[id];
+  } catch (err) {
+    console.error('Chart create failed:', id, err);
+    store[id] = null;
+    return null;
+  }
 }
 
 // ============================================================
@@ -1990,17 +2014,19 @@ function renderCompareMonth() {
     const tots = DB[mk].names.map(n => totalOf(DB[mk].employees[n]));
     return Math.round(tots.reduce((a,b)=>a+b,0)*10)/10;
   });
+  const monthLabels = keys.map(fmtMK);
 
-  killChart('cCmpTrend');
-  CH['cCmpTrend'] = new Chart(document.getElementById('cCmpTrend'), {
+  safeMakeChart(CH, killChart, 'cCmpTrend', document.getElementById('cCmpTrend'), {
     type:'line',
-    data:{ labels: keys.map(fmtMK), datasets:[
+    data:{ labels: monthLabels, datasets:[
       { label:'Tổng OT công ty', data:totalByMk, borderColor:'#2D6CDF', backgroundColor:'rgba(45,108,223,0.10)',
         tension:.35, borderWidth:2.5, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
-              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}}}}});
+              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, min:0,
+                 max: Math.max(10, ...totalByMk) * 1.15}}}
+  });
 
   document.getElementById('cmpDeptLeg').innerHTML =
     allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
@@ -2013,8 +2039,7 @@ function renderCompareMonth() {
     const nvs = DB[latestMk].depts?.[d] || [];
     return Math.round(nvs.reduce((s,n)=> s + (DB[latestMk].employees[n] ? totalOf(DB[latestMk].employees[n]) : 0), 0)*10)/10;
   });
-  killChart('cCmpProjPie');
-  CH['cCmpProjPie'] = new Chart(document.getElementById('cCmpProjPie'), {
+  safeMakeChart(CH, killChart, 'cCmpProjPie', document.getElementById('cCmpProjPie'), {
     type:'doughnut',
     data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
     options:{ responsive:true, maintainAspectRatio:false,
@@ -2024,22 +2049,31 @@ function renderCompareMonth() {
         tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
   });
 
-  killChart('cCmpDept');
-  CH['cCmpDept'] = new Chart(document.getElementById('cCmpDept'), {
-    type:'line',
-    data:{ labels: keys.map(fmtMK), datasets: allDepts.map((d,i) => ({
-      label: d,
-      data: keys.map(mk => {
-        const nvs  = DB[mk].depts?.[d] || [];
-        const tots = nvs.map(n => (DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0));
-        return tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*10)/10 : null;
-      }),
+  // Line theo phòng ban: dùng 0 thay null để tránh Chart.js vẽ trống khi spanGaps + layout 0px
+  const deptSeriesMax = [];
+  const deptDatasets = allDepts.map((d,i) => {
+    const data = keys.map(mk => {
+      const nvs  = DB[mk].depts?.[d] || [];
+      const tots = nvs.map(n => (DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0));
+      const v = tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*10)/10 : 0;
+      deptSeriesMax.push(v);
+      return v;
+    });
+    return {
+      label: d, data,
       borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
-      tension:.35, borderWidth:2, pointRadius:4, spanGaps:true }))},
+      tension:.35, borderWidth:2, pointRadius:4, spanGaps:true
+    };
+  });
+  safeMakeChart(CH, killChart, 'cCmpDept', document.getElementById('cCmpDept'), {
+    type:'line',
+    data:{ labels: monthLabels, datasets: deptDatasets },
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
-              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}}}}});
+              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, min:0,
+                 max: Math.max(10, ...deptSeriesMax, 0) * 1.15}}}
+  });
 
   const allNVs = [...new Set(keys.flatMap(mk=>DB[mk].names))];
   const risk = allNVs.map(n => ({
@@ -2050,15 +2084,20 @@ function renderCompareMonth() {
   killChart('cRisk');
   const riskEmptyEl = document.getElementById('cRiskEmpty');
   const riskCanvasEl = document.getElementById('cRisk');
+  const riskWrap = document.getElementById('cRiskWrap');
   if (!risk.length) {
     if (riskEmptyEl) riskEmptyEl.style.display = 'flex';
-    if (riskCanvasEl) riskCanvasEl.style.display = 'none';
+    if (riskWrap) riskWrap.style.display = 'none';
+    else if (riskCanvasEl) riskCanvasEl.style.display = 'none';
   } else {
     if (riskEmptyEl) riskEmptyEl.style.display = 'none';
+    if (riskWrap) riskWrap.style.display = 'block';
     if (riskCanvasEl) riskCanvasEl.style.display = 'block';
     const riskH = Math.max(160, risk.length*36+60);
-    riskCanvasEl.parentElement.style.height = riskH+'px';
-    CH['cRisk'] = new Chart(riskCanvasEl, {
+    if (riskWrap) riskWrap.style.height = riskH+'px';
+    else if (riskCanvasEl?.parentElement) riskCanvasEl.parentElement.style.height = riskH+'px';
+    const riskMax = Math.max(1, ...risk.map(x=>x.count));
+    safeMakeChart(CH, killChart, 'cRisk', riskCanvasEl, {
       type:'bar',
       data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
         backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
@@ -2067,8 +2106,9 @@ function renderCompareMonth() {
         plugins:{legend:{display:false}, barValueLabels:{},
           tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
         scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
-                   suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
-                y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+                   min:0, max: Math.ceil(riskMax * 1.25)},
+                y:{grid:{display:false},ticks:{font:{size:10}}}}}
+    });
   }
 
   document.getElementById('cmpTHead').innerHTML =
@@ -2091,14 +2131,25 @@ function renderCompareMonth() {
     '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 }
 
-// ── Quarterly compare: groups monthly cycles (mk = "YYYY-M") into calendar quarters ──
+// ── Quý lịch chuẩn: Q1=T1–T3, Q2=T4–T6, Q3=T7–T9, Q4=T10–T12 ──
 function quarterKeyOf(mk) {
   const [y, m] = mk.split('-').map(Number);
   return `${y}-Q${Math.ceil(m/3)}`;
 }
 function fmtQK(qk) {
-  const [y, q] = qk.split('-Q');
-  return `Quý ${q}/${y}`;
+  const [y, qStr] = qk.split('-Q');
+  const q = Number(qStr);
+  const startM = (q - 1) * 3; // 0-based index into MONTH_NAMES_EN
+  const a = MONTH_NAMES_EN[startM].slice(0, 3);
+  const b = MONTH_NAMES_EN[startM + 2].slice(0, 3);
+  return `Quý ${q}/${y} (${a}–${b})`;
+}
+function monthsInQuarterKey(qk) {
+  // Trả về 3 month-key YYYY-MM thuộc quý lịch (kể cả tháng chưa có dữ liệu)
+  const [y, qStr] = qk.split('-Q');
+  const q = Number(qStr);
+  const start = (q - 1) * 3 + 1;
+  return [start, start + 1, start + 2].map(m => `${y}-${String(m).padStart(2, '0')}`);
 }
 function renderCompareQuarter() {
   const keys = Object.keys(DB).sort();
@@ -3116,8 +3167,17 @@ function getOffDays(mk, deptFilter) {
 
 function getTotalOT(mk, deptFilter) {
   if (!DB[mk]) return 0;
-  const tots = getTotals(mk, deptFilter === '__all__' ? '__all__' : deptFilter).map(t=>t.total);
-  return tots.reduce((a,b)=>a+b,0);
+  // Ưu tiên getTotals (theo period/snapshot) khi có; nếu tháng chưa có snapshot thì
+  // fallback totalOf trực tiếp — tránh WLB Tháng ra 0h dù So sánh OT vẫn hiện số tháng đó.
+  const fromPeriods = getTotals(mk, deptFilter === '__all__' ? '__all__' : deptFilter);
+  if (fromPeriods.length) {
+    return fromPeriods.reduce((a, b) => a + b.total, 0);
+  }
+  const m = DB[mk];
+  const names = (deptFilter && deptFilter !== '__all__')
+    ? m.names.filter(n => m.employees[n]?.dept === deptFilter)
+    : m.names;
+  return names.reduce((s, n) => s + totalOf(m.employees[n] || {}), 0);
 }
 
 function clearOffDay() {
@@ -3268,16 +3328,21 @@ function renderWlb() {
   });
 
   if (wlbTab === 'month') {
-    // ── Populate month selector — đánh dấu (⚠️) tháng chưa có dữ liệu Off Day ──
+    // ── Populate month selector ──
+    // Tôn trọng lựa chọn của user (June/July/August...). Chỉ auto-chọn tháng có Off Day
+    // khi lần đầu vào / prevMk không còn trong list — KHÔNG được kéo ngược selection khi
+    // user chủ động đổi tháng (dù tháng đó chưa có Off Day).
     const sel = document.getElementById('wlbMonthSel');
     const prevMk = sel.value;
+    const withOff = allMks.filter(mk => OFF_DB[mk]);
+    const withBoth = withOff.filter(mk => DB[mk]);
     sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${OFF_DB[mk]?'':' ⚠️ (chưa có Off Day)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
-    if (allMks.includes(prevMk)) {
+    if (prevMk && allMks.includes(prevMk)) {
       sel.value = prevMk;
     } else {
-      // Mặc định chọn tháng GẦN NHẤT có đủ cả OT và Off Day; nếu không có, mới rơi về tháng cuối cùng.
-      const withOff = allMks.filter(mk => OFF_DB[mk]);
-      sel.value = withOff.length ? withOff[withOff.length-1] : (allMks[allMks.length-1]||'');
+      sel.value = (withBoth.length ? withBoth : withOff).slice(-1)[0]
+        || allMks[allMks.length - 1]
+        || '';
     }
     const selMk = sel.value;
     const labelEl = document.getElementById('wlbMonthSelLabel');
@@ -3289,10 +3354,13 @@ function renderWlb() {
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
     const ok = ratio !== null && ratio > THRESHOLD;
+    const otherOffHint = withOff.length
+      ? ` · Có Off Day ở: ${withOff.map(fmtMK).join(', ')}`
+      : '';
     document.getElementById('wlbMetrics').innerHTML = !selMk ? '' : !hasOffForMonth ? `
-      <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">—</div><div class="ms">Chưa có dữ liệu Off Day</div></div>
+      <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">—</div><div class="ms">Chưa có Off Day tháng này</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa upload Off Day cho ${fmtMK(selMk)}</div></div>` : `
+      <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (>10)':'⚠️ Không đạt (≤10)'}</div></div>`;
@@ -3300,10 +3368,9 @@ function renderWlb() {
     // ── Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng, dễ nhìn phân bổ OT thuần tuý ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
     if (projLbl) projLbl.textContent = selMk ? fmtMK(selMk) : '';
-    killWlbChart('cWlbProjPie');
     if (selMk && allDepts.length) {
       const projData = allDepts.map(d => Math.round(getTotalOT(selMk,d)));
-      WLB_CH['cWlbProjPie'] = new Chart(document.getElementById('cWlbProjPie'), {
+      safeMakeChart(WLB_CH, killWlbChart, 'cWlbProjPie', document.getElementById('cWlbProjPie'), {
         type:'doughnut',
         data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
         options:{ responsive:true, maintainAspectRatio:false,
@@ -3312,15 +3379,28 @@ function renderWlb() {
             pieLeaderLabels:{ formatLabel:(label,val,pct)=>`${label}: ${val}h (${pct}%)` },
             tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
       });
+    } else {
+      killWlbChart('cWlbProjPie');
     }
 
-    // ── Biểu đồ 1: Grouped bar — OT + Off tháng đang chọn, từng phòng ban ──
+    // ── Biểu đồ 1: WLB tháng đang chọn ──
+    // Luôn cho đổi tháng. Tháng chưa có Off Day → empty-state (không reset dropdown).
+    // Tháng có Off Day → vẽ chart giống tab Quý.
     killWlbChart('cWlbMonth');
-    if (selMk && allDepts.length) {
+    const wlbMonthEmpty = document.getElementById('cWlbMonthEmpty');
+    const wlbMonthCanvas = document.getElementById('cWlbMonth');
+    const wlbMonthWrap = document.getElementById('cWlbMonthWrap');
+    if (hasOffForMonth && selMk && allDepts.length) {
+      if (wlbMonthEmpty) wlbMonthEmpty.style.display = 'none';
+      if (wlbMonthWrap) wlbMonthWrap.style.display = 'block';
+      if (wlbMonthCanvas) wlbMonthCanvas.style.display = 'block';
       const otData  = allDepts.map(d => Math.round(getTotalOT(selMk,d)));
       const offData = allDepts.map(d => Math.round(getOffDays(selMk,d)));
       const wlbData = allDepts.map((d,i) => wlbRatio(offData[i], otData[i]));
-      WLB_CH['cWlbMonth'] = new Chart(document.getElementById('cWlbMonth'), {
+      const otMax  = Math.max(10, ...otData);
+      const offMax = Math.max(5, ...offData);
+      const wlbMax = Math.max(12, THRESHOLD * 1.5, ...wlbData.filter(v => v !== null && !Number.isNaN(v)));
+      safeMakeChart(WLB_CH, killWlbChart, 'cWlbMonth', wlbMonthCanvas, {
         type:'bar',
         data:{ labels: allDepts,
           datasets:[
@@ -3334,18 +3414,22 @@ function renderWlb() {
             tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'':'  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
-            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0,
-               suggestedMax: Math.max(10, ...otData),
+            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: otMax,
                title:{display:true, text:'Tổng OT (giờ)', font:{size:10}, color:'#2D6CDF'}},
-            // suggestedMax bắt buộc phải có giá trị KHÁC 0 — nếu tháng đó chưa có Off Day (toàn bộ = 0),
-            // trục sẽ co về khoảng [0,0] khiến Chart.js tính layout ra NaN và làm TRẮNG CẢ BIỂU ĐỒ
-            // (kể cả cột OT vốn có dữ liệu) dù không báo lỗi gì. suggestedMax:5 đảm bảo trục luôn có khoảng hợp lệ.
-            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0,
-               suggestedMax: Math.max(5, ...offData),
+            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0, max: offMax,
                title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}},
             y2:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', offset:true,
-               title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, suggestedMax:Math.max(12,THRESHOLD*1.5)} }}
+               title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, max: wlbMax} }}
       });
+    } else {
+      if (wlbMonthEmpty) {
+        wlbMonthEmpty.style.display = 'flex';
+        wlbMonthEmpty.innerHTML = withOff.length
+          ? `Tháng <strong>${selMk ? fmtMK(selMk) : '—'}</strong> chưa có Off Day. Các tháng có Off Day: <strong>${withOff.map(fmtMK).join(', ')}</strong> — chọn tháng đó trên dropdown, hoặc upload thêm Off Day cho tháng này.`
+          : `Chưa có dữ liệu Off Day — vào <button type="button" onclick="goPage('settings')" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;padding:0;text-decoration:underline">Cài đặt → Upload Off Day</button>.`;
+      }
+      if (wlbMonthWrap) wlbMonthWrap.style.display = 'none';
+      else if (wlbMonthCanvas) wlbMonthCanvas.style.display = 'none';
     }
 
     // ── Biểu đồ 2: Line — WLB các tháng, từng phòng ban ──
@@ -3360,7 +3444,7 @@ function renderWlb() {
     if (cmpMks.length && allDepts.length) {
       if (cmpEmptyEl) cmpEmptyEl.style.display = 'none';
       if (cmpCanvasEl) cmpCanvasEl.style.display = 'block';
-      WLB_CH['cWlbMonthCmp'] = new Chart(cmpCanvasEl, {
+      safeMakeChart(WLB_CH, killWlbChart, 'cWlbMonthCmp', cmpCanvasEl, {
         type:'line',
         data:{ labels: cmpMks.map(fmtMK),
           datasets:[
@@ -3429,65 +3513,73 @@ function renderWlb() {
     renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', empRowsM);
 
   } else {
-    // ── TAB QUARTER ──
-    // WLB tính theo Quý kiểu CHỒNG LẤP 3 tháng liên tiếp (không phải quý lịch chuẩn Jan-Mar/Apr-Jun):
-    //   Quý 1 = tháng 1+2+3, Quý 2 = tháng 3+4+5, Quý 3 = tháng 5+6+7... (mỗi quý sau lùi lại 1 tháng
-    //   trùng với quý trước) — đúng theo công thức WLB Q1/Q2 công ty cung cấp.
-    const wlbQGroups = [];
-    for (let i = 0; i + 2 < allMks.length; i += 2) {
-      const mks = [allMks[i], allMks[i+1], allMks[i+2]];
-      wlbQGroups.push({ key: 'RQ'+(wlbQGroups.length+1), label: `Quý ${wlbQGroups.length+1} (${fmtMK(mks[0])} – ${fmtMK(mks[2])})`, mks });
-    }
-    const qKeys = wlbQGroups.map(g => g.key);
-    const qLabel = {}; wlbQGroups.forEach(g => { qLabel[g.key] = g.label; });
-    const qMks = (qk) => (wlbQGroups.find(g => g.key === qk) || {mks:[]}).mks;
+    // ── TAB QUARTER — quý lịch chuẩn ──
+    // Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12 (cùng quy ước với So sánh OT / Đi trễ).
+    // Chỉ liệt kê các quý có ÍT NHẤT 1 tháng đang có dữ liệu OT hoặc Off Day.
+    const qKeys = [...new Set(allMks.map(quarterKeyOf))].sort();
+    const qLabel = {};
+    qKeys.forEach(qk => { qLabel[qk] = fmtQK(qk); });
+    // Tháng thực sự có dữ liệu trong quý (không bịa tháng trống vào phép cộng)
+    const qMks = (qk) => allMks.filter(mk => quarterKeyOf(mk) === qk);
 
     const sel = document.getElementById('wlbQtrSel');
     const prevQk = sel.value;
-    sel.innerHTML = qKeys.map(qk=>`<option value="${qk}">${qLabel[qk]}</option>`).join('') || '<option value="">— Chưa có dữ liệu (cần tối thiểu 3 tháng dữ liệu) —</option>';
-    if (qKeys.includes(prevQk)) sel.value = prevQk; else sel.value = qKeys[qKeys.length-1]||'';
+    sel.innerHTML = qKeys.map(qk => {
+      const mks = qMks(qk);
+      const present = mks.map(mk => MONTH_NAMES_EN[Number(mk.split('-')[1]) - 1].slice(0, 3)).join('/');
+      const suffix = mks.length && mks.length < 3 ? ` · đang có: ${present}` : '';
+      return `<option value="${qk}">${qLabel[qk]}${suffix}</option>`;
+    }).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    if (qKeys.includes(prevQk)) sel.value = prevQk;
+    else sel.value = qKeys[qKeys.length - 1] || '';
     const selQk = sel.value;
     const labelEl2 = document.getElementById('wlbQtrSelLabel');
     if (labelEl2) labelEl2.textContent = selQk ? qLabel[selQk] : '';
 
     // ── Biểu đồ 1: Grouped bar — OT + Off quý đang chọn, từng phòng ban ──
-    killWlbChart('cWlbQuarter');
     if (selQk && allDepts.length) {
       const mks = qMks(selQk);
+      const hasOffInQtr = mks.some(mk => OFF_DB[mk]);
       const otData  = allDepts.map(d => Math.round(mks.reduce((s,mk)=>s+getTotalOT(mk,d),0)));
       const offData = allDepts.map(d => Math.round(mks.reduce((s,mk)=>s+getOffDays(mk,d),0)));
       const wlbData = allDepts.map((d,i) => wlbRatio(offData[i], otData[i]));
-      WLB_CH['cWlbQuarter'] = new Chart(document.getElementById('cWlbQuarter'), {
-        type:'bar',
-        data:{ labels: allDepts,
-          datasets:[
-            { label:'Tổng OT (h)', data:otData, backgroundColor:'rgba(45,108,223,0.7)', borderColor:'#2D6CDF', borderWidth:1, borderRadius:4, yAxisID:'y' },
-            { label:'Off Day (ngày)', data:offData, backgroundColor:'rgba(31,157,85,0.7)', borderColor:'#1F9D55', borderWidth:1, borderRadius:4, yAxisID:'yOff' },
-            { type:'line', label:'WLB (off÷OT)', data:wlbData, yAxisID:'y2',
-              borderColor:'#C0392B', backgroundColor:'transparent', tension:.3, borderWidth:2, pointRadius:5, spanGaps:true }
-          ]},
-        options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
-          plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}} },
-          scales:{
-            x:{grid:{display:false}, ticks:{font:{size:10}}},
-            y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0,
-               suggestedMax: Math.max(10, ...otData),
-               title:{display:true, text:'Tổng OT (giờ)', font:{size:10}, color:'#2D6CDF'}},
-            yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0,
-               suggestedMax: Math.max(5, ...offData),
-               title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}},
-            y2:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', offset:true,
-               title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, suggestedMax:Math.max(12,THRESHOLD*1.5)} }}
-      });
+      if (!hasOffInQtr) {
+        killWlbChart('cWlbQuarter');
+      } else {
+        const otMax  = Math.max(10, ...otData);
+        const offMax = Math.max(5, ...offData);
+        const wlbMax = Math.max(12, THRESHOLD * 1.5, ...wlbData.filter(v => v !== null));
+        safeMakeChart(WLB_CH, killWlbChart, 'cWlbQuarter', document.getElementById('cWlbQuarter'), {
+          type:'bar',
+          data:{ labels: allDepts,
+            datasets:[
+              { label:'Tổng OT (h)', data:otData, backgroundColor:'rgba(45,108,223,0.7)', borderColor:'#2D6CDF', borderWidth:1, borderRadius:4, yAxisID:'y' },
+              { label:'Off Day (ngày)', data:offData, backgroundColor:'rgba(31,157,85,0.7)', borderColor:'#1F9D55', borderWidth:1, borderRadius:4, yAxisID:'yOff' },
+              { type:'line', label:'WLB (off÷OT)', data:wlbData, yAxisID:'y2',
+                borderColor:'#C0392B', backgroundColor:'transparent', tension:.3, borderWidth:2, pointRadius:5, spanGaps:true }
+            ]},
+          options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
+            plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
+              tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}} },
+            scales:{
+              x:{grid:{display:false}, ticks:{font:{size:10}}},
+              y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: otMax,
+                 title:{display:true, text:'Tổng OT (giờ)', font:{size:10}, color:'#2D6CDF'}},
+              yOff:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', min:0, max: offMax,
+                 title:{display:true, text:'Off Day (ngày)', font:{size:10}, color:'#1F9D55'}},
+              y2:{grid:{display:false}, ticks:{font:{size:10}}, position:'right', offset:true,
+                 title:{display:true, text:'WLB (off÷OT)', font:{size:10}, color:'#C0392B'}, min:0, max: wlbMax} }}
+        });
+      }
+    } else {
+      killWlbChart('cWlbQuarter');
     }
 
     // ── Biểu đồ 2: Line — WLB các quý, từng phòng ban ──
-    killWlbChart('cWlbQtrCmp');
     document.getElementById('wlbQtrCmpLeg').innerHTML =
       allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
     if (qKeys.length && allDepts.length) {
-      WLB_CH['cWlbQtrCmp'] = new Chart(document.getElementById('cWlbQtrCmp'), {
+      safeMakeChart(WLB_CH, killWlbChart, 'cWlbQtrCmp', document.getElementById('cWlbQtrCmp'), {
         type:'line',
         data:{ labels: qKeys.map(qk=>qLabel[qk]),
           datasets:[
@@ -3502,6 +3594,8 @@ function renderWlb() {
           ]},
         options: lineOpts()
       });
+    } else {
+      killWlbChart('cWlbQtrCmp');
     }
 
     // ── Bảng: Tổng OT + Off Day + WLB theo quý × phòng ban ──
