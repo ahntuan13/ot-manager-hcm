@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.10';
+const APP_VERSION = '2026.15';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -39,6 +39,8 @@ const barValueLabelsPlugin = {
     if (!opts) return;
     const { ctx } = chart;
     const suffix = opts.suffix || '';
+    const showZero = !!opts.showZero;
+    const fontSize = opts.fontSize || 11;
     const isHorizontal = chart.options.indexAxis === 'y';
     const isStacked = chart.options.scales?.y?.stacked || chart.options.scales?.x?.stacked;
 
@@ -47,7 +49,8 @@ const barValueLabelsPlugin = {
       if (meta.type !== 'bar' || meta.hidden) return;
       meta.data.forEach((bar, i) => {
         const val = dataset.data[i];
-        if (val === null || val === undefined || val === 0) return;
+        if (val === null || val === undefined) return;
+        if (val === 0 && !showZero) return;
         const label = `${val}${suffix}`;
 
         // For stacked bars: draw label INSIDE the segment (white text) if segment is tall/wide enough
@@ -60,17 +63,18 @@ const barValueLabelsPlugin = {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           const cy = bar.y + segH / 2;
-          // Only draw if text fits
           const tw = ctx.measureText(label).width;
           if (tw < bar.width - 6) ctx.fillText(label, bar.x, cy);
           ctx.restore();
           return;
         }
 
-        // Default: label outside the bar (for non-stacked charts)
+        // Default: label outside the bar (for non-stacked charts) — kể cả giá trị 0
         ctx.save();
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280';
-        ctx.font = '600 11px "Inter", -apple-system, sans-serif';
+        ctx.fillStyle = val === 0
+          ? (getComputedStyle(document.documentElement).getPropertyValue('--text3').trim() || '#9CA3AF')
+          : (getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280');
+        ctx.font = `${val === 0 ? 600 : 600} ${fontSize}px "Inter", -apple-system, sans-serif`;
         if (isHorizontal) {
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
@@ -78,7 +82,7 @@ const barValueLabelsPlugin = {
         } else {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
-          ctx.fillText(label, bar.x, bar.y - 4);
+          ctx.fillText(label, bar.x, bar.y - 3);
         }
         ctx.restore();
       });
@@ -86,6 +90,54 @@ const barValueLabelsPlugin = {
   }
 };
 Chart.register(barValueLabelsPlugin);
+
+// Nền xen kẽ + đường kẻ giữa các NHÓM phòng ban trên grouped bar — giúp nhìn rõ
+// cụm W1…W5 thuộc cùng 1 phòng ban (tránh phòng OT thấp bị tưởng là "thiếu cột").
+const deptGroupBandsPlugin = {
+  id: 'deptGroupBands',
+  beforeDatasetsDraw(chart) {
+    const opts = chart.options.plugins && chart.options.plugins.deptGroupBands;
+    if (!opts) return;
+    const x = chart.scales.x;
+    const { ctx, chartArea, data } = chart;
+    if (!x || !chartArea || !data.labels?.length) return;
+    const n = data.labels.length;
+    const band = (i) => {
+      const c = x.getPixelForTick(i);
+      const left = i === 0 ? chartArea.left : (x.getPixelForTick(i - 1) + c) / 2;
+      const right = i === n - 1 ? chartArea.right : (c + x.getPixelForTick(i + 1)) / 2;
+      return { left, right, c };
+    };
+    ctx.save();
+    for (let i = 0; i < n; i++) {
+      const { left, right } = band(i);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(45,108,223,0.05)' : 'rgba(128,128,128,0.04)';
+      ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+    }
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {
+    const opts = chart.options.plugins && chart.options.plugins.deptGroupBands;
+    if (!opts) return;
+    const x = chart.scales.x;
+    const { ctx, chartArea, data } = chart;
+    if (!x || !chartArea || !data.labels?.length) return;
+    const n = data.labels.length;
+    ctx.save();
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border2').trim() || 'rgba(0,0,0,0.12)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    for (let i = 0; i < n - 1; i++) {
+      const mid = (x.getPixelForTick(i) + x.getPixelForTick(i + 1)) / 2;
+      ctx.beginPath();
+      ctx.moveTo(mid, chartArea.top);
+      ctx.lineTo(mid, chartArea.bottom);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+};
+Chart.register(deptGroupBandsPlugin);
 
 // Plugin vẽ NHÃN KÉO RA (leader line) cho biểu đồ tròn/doughnut — mỗi lát cắt có 1 đường thẳng
 // kéo từ mép lát cắt ra ngoài, kèm nhãn "Tên: giá trị" — dễ đọc hơn nhét chữ vào trong lát nhỏ.
@@ -370,34 +422,75 @@ function cycleEndOf(mk) {
   return new Date(y, mm-1, 15);
 }
 
-// Return sorted list of snapshot iso-dates for a month, with fallback to the
-// single latest date present in the data if no snapshots recorded yet.
+// 4 mốc kết thúc tuần cố định trong chu kỳ lương 16→15:
+//   W1: 16–22 (tháng bắt đầu), W2: 23–29, W3: 30/31–06 (tháng kết thúc), W4: 07–15.
+function fixedWeekEndDates(mk) {
+  const cycleStart = cycleStartOf(mk);
+  const cycleEnd = cycleEndOf(mk);
+  const y0 = cycleStart.getFullYear(), m0 = cycleStart.getMonth();
+  const y1 = cycleEnd.getFullYear(), m1 = cycleEnd.getMonth();
+  const ends = [
+    new Date(y0, m0, 22),
+    new Date(y0, m0, 29),
+    new Date(y1, m1, 6),
+    new Date(y1, m1, 15)
+  ];
+  return ends.map(d => {
+    if (d < cycleStart) return new Date(cycleStart);
+    if (d > cycleEnd) return new Date(cycleEnd);
+    return d;
+  });
+}
+
+function collectDataDates(mk) {
+  const m = DB[mk]; if (!m) return [];
+  const all = new Set();
+  (m.names || []).forEach(n => {
+    const e = m.employees[n]; if (!e) return;
+    Object.keys(e.days || {}).forEach(dt => all.add(dt));
+    Object.keys(e.quotaDays || {}).forEach(dt => all.add(dt));
+  });
+  return [...all].sort();
+}
+
+// Snapshot / mốc tuần để buildPeriods:
+//  · ≥2 snapshot từ upload tuần → giữ nguyên (W1…W5 theo lần upload).
+//  · 0–1 snapshot (demo, sync thiếu, hoặc chỉ upload 1 file cả tháng) → TÁCH theo 4 tuần
+//    cố định 16→15 dựa trên ngày có dữ liệu. Tránh gộp cả chu kỳ thành 1 cột "W1".
 function getSnapshots(mk) {
   const m = DB[mk]; if (!m) return [];
-  let snaps = (m.snapshots || []).slice().sort();
-  if (!snaps.length) {
-    // fallback: derive from data directly
-    const allDates = new Set();
-    m.names.forEach(n => Object.keys(m.employees[n].days || {}).forEach(dt => allDates.add(dt)));
-    if (allDates.size) snaps = [[...allDates].sort().pop()];
-  }
-  return snaps;
+  const uploaded = (m.snapshots || []).slice().sort();
+  if (uploaded.length >= 2) return uploaded;
+
+  const dataDates = collectDataDates(mk);
+  if (!dataDates.length) return uploaded.length ? uploaded : [];
+
+  const maxIso = dataDates[dataDates.length - 1];
+  const fixed = fixedWeekEndDates(mk)
+    .map(d => isoDate(d))
+    .filter(iso => iso <= maxIso);
+  if (!fixed.length) return [maxIso];
+  // Nếu dữ liệu dừng giữa chừng tuần cuối (vd hết ngày 10 trong khi W4 = 15) → thêm mốc maxIso
+  if (fixed[fixed.length - 1] < maxIso) fixed.push(maxIso);
+  return fixed;
 }
 
 // Build period objects for display: each period is cumulative from cycle-start to that snapshot.
-// Week label is determined by the ACTUAL date range covered (offset in days from cycle-start),
-// matching the fixed convention: Week1≈16→21 (+5d), Week2≈16→28 (+12d), Week3≈16→06 next month (+20d),
-// Week4 = full cycle 16→15 next month. This way the label reflects the real upload range,
-// not just its position in the snapshot list (so uploading only a Week1 file is correctly labeled Week 1).
+// weekNum = thứ tự tuần (W1, W2, …). Label hiện KHOẢNG NGÀY RIÊNG của tuần đó (không luỹ kế).
 function buildPeriods(mk) {
   const snaps = getSnapshots(mk);
   if (!snaps.length) return [];
   const cycleStart = cycleStartOf(mk);
   return snaps.map((snapIso, i) => {
-    const end = new Date(snapIso);
+    const end = new Date(snapIso + 'T00:00:00');
     const isLast = i === snaps.length - 1;
-    const weekNum = i + 1; // W1, W2, W3, W4, W5... theo thứ tự upload
-    const dateRange = `${pad2(cycleStart.getDate())}/${pad2(cycleStart.getMonth()+1)}-${pad2(end.getDate())}/${pad2(end.getMonth()+1)}`;
+    const weekNum = i + 1;
+    let rangeStart = cycleStart;
+    if (i > 0) {
+      rangeStart = new Date(snaps[i - 1] + 'T00:00:00');
+      rangeStart.setDate(rangeStart.getDate() + 1);
+    }
+    const dateRange = `${pad2(rangeStart.getDate())}/${pad2(rangeStart.getMonth()+1)}-${pad2(end.getDate())}/${pad2(end.getMonth()+1)}`;
     const label = `W${weekNum} · ${dateRange}`;
     return { start: cycleStart, end, label, isLast, snapIso, weekNum };
   });
@@ -532,10 +625,18 @@ function setCmpTab(tab) {
   document.getElementById('cmp-week').style.display    = tab==='week'    ? 'block' : 'none';
   document.getElementById('cmp-month').style.display   = tab==='month'   ? 'block' : 'none';
   document.getElementById('cmp-quarter').style.display = tab==='quarter' ? 'block' : 'none';
+  const monthRow = document.getElementById('cmpMonthSelRow');
+  if (monthRow) monthRow.style.display = tab === 'quarter' ? 'none' : 'flex';
   if (tab === 'week') renderCompareWeek();
   else if (tab === 'quarter') renderCompareQuarter();
   else renderCompareMonth();
   scheduleChartResize();
+}
+
+// Đổi tháng trên dropdown dùng chung — render đúng tab đang mở (Tuần hoặc Tháng).
+function onCmpMonthChange() {
+  if (cmpTab === 'week') renderCompareWeek();
+  else if (cmpTab === 'month') renderCompareMonth();
 }
 
 let lateTab = 'month';
@@ -662,12 +763,15 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
   if (!periods.length) return [];
   const idx = (pIdx === null || pIdx < 0 || pIdx >= periods.length) ? periods.length-1 : pIdx;
   const period = periods[idx];
-  const prevPeriod = idx > 0 ? periods[idx-1] : null;
   // Tính sẵn chuỗi ISO ranh giới MỘT LẦN cho cả lượt gọi (không phải mỗi nhân viên) — vì
   // period.start/end giống nhau cho mọi NV, tránh gọi isoDate() lặp lại hàng trăm lần không cần thiết.
   const startIso = isoDate(period.start), endIso = isoDate(period.end);
-  const prevStartIso = prevPeriod ? isoDate(prevPeriod.start) : null;
-  const prevEndIso = prevPeriod ? isoDate(prevPeriod.end) : null;
+  // Cửa sổ NGÀY RIÊNG của tuần đang xét (sau hết tuần trước → hết tuần này) — dùng cho deltaTotal.
+  // Tránh công thức cũ max(0, OT_luỹ_kế_n − OT_luỹ_kế_n−1) khiến W4 = 0 khi quota đuổi kịp giờ làm
+  // dù tuần đó vẫn có giờ OT thật (phần OT bị dồn sang W5).
+  const weekRange = getWeekOnlyRange(periods, idx);
+  const weekStartIso = weekRange ? isoDate(weekRange.start) : startIso;
+  const weekEndIso = weekRange ? isoDate(weekRange.end) : endIso;
   const sumIso = (obj, s, e) => { let sum=0; for (const k in obj) { if (k>=s && k<=e) sum+=obj[k]; } return sum; };
   return m.names
     .filter(n => deptFilter === '__all__' || m.employees[n]?.dept === deptFilter)
@@ -680,18 +784,11 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
       const quotaUpTo = sumIso(quotaDays, startIso, endIso);
       const tot = Math.round(Math.max(0, workedUpTo - quotaUpTo)*10)/10;
       const nightTot = Math.round(sumIso(nightDays, startIso, endIso)*10)/10;
-      // ── deltaTotal/deltaNightTotal: OT PHÁT SINH RIÊNG trong đúng tuần đang xem (KHÔNG luỹ kế từ
-      // ngày 16) = luỹ kế tại mốc này − luỹ kế tại mốc trước đó. Dùng cho tab "Theo tuần" —
-      // tab "Theo tháng" vẫn dùng .total (luỹ kế đầy đủ) như trước, chỉ có ý nghĩa khi tháng đã đủ dữ liệu.
-      let deltaTotal = tot, deltaNightTotal = nightTot;
-      if (prevPeriod) {
-        const prevWorked = sumIso(days, prevStartIso, prevEndIso);
-        const prevQuota = sumIso(quotaDays, prevStartIso, prevEndIso);
-        const prevTot = Math.max(0, prevWorked - prevQuota);
-        deltaTotal = Math.round(Math.max(0, (workedUpTo - quotaUpTo) - prevTot)*10)/10;
-        const prevNight = sumIso(nightDays, prevStartIso, prevEndIso);
-        deltaNightTotal = Math.round(Math.max(0, nightTot - prevNight)*10)/10;
-      }
+      // OT / Night PHÁT SINH RIÊNG trong đúng cửa sổ tuần (không trừ luỹ kế).
+      const workedWeek = sumIso(days, weekStartIso, weekEndIso);
+      const quotaWeek = sumIso(quotaDays, weekStartIso, weekEndIso);
+      const deltaTotal = Math.round(Math.max(0, workedWeek - quotaWeek)*10)/10;
+      const deltaNightTotal = Math.round(sumIso(nightDays, weekStartIso, weekEndIso)*10)/10;
       return { name: n, dept: e.dept, staffCode: e.staffCode || '', total: tot, nightTotal: nightTot, deltaTotal, deltaNightTotal };
     });
 }
@@ -1900,43 +1997,57 @@ function renderCompareWeek() {
     return;
   }
 
-  // TỔNG OT (h) LUỸ KẾ từ ngày 16 đến hết mỗi mốc tuần (dùng làm bước trung gian để suy ra số PHÁT SINH RIÊNG từng tuần).
-  function getCumulativeSum(mk, dept, pi) {
-    const tots = getTotals(mk, dept, pi).map(t=>t.total);
-    return tots.reduce((a,b)=>a+b,0);
-  }
-  // TỔNG OT PHÁT SINH RIÊNG trong tuần đó (KHÔNG luỹ kế) = luỹ kế[tuần n] − luỹ kế[tuần n-1].
-  // Đây là số liệu chính hiển thị trên biểu đồ/bảng theo yêu cầu: mỗi tuần đứng độc lập, không cộng dồn.
+  // OT tuần theo phòng ban — giữ 1 chữ số thập phân, không Math.round sớm.
+  // Tổng công ty = Σ phòng ban đang hiển thị (cùng nguồn) → cộng tay luôn khớp biểu đồ/bảng.
   function getWeeklySum(mk, dept, pi) {
-    const curr = getCumulativeSum(mk, dept, pi);
-    if (pi === 0) return Math.round(curr);
-    const prev = getCumulativeSum(mk, dept, pi-1);
-    return Math.round(Math.max(0, curr - prev));
+    const s = getTotals(mk, dept, pi).reduce((a, t) => a + (t.deltaTotal || 0), 0);
+    return Math.round(s * 10) / 10;
   }
 
   // Week labels (short): based on actual weekNum, not array position
   const weekLabels = periods.map((p) => `W${p.weekNum}`);
 
-  // Chart 1: Grouped bar — each group = 1 dept, bars = các mốc tuần (luỹ kế)
+  // Ma trận [tuần][phòng ban] — chart phòng ban + tổng công ty dùng chung
+  const deptWeekMatrix = periods.map((p, pi) => allDepts.map(d => getWeeklySum(cmpMk, d, pi)));
+  const companyWeekTotal = deptWeekMatrix.map(row => Math.round(row.reduce((a, b) => a + b, 0) * 10) / 10);
+
+  // Chart 1: Grouped bar — mỗi phòng ban = 1 nhóm sát nhau (W1…Wn), nhóm cách nhau rõ;
+  // tuần = 0 vẫn hiện nhãn "0" + minBarLength để không bị tưởng thiếu cột.
   document.getElementById('periodDeptLeg').innerHTML =
-    allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
+    allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('') +
+    `<span style="margin-left:8px;font-size:11px;color:var(--text3)">· Mỗi cụm cột = 1 phòng ban (W1→W${periods.length})</span>`;
+
+  const periodDeptCanvas = document.getElementById('cPeriodDept');
+  if (periodDeptCanvas?.parentElement) {
+    periodDeptCanvas.parentElement.style.height = Math.max(360, 280 + periods.length * 8) + 'px';
+  }
 
   killChart('cPeriodDept');
   const WEEK_COLORS = ['#2D6CDF','#7B5EA7','#5E7A4F','#B14B3F','#3E7C8C','#9C5B8E'];
   const deptDatasets = periods.map((p,pi) => ({
     label: weekLabels[pi],
-    data: allDepts.map(d => getWeeklySum(cmpMk, d, pi)),
+    data: deptWeekMatrix[pi],
     backgroundColor: WEEK_COLORS[pi % WEEK_COLORS.length]+'CC',
     borderColor: WEEK_COLORS[pi % WEEK_COLORS.length],
-    borderWidth:1, borderRadius:4
+    borderWidth:1, borderRadius:3,
+    minBarLength: 3 // cột 0h vẫn có “chân” nhỏ để thấy slot tuần
   }));
 
-  CH['cPeriodDept'] = new Chart(document.getElementById('cPeriodDept'), {
+  CH['cPeriodDept'] = new Chart(periodDeptCanvas, {
     type:'bar',
     data:{ labels: allDepts, datasets: deptDatasets },
     options:{
       responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top: 18 } },
+      datasets:{
+        bar:{
+          categoryPercentage: 0.72, // khoảng trống giữa các PHÒNG BAN (nhóm)
+          barPercentage: 0.92       // cột tuần trong cùng nhóm sát nhau
+        }
+      },
       plugins:{
+        deptGroupBands:{},
+        barValueLabels:{ showZero:true, fontSize:9, suffix:'' },
         legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10,
           generateLabels: chart => periods.map((p,i)=>({
             text: weekLabels[i], fillStyle: WEEK_COLORS[i%WEEK_COLORS.length],
@@ -1944,21 +2055,24 @@ function renderCompareWeek() {
           }))
         }},
         tooltip:{callbacks:{
-          title: items => periods[items[0].datasetIndex]?.label || '',
+          title: items => {
+            const dept = items[0]?.label || '';
+            const week = periods[items[0]?.datasetIndex]?.label || '';
+            return dept ? `${dept} · ${week}` : week;
+          },
           label:c=>` ${c.dataset.label}: ${c.raw}h (phát sinh trong tuần)`
         }}
       },
       scales:{
-        x:{grid:{display:false}, ticks:{font:{size:11}}},
+        x:{grid:{display:false}, ticks:{font:{size:11, weight:'600'}, color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#211F1C'}},
         y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-           title:{display:true, text:'Tổng OT phát sinh trong tuần (h)', font:{size:10}, color:'#8A8378'}}
+           title:{display:true, text:'Tổng OT phát sinh trong tuần (h)', font:{size:10}, color:'#8A8378'},
+           beginAtZero:true}
       }
     }
   });
 
-  // Chart 2: Bar — TỔNG OT toàn công ty, PHÁT SINH RIÊNG từng tuần (không luỹ kế)
-  const companyWeekTotal = periods.map((p,pi) => getWeeklySum(cmpMk, '__all__', pi));
-
+  // Chart 2: Bar — TỔNG OT toàn công ty = Σ phòng ban (cùng deptWeekMatrix)
   killChart('cPeriodTrend');
   const ptShortLabels = periods.map(p => `W${p.weekNum}`);
   CH['cPeriodTrend'] = new Chart(document.getElementById('cPeriodTrend'), {
@@ -1975,6 +2089,7 @@ function renderCompareWeek() {
       responsive:true, maintainAspectRatio:false,
       plugins:{
         legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10}},
+        barValueLabels:{ suffix:'' },
         tooltip:{callbacks:{
           title: items => periods[items[0].dataIndex]?.label || '',
           label:c=>` ${c.dataset.label}: ${c.raw}h`
@@ -1988,14 +2103,13 @@ function renderCompareWeek() {
     }
   });
 
-  // Table
+  // Table — cùng số liệu với 2 chart
   document.getElementById('periodTHead').innerHTML =
     `<tr><th>Tuần</th>${allDepts.map(d=>`<th>${d}</th>`).join('')}<th>Tổng công ty</th></tr>`;
   document.getElementById('periodTBody').innerHTML = periods.map((p,pi) => {
-    const deptCells = allDepts.map(d => {
-      const val = getWeeklySum(cmpMk, d, pi);
-      return `<td style="font-family:var(--font-mono)">${val}h</td>`;
-    }).join('');
+    const deptCells = deptWeekMatrix[pi].map(val =>
+      `<td style="font-family:var(--font-mono)">${val}h</td>`
+    ).join('');
     const co = companyWeekTotal[pi];
     return `<tr>
       <td style="font-weight:600;white-space:nowrap">${p.label}</td>
@@ -2031,22 +2145,42 @@ function renderCompareMonth() {
   document.getElementById('cmpDeptLeg').innerHTML =
     allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
 
-  // ── Biểu đồ tròn: Tổng OT từng phòng ban (dự án) — tháng gần nhất ──
-  const latestMk = keys[keys.length-1];
+  // ── Cột ngang: Tổng OT từng phòng ban — theo tháng ĐANG CHỌN ở dropdown (không cứng tháng mới nhất) ──
+  const cmpMonthSel = document.getElementById('cmpMonthSel');
+  const prevFocus = cmpMonthSel ? cmpMonthSel.value : '';
+  if (cmpMonthSel) {
+    cmpMonthSel.innerHTML = keys.map(mk=>`<option value="${mk}" title="${fmtCompanyMK(mk)}">${fmtMK(mk)}</option>`).join('');
+    if (keys.includes(prevFocus)) cmpMonthSel.value = prevFocus;
+    else cmpMonthSel.value = keys[keys.length-1];
+  }
+  const focusMk = (cmpMonthSel && keys.includes(cmpMonthSel.value)) ? cmpMonthSel.value : keys[keys.length-1];
   const lbl = document.getElementById('cmpProjMonthLabel');
-  if (lbl) lbl.textContent = fmtMK(latestMk);
+  if (lbl) lbl.textContent = fmtMK(focusMk);
   const projData = allDepts.map(d => {
-    const nvs = DB[latestMk].depts?.[d] || [];
-    return Math.round(nvs.reduce((s,n)=> s + (DB[latestMk].employees[n] ? totalOf(DB[latestMk].employees[n]) : 0), 0)*10)/10;
+    const nvs = DB[focusMk].depts?.[d] || [];
+    return Math.round(nvs.reduce((s,n)=> s + (DB[focusMk].employees[n] ? totalOf(DB[focusMk].employees[n]) : 0), 0)*10)/10;
   });
-  safeMakeChart(CH, killChart, 'cCmpProjPie', document.getElementById('cCmpProjPie'), {
-    type:'doughnut',
-    data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ left:80, right:80, top:20, bottom:20 } },
-      plugins:{ legend:{display:false},
-        pieLeaderLabels:{ formatLabel:(label,val,pct)=>`${label}: ${val}h (${pct}%)` },
-        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
+  const projCanvas = document.getElementById('cCmpProjPie');
+  const projWrap = projCanvas?.parentElement;
+  if (projWrap) projWrap.style.height = Math.max(220, allDepts.length * 36 + 48) + 'px';
+  const projMax = Math.max(10, ...projData, 0);
+  safeMakeChart(CH, killChart, 'cCmpProjPie', projCanvas, {
+    type:'bar',
+    data:{ labels: allDepts, datasets:[{
+      label: 'Tổng OT (h)',
+      data: projData,
+      backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]),
+      borderWidth:0, borderRadius:4
+    }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
+      plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
+      scales:{
+        x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
+        y:{ grid:{display:false}, ticks:{font:{size:11}} }
+      }
+    }
   });
 
   // Line theo phòng ban: dùng 0 thay null để tránh Chart.js vẽ trống khi spanGaps + layout 0px
@@ -3365,19 +3499,32 @@ function renderWlb() {
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (>10)':'⚠️ Không đạt (≤10)'}</div></div>`;
 
-    // ── Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng, dễ nhìn phân bổ OT thuần tuý ──
+    // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
     if (projLbl) projLbl.textContent = selMk ? fmtMK(selMk) : '';
     if (selMk && allDepts.length) {
       const projData = allDepts.map(d => Math.round(getTotalOT(selMk,d)));
-      safeMakeChart(WLB_CH, killWlbChart, 'cWlbProjPie', document.getElementById('cWlbProjPie'), {
-        type:'doughnut',
-        data:{ labels: allDepts, datasets:[{ data: projData, backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]), borderWidth:0 }] },
-        options:{ responsive:true, maintainAspectRatio:false,
-          layout:{ padding:{ left:80, right:80, top:20, bottom:20 } },
-          plugins:{ legend:{display:false},
-            pieLeaderLabels:{ formatLabel:(label,val,pct)=>`${label}: ${val}h (${pct}%)` },
-            tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} } }
+      const projCanvas = document.getElementById('cWlbProjPie');
+      const projWrap = projCanvas?.parentElement;
+      if (projWrap) projWrap.style.height = Math.max(220, allDepts.length * 36 + 48) + 'px';
+      const projMax = Math.max(10, ...projData, 0);
+      safeMakeChart(WLB_CH, killWlbChart, 'cWlbProjPie', projCanvas, {
+        type:'bar',
+        data:{ labels: allDepts, datasets:[{
+          label: 'Tổng OT (h)',
+          data: projData,
+          backgroundColor: allDepts.map((_,i)=>DEPT_COLORS[i%DEPT_COLORS.length]),
+          borderWidth:0, borderRadius:4
+        }] },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
+          plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+            tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
+          scales:{
+            x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
+            y:{ grid:{display:false}, ticks:{font:{size:11}} }
+          }
+        }
       });
     } else {
       killWlbChart('cWlbProjPie');
@@ -3514,22 +3661,21 @@ function renderWlb() {
 
   } else {
     // ── TAB QUARTER — quý lịch chuẩn ──
-    // Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12 (cùng quy ước với So sánh OT / Đi trễ).
-    // Chỉ liệt kê các quý có ÍT NHẤT 1 tháng đang có dữ liệu OT hoặc Off Day.
-    const qKeys = [...new Set(allMks.map(quarterKeyOf))].sort();
+    // Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12.
+    // CHỈ hiện quý ĐỦ CẢ 3 tháng (có trong allMks). Thiếu tháng nào → ẩn quý đó
+    // (vd Q3 chỉ có Jul/Aug, chưa có Sep → không liệt kê).
+    const qKeys = [...new Set(allMks.map(quarterKeyOf))]
+      .sort()
+      .filter(qk => monthsInQuarterKey(qk).every(mk => allMks.includes(mk)));
     const qLabel = {};
     qKeys.forEach(qk => { qLabel[qk] = fmtQK(qk); });
-    // Tháng thực sự có dữ liệu trong quý (không bịa tháng trống vào phép cộng)
     const qMks = (qk) => allMks.filter(mk => quarterKeyOf(mk) === qk);
 
     const sel = document.getElementById('wlbQtrSel');
     const prevQk = sel.value;
-    sel.innerHTML = qKeys.map(qk => {
-      const mks = qMks(qk);
-      const present = mks.map(mk => MONTH_NAMES_EN[Number(mk.split('-')[1]) - 1].slice(0, 3)).join('/');
-      const suffix = mks.length && mks.length < 3 ? ` · đang có: ${present}` : '';
-      return `<option value="${qk}">${qLabel[qk]}${suffix}</option>`;
-    }).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    sel.innerHTML = qKeys.map(qk =>
+      `<option value="${qk}">${qLabel[qk]}</option>`
+    ).join('') || '<option value="">— Chưa có quý nào đủ 3 tháng —</option>';
     if (qKeys.includes(prevQk)) sel.value = prevQk;
     else sel.value = qKeys[qKeys.length - 1] || '';
     const selQk = sel.value;
