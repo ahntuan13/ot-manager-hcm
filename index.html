@@ -335,18 +335,19 @@
     <button id="cmpTabQuarter" class="wbtn" onclick="setCmpTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
   </div>
 
+  <!-- Month selector dùng chung cho tab Tuần + Tháng (không áp dụng Quý) -->
+  <div id="cmpMonthSelRow" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--text2)">Tháng:</span>
+    <select id="cmpMonthSel" onchange="onCmpMonthChange()"></select>
+  </div>
+
   <!-- SUB-TAB: WEEKLY -->
   <div id="cmp-week">
-    <!-- Month selector row -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:12px;color:var(--text2)">Tháng:</span>
-      <select id="cmpMonthSel" onchange="renderCompareWeek()"></select>
-    </div>
     <!-- Chart 1: Grouped bar — OT từng tuần theo phòng ban (KHÔNG luỹ kế, phát sinh riêng từng tuần) -->
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Tổng OT từng tuần theo phòng ban (không luỹ kế) — so sánh ngang nhau</div>
       <div class="legend" id="periodDeptLeg"></div>
-      <div style="position:relative;width:100%;height:320px"><canvas id="cPeriodDept" role="img" aria-label="So sánh phòng ban từng tuần">So sánh tuần.</canvas></div>
+      <div style="position:relative;width:100%;height:380px"><canvas id="cPeriodDept" role="img" aria-label="So sánh phòng ban từng tuần">So sánh tuần.</canvas></div>
     </div>
     <!-- Chart 2: Bar — Tổng OT toàn công ty, phát sinh riêng từng tuần -->
     <div class="card">
@@ -376,8 +377,8 @@
     </div>
     <div class="card">
       <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tỷ trọng giờ OT của từng phòng ban trong tháng gần nhất đang có dữ liệu.</div>
-      <div style="position:relative;width:100%;height:340px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Giờ OT từng phòng ban theo <strong>tháng đang chọn</strong> ở dropdown phía trên (cột ngang).</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -610,7 +611,8 @@
     <!-- Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng khỏi WLB để xem nhanh phân bổ giờ OT -->
     <div class="card ac-top ac-amber">
       <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="position:relative;width:100%;height:340px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Giờ OT từng phòng ban trong tháng đang chọn (cột ngang).</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
     </div>
 
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
