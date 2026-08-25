@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.15';
+const APP_VERSION = '2026.17';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -422,24 +422,51 @@ function cycleEndOf(mk) {
   return new Date(y, mm-1, 15);
 }
 
-// 4 mốc kết thúc tuần cố định trong chu kỳ lương 16→15:
-//   W1: 16–22 (tháng bắt đầu), W2: 23–29, W3: 30/31–06 (tháng kết thúc), W4: 07–15.
+// Chia tuần theo ĐÚNG LỊCH TUẦN THẬT (Thứ 2 → Chủ nhật), không phải cứ đếm cứng 7 ngày từ 16.
+// Quy tắc (đúng theo ảnh lịch tháng công ty cung cấp):
+//  · Các tuần Ở GIỮA chu kỳ = trọn vẹn 1 tuần lịch (Thứ 2 → Chủ nhật).
+//  · Phần lẻ ĐẦU chu kỳ (từ ngày 16 đến hết tuần lịch chứa ngày 16, nếu 16 không rơi đúng Thứ 2)
+//    → GỘP VÀO tuần lịch kế tiếp để thành "Tuần 1" (tránh 1 tuần chỉ có 1-2 ngày lẻ loi).
+//    Ví dụ: 16/08/2026 là Chủ nhật → Tuần 1 = 16/08 (1 ngày lẻ) gộp với tuần 17-23/08 = 16→23/08.
+//  · Phần lẻ CUỐI chu kỳ (từ đầu tuần lịch chứa ngày 15 đến hết ngày 15, nếu 15 không rơi đúng CN)
+//    → GỘP VÀO tuần lịch liền trước để thành "Tuần cuối".
+//    Ví dụ: 15/09/2026 là Thứ Ba → phần lẻ 14-15/09 gộp với tuần 07-13/09 = 07→15/09.
 function fixedWeekEndDates(mk) {
   const cycleStart = cycleStartOf(mk);
   const cycleEnd = cycleEndOf(mk);
-  const y0 = cycleStart.getFullYear(), m0 = cycleStart.getMonth();
-  const y1 = cycleEnd.getFullYear(), m1 = cycleEnd.getMonth();
-  const ends = [
-    new Date(y0, m0, 22),
-    new Date(y0, m0, 29),
-    new Date(y1, m1, 6),
-    new Date(y1, m1, 15)
-  ];
-  return ends.map(d => {
+
+  // dow: 0=CN,1=T2,...,6=T7 → quy đổi sang "số ngày kể từ Thứ 2" (Thứ 2=0 ... Chủ nhật=6)
+  const mondayIdx = (d) => (d.getDay() + 6) % 7;
+
+  // Ngày Chủ nhật kết thúc tuần lịch chứa `d`
+  const sundayOfWeek = (d) => { const r = new Date(d); r.setDate(r.getDate() + (6 - mondayIdx(d))); return r; };
+  // Ngày Thứ 2 bắt đầu tuần lịch chứa `d`
+  const mondayOfWeek = (d) => { const r = new Date(d); r.setDate(r.getDate() - mondayIdx(d)); return r; };
+
+  // Danh sách mốc KẾT THÚC của từng tuần lịch (Chủ nhật), bắt đầu từ tuần lịch chứa cycleStart,
+  // cho đến khi vượt quá cycleEnd.
+  const weekEnds = [];
+  let cur = sundayOfWeek(cycleStart);
+  while (cur < cycleEnd) {
+    weekEnds.push(new Date(cur));
+    cur = new Date(cur); cur.setDate(cur.getDate() + 7);
+  }
+  weekEnds.push(new Date(cur)); // mốc tuần lịch cuối cùng (>= cycleEnd)
+
+  // Nếu ngày 16 KHÔNG phải Thứ 2 → tuần lịch đầu tiên chỉ có vài ngày lẻ (16 → hết tuần đó).
+  // Gộp mốc đầu tiên này vào mốc thứ 2 (bỏ mốc đầu) để thành "Tuần 1" đủ dài hơn.
+  if (mondayIdx(cycleStart) !== 0 && weekEnds.length > 1) weekEnds.shift();
+
+  // Nếu ngày 15 (cycleEnd) KHÔNG phải Chủ nhật → tuần lịch cuối cùng chỉ có vài ngày lẻ
+  // (đầu tuần đó → 15). Gộp mốc áp chót vào mốc cuối (bỏ mốc áp chót) để thành "Tuần cuối" đủ dài hơn.
+  if (mondayIdx(cycleEnd) !== 6 && weekEnds.length > 1) weekEnds.splice(weekEnds.length - 2, 1);
+
+  // Luôn đảm bảo mốc cuối cùng = đúng cycleEnd (ngày 15), và không có mốc nào vượt quá phạm vi chu kỳ.
+  return weekEnds.map(d => {
     if (d < cycleStart) return new Date(cycleStart);
     if (d > cycleEnd) return new Date(cycleEnd);
     return d;
-  });
+  }).map((d,i,arr) => i === arr.length-1 ? new Date(cycleEnd) : d);
 }
 
 function collectDataDates(mk) {
@@ -3404,8 +3431,8 @@ function renderEmployeeWlbTable(theadId, tbodyId, rows) {
     <td style="color:var(--text2)">${r.dept||'—'}</td>
     <td style="font-family:var(--font-mono)">${r.ot}h</td>
     <td style="font-family:var(--font-mono)">${r.off}</td>
-    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}">${r.wlb??'—'}</td>
-    <td>${wlbBadge(r.wlb)}</td></tr>`).join('') ||
+    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.wlb??(r.ot===0?'N/A':'—')}</td>
+    <td>${r.ot===0 ? '<span style="color:var(--text3);font-size:11.5px" title="NV không phát sinh OT trong kỳ này — không có cơ sở để đánh giá WLB">— (không có OT)</span>' : wlbBadge(r.wlb)}</td></tr>`).join('') ||
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy nhân viên phù hợp.</td></tr>';
 }
 
@@ -3660,22 +3687,24 @@ function renderWlb() {
     renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', empRowsM);
 
   } else {
-    // ── TAB QUARTER — quý lịch chuẩn ──
-    // Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12.
-    // CHỈ hiện quý ĐỦ CẢ 3 tháng (có trong allMks). Thiếu tháng nào → ẩn quý đó
-    // (vd Q3 chỉ có Jul/Aug, chưa có Sep → không liệt kê).
-    const qKeys = [...new Set(allMks.map(quarterKeyOf))]
-      .sort()
-      .filter(qk => monthsInQuarterKey(qk).every(mk => allMks.includes(mk)));
-    const qLabel = {};
-    qKeys.forEach(qk => { qLabel[qk] = fmtQK(qk); });
-    const qMks = (qk) => allMks.filter(mk => quarterKeyOf(mk) === qk);
+    // ── TAB QUARTER — WLB tính theo Quý kiểu CHỒNG LẤP 3 tháng liên tiếp (KHÔNG phải quý lịch
+    // chuẩn Jan-Mar/Apr-Jun) — đúng theo công thức Excel công ty cung cấp:
+    //   Quý 1 = tháng 1+2+3, Quý 2 = tháng 3+4+5, Quý 3 = tháng 5+6+7...
+    // (tháng cuối của quý trước = tháng đầu của quý sau, mỗi quý lùi lại 2 tháng so với quý trước).
+    const wlbQGroups = [];
+    for (let i = 0; i + 2 < allMks.length; i += 2) {
+      const mks = [allMks[i], allMks[i+1], allMks[i+2]];
+      wlbQGroups.push({ key: 'RQ'+(wlbQGroups.length+1), label: `Quý ${wlbQGroups.length+1} (${fmtMK(mks[0])} – ${fmtMK(mks[2])})`, mks });
+    }
+    const qKeys = wlbQGroups.map(g => g.key);
+    const qLabel = {}; wlbQGroups.forEach(g => { qLabel[g.key] = g.label; });
+    const qMks = (qk) => (wlbQGroups.find(g => g.key === qk) || {mks:[]}).mks;
 
     const sel = document.getElementById('wlbQtrSel');
     const prevQk = sel.value;
     sel.innerHTML = qKeys.map(qk =>
       `<option value="${qk}">${qLabel[qk]}</option>`
-    ).join('') || '<option value="">— Chưa có quý nào đủ 3 tháng —</option>';
+    ).join('') || '<option value="">— Chưa có dữ liệu (cần tối thiểu 3 tháng dữ liệu) —</option>';
     if (qKeys.includes(prevQk)) sel.value = prevQk;
     else sel.value = qKeys[qKeys.length - 1] || '';
     const selQk = sel.value;
