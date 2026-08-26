@@ -822,6 +822,30 @@
       <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
     </div>
   </div>
+
+  <!-- Upload Excel WLB riêng (OT List + Off-Day List) -->
+  <div class="card settings-subcard ac-top ac-green">
+    <div class="card-title">🟢 Upload file WLB chính xác <span style="font-size:11.5px;font-weight:400;color:var(--text2)">— khuyến nghị dùng thay cho 2 mục upload phía trên</span></div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
+      Dùng <strong>đúng 1 file Excel</strong> chứa <strong>2 sheet: "OT List" và "Off-Day List"</strong> (định dạng "LIST OF STAFF UNDER MONITORING") — mỗi sheet có các cột <strong>Jan, Feb, Mar...</strong> ghi số giờ OT / giờ Off Day của từng nhân viên theo <strong>đúng tháng dương lịch</strong>.<br>
+      <strong>Vì sao nên dùng file này thay vì 2 mục ở trên?</strong> Cách upload OT (theo chu kỳ lương 16→15) và Off Day (theo tháng dương lịch) riêng biệt trước đây có thể bị <strong>lệch ngày</strong> giữa 2 nguồn, khiến WLB tính sai. File này có cả OT và Off Day cùng nằm trong 1 file, cùng tính theo tháng dương lịch — đảm bảo luôn khớp đúng.<br>
+      Sau khi upload, dữ liệu từ file này sẽ được <strong>ưu tiên dùng cho mọi tính toán WLB</strong> (tháng nào có trong file) — các trang OT/Đi trễ khác không bị ảnh hưởng.
+    </div>
+    <div class="up-zone" onclick="document.getElementById('fiWlbXls').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <div class="ut">Upload file WLB (Excel — 2 sheet OT List + Off-Day List)</div>
+      <div class="us">.xlsx · .xls</div>
+    </div>
+    <input type="file" id="fiWlbXls" accept=".xlsx,.xls" style="display:none" onchange="handleWlbMonthlyExcel(this)">
+    <div id="wlbXlsLog" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+    <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);display:flex;gap:10px;align-items:center">
+      <button class="btn btn-danger" onclick="if(confirm('Xóa toàn bộ dữ liệu WLB từ file Excel? Không thể khôi phục!')){WLB_XLS={year:new Date().getFullYear(),employees:{}};saveWlbXls();document.getElementById('wlbXlsLog').textContent='Đã xoá.';renderWlbSummary();renderWlb();toast('Đã xoá dữ liệu WLB Excel');}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        Xóa dữ liệu WLB Excel
+      </button>
+      <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
+    </div>
+  </div>
 </div>
 
 <!-- ====== REPORT (Xuất báo cáo) ====== -->
