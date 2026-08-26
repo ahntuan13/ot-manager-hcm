@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.17';
+const APP_VERSION = '2026.18';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -771,6 +771,7 @@ function getAllDepts() {
 function getAllDeptsForWlb() {
   const s = new Set(getAllDepts());
   Object.values(OFF_DB).forEach(m => Object.keys(m.depts || {}).forEach(d => { if (d) s.add(d); }));
+  wlbXlsAllDepts().forEach(d => s.add(d));
   return [...s].sort();
 }
 
@@ -3315,9 +3316,194 @@ async function handleOffDayFile(inp) {
   toast(totalCnt ? `Upload Off Day thành công! (${mArr.length} tháng)` : 'Lỗi đọc file Off Day');
 }
 
+// ============================================================
+//  WLB — NGUỒN DỮ LIỆU RIÊNG TỪ FILE EXCEL "OT List" + "Off-Day List"
+// ============================================================
+// QUAN TRỌNG: WLB tính từ CHÍNH file Excel công ty cung cấp (2 sheet: "OT List" và "Off-Day
+// List"), theo ĐÚNG THÁNG DƯƠNG LỊCH (Jan, Feb, Mar...) cho CẢ 2 chỉ số OT và Off Day —
+// KHÔNG dùng chu kỳ lương 16→15 như OT theo dõi ở các trang khác, và KHÔNG suy ra OT từ dữ liệu
+// chấm công hàng ngày. Lý do: nếu OT lấy từ chu kỳ 16-15 (DB) còn Off Day lấy theo tháng dương
+// lịch (OFF_DB cũ), 2 số liệu bị LỆCH NGÀY so với nhau, khiến tỷ lệ WLB tính sai. Dùng cùng 1
+// file Excel cho cả OT lẫn Off Day đảm bảo 2 số liệu luôn khớp đúng cùng 1 khoảng thời gian.
+const WLB_XLS_KEY = 'ot_manager_wlb_xls_v1';
+let WLB_XLS = { year: new Date().getFullYear(), employees: {} }; // employees[staffCode] = {name,dept,position,ot:{1..12},off:{1..12}}
+
+function saveWlbXls() { try { localStorage.setItem(WLB_XLS_KEY, JSON.stringify(WLB_XLS)); } catch(e) {} }
+function loadWlbXls() {
+  try { const raw = localStorage.getItem(WLB_XLS_KEY); if (raw) WLB_XLS = JSON.parse(raw); } catch(e) {}
+}
+
+const MONTH_SHORT_EN = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const MONTH_NAMES_VI = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+// Dò 1 sheet: tìm dòng header có tên tháng (Jan/Feb/Mar...), rồi cột Staff Code / Name / Dept —
+// dùng chung cho cả OT List lẫn Off-Day List vì 2 sheet có cấu trúc rất giống nhau.
+function parseMonthlySheet(ws) {
+  const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+  const aoaText = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:null});
+  let year = new Date().getFullYear();
+  for (let r = 0; r < Math.min(5, aoaText.length); r++) {
+    for (const cell of (aoaText[r]||[])) {
+      const m = String(cell||'').match(/20\d{2}/);
+      if (m) { year = parseInt(m[0]); break; }
+    }
+  }
+  let headerRowIdx = -1, monthCols = {}, codeCol = -1, nameCol = -1, deptCol = -1, positionCol = -1;
+  for (let r = 0; r < Math.min(12, aoaText.length); r++) {
+    const row = aoaText[r] || [];
+    const monthHits = row.filter(c => MONTH_SHORT_EN.includes(String(c||'').trim().toLowerCase().slice(0,3))).length;
+    if (monthHits >= 3) {
+      headerRowIdx = r;
+      row.forEach((cell, ci) => {
+        const s = String(cell||'').trim().toLowerCase();
+        const mIdx = MONTH_SHORT_EN.indexOf(s.slice(0,3));
+        if (mIdx >= 0 && !(ci in monthCols)) monthCols[ci] = mIdx + 1;
+        if (/staff.{0,2}code|mã.{0,2}nv|msnv/i.test(s)) codeCol = ci;
+        if (/staff.{0,2}name|họ.{0,2}tên|ho.{0,2}ten/i.test(s)) nameCol = ci;
+        if (/^dept\.?$|phòng ban|phong ban/i.test(s)) deptCol = ci;
+        if (/position|chức vụ|chuc vu/i.test(s)) positionCol = ci;
+      });
+      if (codeCol < 0 && aoaText[r+2]) {
+        aoaText[r+2].forEach((cell, ci) => { if (/^[A-Z]?\d{4,6}$|^S\d{4,6}$|^H\d{4,6}$/i.test(String(cell||'').trim())) codeCol = ci; });
+      }
+      if (nameCol < 0 && codeCol >= 0) nameCol = codeCol + 1;
+      break;
+    }
+  }
+  if (headerRowIdx < 0 || !Object.keys(monthCols).length) return null;
+  const rows = [];
+  for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+    const rowText = aoaText[r] || [];
+    const row = aoa[r] || [];
+    const code = codeCol >= 0 ? String(rowText[codeCol]||'').trim() : '';
+    const name = nameCol >= 0 ? String(rowText[nameCol]||'').trim() : '';
+    if (!name && !code) continue;
+    const dept = deptCol >= 0 ? String(rowText[deptCol]||'').trim() : '';
+    const position = positionCol >= 0 ? String(rowText[positionCol]||'').trim() : '';
+    const byMonth = {};
+    for (const [colIdxStr, monthNum] of Object.entries(monthCols)) {
+      const raw = row[parseInt(colIdxStr)];
+      if (raw === null || raw === undefined || raw === '') continue;
+      const val = parseFloat(String(raw).replace(/[^\d.\-]/g,''));
+      if (!isNaN(val)) byMonth[monthNum] = val;
+    }
+    rows.push({ code, name: name||code, dept, position, byMonth });
+  }
+  return { year, rows };
+}
+
+async function handleWlbMonthlyExcel(inp) {
+  const files = Array.from(inp.files || []);
+  if (!files.length) return;
+  let otRows = null, offRows = null, year = WLB_XLS.year;
+
+  for (const file of files) {
+    const bin = await new Promise((res,rej) => {
+      const r = new FileReader(); r.onload = e=>res(e.target.result); r.onerror=rej; r.readAsBinaryString(file);
+    });
+    try {
+      const wb = XLSX.read(bin, {type:'binary'});
+      let otSheetName = null, offSheetName = null;
+      wb.SheetNames.forEach(sn => {
+        if (/^ot\s*list$|ot.?list/i.test(sn)) otSheetName = sn;
+        if (/off.?day.?list|off.?day/i.test(sn)) offSheetName = sn;
+      });
+      if (otSheetName) { const parsed = parseMonthlySheet(wb.Sheets[otSheetName]); if (parsed) { otRows = parsed.rows; year = parsed.year; } }
+      if (offSheetName) { const parsed = parseMonthlySheet(wb.Sheets[offSheetName]); if (parsed) { offRows = parsed.rows; year = parsed.year; } }
+    } catch(e) { console.error('WLB excel parse error:', e); toast('Lỗi đọc file: ' + e.message); }
+  }
+  inp.value = '';
+
+  if (!otRows && !offRows) {
+    document.getElementById('wlbXlsLog').textContent = '❌ Không tìm thấy sheet "OT List" hoặc "Off-Day List" hợp lệ trong file.';
+    toast('Không đọc được file — cần đúng 2 sheet "OT List" và "Off-Day List"');
+    return;
+  }
+
+  WLB_XLS = { year, employees: {} };
+  const ensure = (code, name, dept, position) => {
+    const key = code || ('N:'+name);
+    if (!WLB_XLS.employees[key]) WLB_XLS.employees[key] = { name, code, dept: dept||'', position: position||'', ot:{}, off:{} };
+    if (dept && !WLB_XLS.employees[key].dept) WLB_XLS.employees[key].dept = dept;
+    return WLB_XLS.employees[key];
+  };
+  (otRows||[]).forEach(r => { const e = ensure(r.code, r.name, r.dept, r.position); Object.assign(e.ot, r.byMonth); });
+  (offRows||[]).forEach(r => { const e = ensure(r.code, r.name, r.dept, r.position); Object.assign(e.off, r.byMonth); });
+
+  saveWlbXls();
+  const empCount = Object.keys(WLB_XLS.employees).length;
+  const monthsWithData = new Set();
+  Object.values(WLB_XLS.employees).forEach(e => {
+    Object.keys(e.ot).forEach(m=>monthsWithData.add(+m));
+    Object.keys(e.off).forEach(m=>monthsWithData.add(+m));
+  });
+  const mArr = [...monthsWithData].sort((a,b)=>a-b);
+  document.getElementById('wlbXlsLog').textContent = empCount
+    ? `✅ Đã đọc ${empCount} nhân viên · năm ${year} · ${mArr.length} tháng có dữ liệu: ${mArr.map(m=>MONTH_NAMES_VI[m-1]).join(', ')}${!otRows?' ⚠️ thiếu sheet OT List':''}${!offRows?' ⚠️ thiếu sheet Off-Day List':''}`
+    : '❌ Không đọc được dữ liệu nhân viên nào.';
+  renderWlbSummary();
+  renderWlb();
+  toast(empCount ? `Upload WLB Excel thành công! (${empCount} NV, năm ${year})` : 'Lỗi đọc file WLB Excel');
+}
+
+// ── Hàm tính toán trên WLB_XLS (dùng cho toàn bộ trang WLB) ──
+function wlbXlsAllDepts() {
+  const set = new Set();
+  Object.values(WLB_XLS.employees).forEach(e => { if (e.dept) set.add(e.dept); });
+  return [...set].sort();
+}
+function wlbXlsMonthsWithData() {
+  const set = new Set();
+  Object.values(WLB_XLS.employees).forEach(e => {
+    Object.keys(e.ot).forEach(m=>set.add(+m));
+    Object.keys(e.off).forEach(m=>set.add(+m));
+  });
+  return [...set].sort((a,b)=>a-b);
+}
+function wlbXlsTotalOT(monthNum, dept) {
+  return Object.values(WLB_XLS.employees)
+    .filter(e => !dept || dept==='__all__' || e.dept===dept)
+    .reduce((s,e)=> s + (e.ot[monthNum]||0), 0);
+}
+function wlbXlsTotalOff(monthNum, dept) {
+  return Object.values(WLB_XLS.employees)
+    .filter(e => !dept || dept==='__all__' || e.dept===dept)
+    .reduce((s,e)=> s + (e.off[monthNum]||0), 0);
+}
+// Nhóm Quý kiểu CHỒNG LẤP 3 tháng liên tiếp, đúng công thức Excel: Q1=T1+T2+T3, Q2=T3+T4+T5...
+function wlbXlsQuarterGroups() {
+  const months = wlbXlsMonthsWithData();
+  const groups = [];
+  for (let i = 0; i + 2 < months.length; i += 2) {
+    const ms = [months[i], months[i+1], months[i+2]];
+    groups.push({ key:'RQ'+(groups.length+1), label:`Quý ${groups.length+1} (${MONTH_NAMES_VI[ms[0]-1]}–${MONTH_NAMES_VI[ms[2]-1]})`, months: ms });
+  }
+  return groups;
+}
+// Trả về danh sách "mk" (định dạng YYYY-MM) tương ứng các tháng có dữ liệu trong WLB_XLS —
+// để gộp vào allMks của trang WLB, đảm bảo dropdown tháng vẫn hiện đủ dù người dùng CHỈ
+// upload file Excel WLB (chưa có dữ liệu OT/Off Day nào khác).
+function wlbXlsMks() {
+  return wlbXlsMonthsWithData().map(m => `${WLB_XLS.year}-${String(m).padStart(2,'0')}`);
+}
+// Kiểm tra "đã có dữ liệu Off Day cho tháng này chưa" — tính cả 2 nguồn (OFF_DB cũ hoặc
+// WLB_XLS mới) để không báo nhầm "chưa có Off Day" khi dữ liệu thực ra đến từ file Excel WLB.
+function hasOffDataForMk(mk) {
+  if (OFF_DB[mk]) return true;
+  const monthNum = parseInt(String(mk).split('-')[1], 10);
+  return Object.keys(WLB_XLS.employees).length > 0 && wlbXlsMonthsWithData().includes(monthNum);
+}
+
 // Lấy tổng số ngày Off cho 1 tháng, 1 phòng ban.
 // Hỗ trợ cả 2 format: offTotal (monthly summary) và days[] (daily format cũ).
 function getOffDays(mk, deptFilter) {
+  // Ưu tiên dữ liệu từ file Excel WLB (OT List + Off-Day List) nếu đã upload — vì đây là
+  // nguồn ĐÚNG THÁNG DƯƠNG LỊCH khớp chính xác với OT cùng file, tránh lệch ngày so với
+  // cách tính cũ (Off Day theo tháng dương lịch nhưng OT theo chu kỳ lương 16→15).
+  const monthNum = parseInt(String(mk).split('-')[1], 10);
+  if (Object.keys(WLB_XLS.employees).length && wlbXlsMonthsWithData().includes(monthNum)) {
+    return Math.round(wlbXlsTotalOff(monthNum, deptFilter)*10)/10;
+  }
   const m = OFF_DB[mk]; if (!m) return 0;
   const names = (deptFilter && deptFilter !== '__all__') ? (m.depts[deptFilter] || []) : m.names;
   return names.reduce((s, n) => {
@@ -3327,6 +3513,11 @@ function getOffDays(mk, deptFilter) {
 }
 
 function getTotalOT(mk, deptFilter) {
+  // Ưu tiên OT từ file Excel WLB (cùng nguồn với Off Day, cùng tháng dương lịch) nếu đã upload.
+  const monthNum = parseInt(String(mk).split('-')[1], 10);
+  if (Object.keys(WLB_XLS.employees).length && wlbXlsMonthsWithData().includes(monthNum)) {
+    return Math.round(wlbXlsTotalOT(monthNum, deptFilter)*10)/10;
+  }
   if (!DB[mk]) return 0;
   // Ưu tiên getTotals (theo period/snapshot) khi có; nếu tháng chưa có snapshot thì
   // fallback totalOf trực tiếp — tránh WLB Tháng ra 0h dù So sánh OT vẫn hiện số tháng đó.
@@ -3384,7 +3575,25 @@ function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</sp
 // NV không đạt (WLB cao nhất) lên đầu để quản lý dễ xem ai cần chú ý trước.
 function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
   const rowsMap = {};
+  const hasXls = Object.keys(WLB_XLS.employees).length > 0;
   mks.forEach(mk => {
+    const monthNum = parseInt(String(mk).split('-')[1], 10);
+    const useXlsForThisMonth = hasXls && wlbXlsMonthsWithData().includes(monthNum);
+
+    if (useXlsForThisMonth) {
+      // Nguồn ĐÚNG (Excel WLB) cho tháng này — cả OT và Off Day cùng khớp 1 nguồn, 1 khoảng thời gian.
+      Object.values(WLB_XLS.employees).forEach(e => {
+        const key = e.code ? ('C:'+e.code) : ('N:'+e.name);
+        if (!rowsMap[key]) rowsMap[key] = { name:e.name, code:e.code||'', dept:e.dept||'', ot:0, off:0 };
+        rowsMap[key].ot += (e.ot[monthNum]||0);
+        rowsMap[key].off += (e.off[monthNum]||0);
+        if (!rowsMap[key].dept && e.dept) rowsMap[key].dept = e.dept;
+        if (e.code && !rowsMap[key].code) rowsMap[key].code = e.code;
+      });
+      return;
+    }
+
+    // Fallback: nguồn cũ (DB theo chấm công hàng ngày + OFF_DB theo tháng dương lịch riêng).
     if (DB[mk]) {
       DB[mk].names.forEach(n => {
         const e = DB[mk].employees[n]; if (!e) return;
@@ -3412,7 +3621,7 @@ function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
     const q = searchTerm.trim().toLowerCase();
     if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || (r.code||'').toLowerCase().includes(q));
   }
-  rows.forEach(r => { r.ot = Math.round(r.ot); r.off = Math.round(r.off); r.wlb = wlbRatio(r.off, r.ot); });
+  rows.forEach(r => { r.wlb = wlbRatio(r.off, r.ot); r.ot = Math.round(r.ot*10)/10; r.off = Math.round(r.off*10)/10; });
   rows.sort((a,b) => {
     if (a.wlb===null && b.wlb===null) return a.name.localeCompare(b.name);
     if (a.wlb===null) return 1;
@@ -3450,7 +3659,7 @@ function refreshWlbEmpTableQtr() {
   if (!selQk) return;
   const offKeys = Object.keys(OFF_DB).sort();
   const otKeys  = Object.keys(DB).sort();
-  const allMks  = [...new Set([...offKeys,...otKeys])].sort();
+  const allMks  = [...new Set([...offKeys,...otKeys,...wlbXlsMks()])].sort();
   const mks = allMks.filter(mk => quarterKeyOf(mk) === selQk);
   const df = document.getElementById('wlbEmpQtrDept')?.value || '__all__';
   const q = document.getElementById('wlbEmpQtrSearch')?.value || '';
@@ -3460,7 +3669,7 @@ function refreshWlbEmpTableQtr() {
 function renderWlb() {
   const offKeys = Object.keys(OFF_DB).sort();
   const otKeys  = Object.keys(DB).sort();
-  const allMks  = [...new Set([...offKeys,...otKeys])].sort();
+  const allMks  = [...new Set([...offKeys,...otKeys,...wlbXlsMks()])].sort();
   const allDepts = getAllDeptsForWlb();
   const THRESHOLD = WLB_THRESHOLD;
   const EMPTY = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Upload file OT và Off Day để bắt đầu.</td></tr>';
@@ -3495,9 +3704,9 @@ function renderWlb() {
     // user chủ động đổi tháng (dù tháng đó chưa có Off Day).
     const sel = document.getElementById('wlbMonthSel');
     const prevMk = sel.value;
-    const withOff = allMks.filter(mk => OFF_DB[mk]);
+    const withOff = allMks.filter(mk => hasOffDataForMk(mk));
     const withBoth = withOff.filter(mk => DB[mk]);
-    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${OFF_DB[mk]?'':' ⚠️ (chưa có Off Day)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${hasOffDataForMk(mk)?'':' ⚠️ (chưa có Off Day)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
     if (prevMk && allMks.includes(prevMk)) {
       sel.value = prevMk;
     } else {
@@ -3610,7 +3819,7 @@ function renderWlb() {
     // Chỉ dùng tháng ĐÃ CÓ Off Day (khớp với bảng bên dưới) — tránh vẽ đường WLB=0 giả cho tháng
     // chưa upload Off Day (trước đây dùng allMks khiến đường kẻ bị kéo về 0 sai lệch).
     killWlbChart('cWlbMonthCmp');
-    const cmpMks = allMks.filter(mk => OFF_DB[mk]);
+    const cmpMks = allMks.filter(mk => hasOffDataForMk(mk));
     document.getElementById('wlbMonthCmpLeg').innerHTML =
       allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
     const cmpEmptyEl = document.getElementById('cWlbMonthCmpEmpty');
@@ -3644,7 +3853,7 @@ function renderWlb() {
     document.getElementById('wlbMonthTHead').innerHTML =
       `<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const rows = [];
-    const mksWithOff = allMks.filter(mk => OFF_DB[mk]);
+    const mksWithOff = allMks.filter(mk => hasOffDataForMk(mk));
     mksWithOff.forEach(mk => {
       // Dòng tổng công ty
       const coOT = Math.round(getTotalOT(mk,'__all__')); const coOff = Math.round(getOffDays(mk,'__all__'));
@@ -3714,7 +3923,7 @@ function renderWlb() {
     // ── Biểu đồ 1: Grouped bar — OT + Off quý đang chọn, từng phòng ban ──
     if (selQk && allDepts.length) {
       const mks = qMks(selQk);
-      const hasOffInQtr = mks.some(mk => OFF_DB[mk]);
+      const hasOffInQtr = mks.some(mk => hasOffDataForMk(mk));
       const otData  = allDepts.map(d => Math.round(mks.reduce((s,mk)=>s+getTotalOT(mk,d),0)));
       const offData = allDepts.map(d => Math.round(mks.reduce((s,mk)=>s+getOffDays(mk,d),0)));
       const wlbData = allDepts.map((d,i) => wlbRatio(offData[i], otData[i]));
@@ -3780,7 +3989,7 @@ function renderWlb() {
       `<tr><th>Quý</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const qRows = [];
     qKeys.forEach(qk => {
-      const mks = qMks(qk).filter(mk => OFF_DB[mk]);
+      const mks = qMks(qk).filter(mk => hasOffDataForMk(mk));
       if (!mks.length) return; // quý này chưa có tháng nào đủ dữ liệu Off Day
       // Dòng tổng công ty
       const coOT = Math.round(mks.reduce((s,mk)=>s+getTotalOT(mk,'__all__'),0));
@@ -4196,7 +4405,7 @@ function renderLate() {
 
   // ── Chart 3: Top NV đi trễ nhiều nhất — stacked 2 mốc (chủ yếu là Mốc 1: <15p) ──
   killLateChart('cLateBar');
-  const topLate = sortedByMin.filter(t=>t.count>0)
+  const topLate = sortedByMin.filter(t=>(t.t1Count+t.t2Count)>0)
     .sort((a,b)=>(b.t1Count+b.t2Count)-(a.t1Count+a.t2Count)).slice(0,20);
   document.getElementById('lateBarTitle').textContent = topLate.length
     ? `Nhân viên đi trễ nhiều nhất — ${fmtMK(activeLateMK)}`
@@ -4427,6 +4636,7 @@ function init() {
     const lm = Object.keys(LATE_DB).sort();
     if (lm.length) activeLateMK = lm[lm.length-1];
     loadOffDB();
+    loadWlbXls();
     rebuildLateUI();
     renderWlbSummary();
     document.getElementById('loadingState').style.display = 'none';
