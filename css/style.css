@@ -487,3 +487,11 @@
     .top-header { padding: 10px 14px; border-radius: 12px; }
     .main-panel { padding: 14px 14px 18px; border-radius: 12px; }
   }
+
+  /* Action Plan — hàng bị ECM/HODs Từ chối nhấp nháy đỏ để dễ nhận biết ngay */
+  @keyframes rowRejectBlink {
+    0%, 100% { background-color: rgba(192,57,43,0.14); }
+    50%      { background-color: rgba(192,57,43,0.32); }
+  }
+  tr.row-rejected { animation: rowRejectBlink 1.4s ease-in-out infinite; }
+  tr.row-rejected td { border-color: rgba(192,57,43,0.35) !important; }
