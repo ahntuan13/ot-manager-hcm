@@ -133,6 +133,7 @@
   .card.ac-green::before { background: var(--green); }
   .card.ac-amber::before { background: var(--amber); }
   .card.ac-red::before { background: var(--red); }
+  .card.ac-purple::before { background: #6B4FA0; }
   .card-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.005em; }
 
   /* METRICS */
