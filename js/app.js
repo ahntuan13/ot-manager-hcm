@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.18';
+const APP_VERSION = '2026.19';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -3308,7 +3308,8 @@ async function handleOffDayFile(inp) {
   inp.value = '';
   saveOffDB();
   const mArr = [...allMonths].sort();
-  document.getElementById('offDayLog').textContent = totalCnt
+  const logEl = document.getElementById('offDayLog');
+  if (logEl) logEl.textContent = totalCnt
     ? `✅ Đã đọc ${totalCnt} bản ghi · ${mArr.length} tháng: ${mArr.map(fmtMK).join(', ')}`
     : '❌ Không đọc được — kiểm tra file có sheet "Off-Day List" và cột tháng (Jan, Feb...).';
   renderWlbSummary();
@@ -3335,6 +3336,28 @@ function loadWlbXls() {
 
 const MONTH_SHORT_EN = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const MONTH_NAMES_VI = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+// Chuẩn hoá tên phòng ban từ file Excel (tên đầy đủ tiếng Việt, có thể viết hoa/thường khác nhau
+// giữa các dòng) về đúng MÃ NGẮN đã dùng thống nhất khắp app (S-AD, S-AZ...) — theo đúng bảng
+// quy đổi công ty cung cấp. So khớp không phân biệt hoa/thường và khoảng trắng thừa.
+const DEPT_NAME_MAP = {
+  'phong hanh chinh tong hop': 'S-AD',
+  'phong hse': 'S-AZ',
+  'phong thiet ke - du toan': 'S-ED',
+  'phong thiet ke du toan': 'S-ED',
+  'phong kinh doanh': 'S-PD',
+  'phong cung ung': 'S-PU',
+  'phong qa/qc': 'S-QC',
+  'phong qa qc': 'S-QC',
+  'phong xay dung': 'HCM-EC',
+};
+function normalizeDeptName(raw) {
+  const s = String(raw||'').trim();
+  if (!s) return s;
+  // Bỏ dấu tiếng Việt + hạ chữ thường + gộp khoảng trắng, để so khớp không phân biệt hoa/thường/dấu.
+  const key = s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/đ/gi,'d').replace(/\s+/g,' ').trim();
+  return DEPT_NAME_MAP[key] || s; // không khớp → giữ nguyên tên gốc (phòng ban lạ, không tự đoán)
+}
 
 // Dò 1 sheet: tìm dòng header có tên tháng (Jan/Feb/Mar...), rồi cột Staff Code / Name / Dept —
 // dùng chung cho cả OT List lẫn Off-Day List vì 2 sheet có cấu trúc rất giống nhau.
@@ -3378,7 +3401,7 @@ function parseMonthlySheet(ws) {
     const code = codeCol >= 0 ? String(rowText[codeCol]||'').trim() : '';
     const name = nameCol >= 0 ? String(rowText[nameCol]||'').trim() : '';
     if (!name && !code) continue;
-    const dept = deptCol >= 0 ? String(rowText[deptCol]||'').trim() : '';
+    const dept = normalizeDeptName(deptCol >= 0 ? String(rowText[deptCol]||'').trim() : '');
     const position = positionCol >= 0 ? String(rowText[positionCol]||'').trim() : '';
     const byMonth = {};
     for (const [colIdxStr, monthNum] of Object.entries(monthCols)) {
@@ -4082,8 +4105,10 @@ function getLateTotals(mk, deptFilter, dateRange) {
       const count = dayVals.length;
       const t1Vals = dayVals.filter(v => v < 15);           // Mốc 1: dưới 15 phút
       const t2Vals = dayVals.filter(v => v >= 30);          // Mốc 2: từ 30 phút trở lên
+      const midVals = dayVals.filter(v => v >= 5 && v < 30); // Trễ 5–29 phút (không cần xin phép) — dùng cho tỷ lệ % phòng ban đi trễ
       const t1Count = t1Vals.length, t1Min = t1Vals.reduce((a,b)=>a+b,0);
       const t2Count = t2Vals.length, t2Min = t2Vals.reduce((a,b)=>a+b,0);
+      const midCount = midVals.length, midMin = midVals.reduce((a,b)=>a+b,0);
       const needsNote = t2Count; // ≥30 phút → cần ghi chú xin phép quản lý
       // Danh sách CHÍNH XÁC những ngày bị đi trễ (chỉ liệt kê ngày có đi trễ, không phải cả lịch),
       // sắp xếp theo ngày tăng dần, kèm giờ vào thực tế (suy ngược từ số phút trễ + mốc 8:05).
@@ -4096,7 +4121,7 @@ function getLateTotals(mk, deptFilter, dateRange) {
         const timeLabel = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
         return { iso, label: `${da}/${mo}`, min: lateMin, time: timeLabel };
       });
-      return { name:n, dept:e.dept, code:e.code||'', totalMin, count, t1Count, t1Min, t2Count, t2Min, needsNote, lateDates };
+      return { name:n, dept:e.dept, code:e.code||'', totalMin, count, t1Count, t1Min, t2Count, t2Min, midCount, midMin, needsNote, lateDates };
     });
 }
 
@@ -4348,7 +4373,7 @@ function renderLate() {
   document.getElementById('lateRateTBody').innerHTML = LATE_DEPT_LIST.map(d => {
     const dTotals = getLateTotals(activeLateMK, d);
     const nvCount = dTotals.length;
-    const lateNv = dTotals.filter(t=>t.totalMin>0).length;
+    const lateNv = dTotals.filter(t=>t.midCount>0).length;
     const pct = nvCount ? Math.round(lateNv/nvCount*100) : 0;
     const pc = pct>=50 ? '#C0392B' : pct>=25 ? '#E8A33D' : '#7A9468';
     return `<tr>
@@ -4482,7 +4507,7 @@ function renderLateQuarter() {
       mks.forEach(mk => {
         getLateTotals(mk, d).forEach(t => {
           nvSet.add(t.name);
-          if (t.totalMin > 0) lateSet.add(t.name);
+          if (t.midCount > 0) lateSet.add(t.name);
         });
       });
       const nvCount = nvSet.size;
