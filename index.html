@@ -738,12 +738,15 @@
     <div style="font-size:12px;color:var(--text2);line-height:1.7">
       Mỗi dòng là 1 <strong>dự án</strong> — nhân viên được gán vào dự án theo nơi chấm công nhiều nhất.
       Bấm vào tên dự án để xem/chỉnh danh sách nhân viên. Bấm vào "Số NV OT" để xem đúng danh sách NV đó ở trang Danh sách NV OT.
-      Các cột <strong>Kế hoạch, Lý do, Ghi chú</strong> do PM tự điền — tự động lưu lại.
+      Các cột <strong>Kế hoạch, Lý do, Ghi chú</strong> do PM tự điền — tự động lưu vào máy đang dùng.
+      <strong style="color:var(--red)">Bấm nút "💾 Lưu & Đồng bộ" bên dưới để người khác (ECM/HODs) trên máy khác cũng thấy được nội dung vừa nhập.</strong>
     </div>
-    <div class="action-row" style="margin-top:12px">
+    <div class="action-row" style="margin-top:12px;align-items:center">
       <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)</button>
       <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)</button>
+      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSave()">💾 Lưu &amp; Đồng bộ lên Sheet</button>
     </div>
+    <div id="actionPlanSyncNote" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right"></div>
   </div>
 
   <div class="card">
@@ -754,8 +757,8 @@
           <tr>
             <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
             <th style="min-width:150px">Project OT Summary</th>
-            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
             <th style="min-width:140px">Lý do by PM</th>
+            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
             <th style="min-width:170px">Duyệt bởi ECM / HODs</th>
             <th style="min-width:120px">Ghi chú</th>
           </tr>
@@ -774,8 +777,8 @@
           <tr>
             <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
             <th style="min-width:150px">Project OT Summary</th>
-            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
             <th style="min-width:140px">Lý do by PM</th>
+            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
             <th style="min-width:170px">Duyệt bởi ECM / HODs</th>
             <th style="min-width:120px">Ghi chú</th>
           </tr>
