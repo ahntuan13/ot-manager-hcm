@@ -488,7 +488,7 @@
 
   <div class="card">
     <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo tháng</div>
-    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ ÷ Tổng số NV trong phòng ban × 100%, tính trong tháng đang chọn.</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ <strong>5–29 phút</strong> (không tính lượt ≥30p cần xin phép) ÷ Tổng số NV trong phòng ban × 100%, tính trong tháng đang chọn.</div>
     <div class="tbl-wrap">
       <table style="font-size:12.5px"><thead id="lateRateTHead"></thead><tbody id="lateRateTBody"></tbody></table>
     </div>
@@ -544,7 +544,7 @@
   <div id="late-quarter" style="display:none">
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo quý</div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ (ít nhất 1 lần trong quý) ÷ Tổng số NV trong phòng ban × 100%.</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ <strong>5–29 phút</strong> (ít nhất 1 lần trong quý, không tính lượt ≥30p cần xin phép) ÷ Tổng số NV trong phòng ban × 100%.</div>
       <div class="tbl-wrap">
         <table style="font-size:12.5px"><thead id="lateQtrRateTHead"></thead><tbody id="lateQtrRateTBody"></tbody></table>
       </div>
@@ -593,9 +593,12 @@
   <div id="offDaySummary" style="margin-bottom:14px"></div>
 
   <!-- Sub-tab selector -->
-  <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);margin-bottom:16px;width:fit-content">
-    <button id="wlbTabMonth"   class="wbtn active" onclick="setWlbTab('month')"   style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
-    <button id="wlbTabQuarter" class="wbtn"         onclick="setWlbTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);width:fit-content">
+      <button id="wlbTabMonth"   class="wbtn active" onclick="setWlbTab('month')"   style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
+      <button id="wlbTabQuarter" class="wbtn"         onclick="setWlbTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
+    </div>
+    <span style="font-size:11.5px;color:var(--text2);font-style:italic">ℹ️ Dữ liệu WLB được cập nhật theo data từ nhân sự (không tự động tính từ chấm công).</span>
   </div>
 
   <!-- TAB: MONTH -->
@@ -794,30 +797,6 @@
       <button class="btn btn-danger" onclick="clearAll()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         Xóa toàn bộ dữ liệu OT
-      </button>
-      <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
-    </div>
-  </div>
-
-  <!-- Upload Off Day (WLB) -->
-  <div class="card settings-subcard">
-    <div class="card-title">Upload file Off Day <span style="font-size:11.5px;font-weight:400;color:var(--text2)">— dùng để tính WLB (Work-Life Balance)</span></div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
-      File danh sách ngày nghỉ (Off day) của nhân viên — <strong>khác với file chấm công OT</strong>. Hỗ trợ file dạng bảng tổng hợp theo tháng (mỗi NV 1 dòng, các cột <strong>Jan, Feb, Mar...</strong> ghi số ngày nghỉ của tháng đó — đúng định dạng "LIST OF STAFF UNDER MONITORING"), hoặc file dạng mỗi dòng = 1 ngày nghỉ (Staff Code, Họ tên, Phòng ban, Ngày nghỉ). Chỉ cần upload <strong>1 file duy nhất chứa tất cả các tháng</strong> — app tự tách và cộng dồn theo từng tháng.<br>
-      <strong>Tổng OT</strong> dùng để tính WLB được lấy tự động từ dữ liệu chấm công OT đã upload ở trên (không cần nhập lại) — khớp theo đúng chu kỳ lương 16→15 của từng tháng.
-    </div>
-    <div class="up-zone" onclick="document.getElementById('fiOffDay').click()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <div class="ut">Upload file Off Day (Excel)</div>
-      <div class="us">.xlsx · .xls · .csv · Có thể chọn nhiều file</div>
-    </div>
-    <input type="file" id="fiOffDay" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleOffDayFile(this)">
-    <div id="offDayLog" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
-    <div id="offDayMonths" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
-    <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);display:flex;gap:10px;align-items:center">
-      <button class="btn btn-danger" onclick="clearOffDay()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-        Xóa toàn bộ dữ liệu Off Day
       </button>
       <span style="font-size:11px;color:var(--text3)">Không thể khôi phục sau khi xóa</span>
     </div>
