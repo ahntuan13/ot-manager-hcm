@@ -333,6 +333,11 @@
       <div style="position:relative;height:260px"><canvas id="cDeptOver" role="img" aria-label="Tỷ lệ vượt giới hạn">Vượt mức.</canvas></div>
     </div>
   </div>
+  <div class="card" id="deptProjCard" style="display:none">
+    <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="deptProjChartLabel" style="font-weight:400;color:var(--text2)"></span></div>
+    <div id="cDeptProjEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho kỳ này.</div>
+    <div style="position:relative;width:100%;height:280px"><canvas id="cDeptProj" role="img">OT theo dự án.</canvas></div>
+  </div>
   <div class="card">
     <div class="card-title" style="margin-bottom:8px">
       Tổng hợp theo phòng ban — <span id="deptTableTitle" style="color:var(--text2);font-weight:400"></span>
@@ -374,6 +379,12 @@
       </div>
       <div style="position:relative;width:100%;height:240px"><canvas id="cPeriodTrend" role="img" aria-label="Tổng OT từng tuần">Tổng tuần.</canvas></div>
     </div>
+    <!-- Chart mới: OT theo dự án (HCM-EC) — theo tuần -->
+    <div class="card ac-top ac-purple">
+      <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="cmpProjWeekLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div id="cCmpProjWeekEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho tuần này.</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjWeek" role="img">OT theo dự án tuần.</canvas></div>
+    </div>
     <!-- Table -->
     <div class="card">
       <div class="card-title" style="margin-bottom:8px">Bảng chi tiết theo tuần × phòng ban</div>
@@ -396,6 +407,11 @@
       <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Giờ OT từng phòng ban theo <strong>tháng đang chọn</strong> ở dropdown phía trên (cột ngang).</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
+    </div>
+    <div class="card ac-top ac-purple">
+      <div class="card-title">🏗️ OT theo TỪNG DỰ ÁN (HCM-EC) — <span id="cmpProjMonthLabel2" style="font-weight:400;color:var(--text2)"></span></div>
+      <div id="cCmpProjMonthEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho tháng này.</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjMonth" role="img">OT theo dự án tháng.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -425,6 +441,11 @@
         <span><span style="width:18px;height:2px;background:#2D6CDF;display:inline-block;vertical-align:middle"></span>&nbsp;Tổng OT công ty (h)</span>
       </div>
       <div style="position:relative;width:100%;height:220px"><canvas id="cQtrTrend" role="img" aria-label="Xu hướng OT theo quý">Xu hướng quý.</canvas></div>
+    </div>
+    <div class="card ac-top ac-purple">
+      <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="cmpProjQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div id="cCmpProjQtrEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho quý này.</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjQtr" role="img">OT theo dự án quý.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -643,6 +664,14 @@
       <div id="cWlbMonthWrap" style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
     </div>
 
+    <!-- Biểu đồ mới: WLB từng dự án (HCM-EC) — tháng đang chọn -->
+    <div class="card ac-top ac-purple">
+      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) — <span id="wlbProjMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT, tính riêng cho từng dự án.</div>
+      <div id="cWlbProjMonthEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án đủ để tính WLB cho tháng này.</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjMonth" role="img">WLB theo dự án.</canvas></div>
+    </div>
+
     <!-- Biểu đồ 2: So sánh WLB các tháng (line chart) — từng phòng ban -->
     <div class="card ac-top ac-green">
       <div class="card-title">So sánh WLB giữa các tháng — từng phòng ban</div>
@@ -686,6 +715,14 @@
       <div class="card-title">WLB từng phòng ban — <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;10 Đạt</span> <span class="badge bd">≤10 Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
+    </div>
+
+    <!-- Biểu đồ mới: WLB từng dự án (HCM-EC) — quý đang chọn -->
+    <div class="card ac-top ac-purple">
+      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) — <span id="wlbProjQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT, tính riêng cho từng dự án.</div>
+      <div id="cWlbProjQtrEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án đủ để tính WLB cho quý này.</div>
+      <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjQtr" role="img">WLB theo dự án quý.</canvas></div>
     </div>
 
     <!-- Biểu đồ 2: So sánh WLB giữa các quý (line chart) -->
