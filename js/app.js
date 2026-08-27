@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.19';
+const APP_VERSION = '2026.20';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -749,7 +749,7 @@ function goSub(p) {
   if (p === 'dept')    renderDept();
   if (p === 'compare') renderCompare();
   if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
-  if (p === 'wlb')     { renderWlbSummary(); renderWlb(); }
+  if (p === 'wlb')     { renderWlbSummary(); if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
   // Lưới an toàn cuối cùng: dù render function ở trên có tính đúng kích thước hay không, ép TẤT
   // CẢ chart hiện có đo lại kích thước thật ngay khi trang này đã thực sự hiện ra trên màn hình.
   scheduleChartResize();
@@ -1173,7 +1173,7 @@ async function handleFile(inp) {
   }
   saveDB(); rebuildUI();
   // WLB dùng dữ liệu OT để tính → cập nhật luôn khi upload OT mới
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
   else renderWlbSummary();
 
   if (allLateMonths.size) {
@@ -1257,7 +1257,7 @@ function deleteMonth(mk) {
   const ks = Object.keys(DB).sort();
   activeMK = ks.length ? ks[ks.length-1] : null;
   saveDB(); rebuildUI(); renderSavedMonths(); renderWlbSummary();
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
   toast(`Đã xóa ${fmtMK(mk)}`);
 }
 
@@ -3070,7 +3070,7 @@ async function syncLoad() {
       rebuildUI();
       rebuildLateUI();
       renderWlbSummary();
-      if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
+      if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3157,9 +3157,12 @@ function setWlbTab(tab) {
   wlbTab = tab;
   document.getElementById('wlbTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('wlbTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('wlbTabAction').classList.toggle('active', tab==='action');
   document.getElementById('wlb-month').style.display   = tab==='month'   ? 'block' : 'none';
   document.getElementById('wlb-quarter').style.display = tab==='quarter' ? 'block' : 'none';
-  renderWlb();
+  document.getElementById('wlb-action').style.display  = tab==='action'  ? 'block' : 'none';
+  if (tab === 'action') renderActionPlan();
+  else renderWlb();
   scheduleChartResize();
 }
 
@@ -3326,6 +3329,250 @@ async function handleOffDayFile(inp) {
 // chấm công hàng ngày. Lý do: nếu OT lấy từ chu kỳ 16-15 (DB) còn Off Day lấy theo tháng dương
 // lịch (OFF_DB cũ), 2 số liệu bị LỆCH NGÀY so với nhau, khiến tỷ lệ WLB tính sai. Dùng cùng 1
 // file Excel cho cả OT lẫn Off Day đảm bảo 2 số liệu luôn khớp đúng cùng 1 khoảng thời gian.
+// ============================================================
+//  QUẢN LÝ DỰ ÁN (PROJECTS) — gán nhân viên vào dự án theo địa điểm chấm công
+// ============================================================
+// Dữ liệu khởi tạo (seed) đọc từ file chấm công chi tiết ("Địa điểm" mỗi ngày) do công ty cung
+// cấp — với mỗi NV, chọn dự án được chấm công NHIỀU NHẤT làm dự án chính. Các dự án thuộc
+// Murata Đà Nẵng / Mabuchi được gộp chung thành "HCM-CS3" theo đúng yêu cầu công ty.
+// Sau khi seed lần đầu, người dùng có thể tự thêm/xoá/đổi tên dự án và di chuyển NV — mọi thay
+// đổi được lưu vào localStorage, KHÔNG bị ghi đè lại bởi seed ở những lần mở app sau.
+const PROJECTS_SEED = {
+  "HCM-EC": {
+    "HCM AEON MT": ["S22214","S22639","S21834","S21309","S22035","S20708","S22614","S22235"],
+    "HCM CS1": ["S22632","S22529","S21802","S21636","S22610","S22010"],
+    "HCM DHG": ["S21910","S22630"],
+    "HCM HOUSE FOODS": ["S22625","S20504","S22013"],
+    "HCM LOTTE": ["S22629","S22250","S21711","S20502"],
+    "HCM MURATA BH": ["JES22402","S22212","S22408","S21304","S22204","S21825","S21202","S21101","S22040","S22623","S22518","S22514","S21714","S22240","S22615","S22507","S21705","S22509","S22612","S22230","S22019","S22229","S22417","S22012","S22220"],
+    "HCM NESTLE": ["S22219","S22412","S21317","S21908","S22207","S21833","S22252","S22519","S22249","S21701","S22416"],
+    "HCM NIPRO": ["S22407","H21214","S20503"],
+    "HCM OFFICE 1": ["S22029"],
+    "HCM OLP_SMZ": ["S22633","S21832","S22041","S22621","S22224"],
+    "HCM POCARI": ["S21917","S22402","S22401","S22203","S22523","S21819","S21811","S22243","S20604","S22023","S22415"],
+    "HCM RED DRAGON": ["S22641","S22602","S22635","S22531","S22631","S21823","S21115","S22042","S22520","S21012","S21754","S22517","S20813","S22618","S22516","S21718","S22510","S22239","S21707","S22025","S22506","S20003","S22608","S22222"],
+    "HCM ROKKO": ["S22640","S22638","S21737","S22223","S22003"],
+    "HCM SHARP": ["S21922","S22026","S21702"],
+    "HCM SMC": ["S21607","S21310","S22107","S22522","S21731","S22617","S22616","S22016","S22609","S20101"],
+    "HCM TAKIGAWA": ["S21622","S22530","S22304","S21635"],
+    "HCM VSAP DN": ["S22209","S22208","S22627","S22251","S22015","S20809","S22611","S22606"],
+    "HCM-CS3": ["S22605","S21615","S22532","S22528","H22335","S22527","S22201","H22313","S22305","S21106","S22624","S22244","S22515","S22024","S22613","S21704","S20411","S21642"],
+    "HN AEON HUE": ["H22340"],
+    "Japan": ["S22031"],
+    "Thai Lan": ["S22233","S22018"],
+  },
+  "S-ED": {}
+};
+
+const PROJECTS_DB_KEY = 'ot_manager_projects_db_v1';
+let PROJECTS_DB = null; // groups -> project name -> {employees:[staffCode..], pm, plan, reason, approvedBy, note}
+
+function loadProjectsDB() {
+  try {
+    const raw = localStorage.getItem(PROJECTS_DB_KEY);
+    if (raw) { PROJECTS_DB = JSON.parse(raw); return; }
+  } catch(e) {}
+  // Chưa có dữ liệu lưu trước đó — khởi tạo từ seed (chỉ chạy đúng 1 lần duy nhất)
+  PROJECTS_DB = {};
+  Object.keys(PROJECTS_SEED).forEach(group => {
+    PROJECTS_DB[group] = {};
+    Object.entries(PROJECTS_SEED[group]).forEach(([proj, codes]) => {
+      PROJECTS_DB[group][proj] = { employees: [...codes], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
+    });
+  });
+  saveProjectsDB();
+}
+function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} }
+
+function projectGroups() { return Object.keys(PROJECTS_DB || {}); }
+function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}); }
+function findEmployeeProject(staffCode) {
+  for (const group of projectGroups()) {
+    for (const proj of projectsInGroup(group)) {
+      if (PROJECTS_DB[group][proj].employees.includes(staffCode)) return { group, proj };
+    }
+  }
+  return null;
+}
+function addProject(group, name) {
+  if (!PROJECTS_DB[group]) PROJECTS_DB[group] = {};
+  if (!name || PROJECTS_DB[group][name]) return false;
+  PROJECTS_DB[group][name] = { employees:[], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
+  saveProjectsDB();
+  return true;
+}
+function renameProject(group, oldName, newName) {
+  if (!PROJECTS_DB[group] || !PROJECTS_DB[group][oldName] || !newName || PROJECTS_DB[group][newName]) return false;
+  PROJECTS_DB[group][newName] = PROJECTS_DB[group][oldName];
+  delete PROJECTS_DB[group][oldName];
+  saveProjectsDB();
+  return true;
+}
+function deleteProject(group, name) {
+  if (!PROJECTS_DB[group] || !PROJECTS_DB[group][name]) return false;
+  delete PROJECTS_DB[group][name];
+  saveProjectsDB();
+  return true;
+}
+function moveEmployeeToProject(staffCode, toGroup, toProj) {
+  const cur = findEmployeeProject(staffCode);
+  if (cur) {
+    const arr = PROJECTS_DB[cur.group][cur.proj].employees;
+    const idx = arr.indexOf(staffCode);
+    if (idx >= 0) arr.splice(idx, 1);
+  }
+  if (toGroup && toProj && PROJECTS_DB[toGroup] && PROJECTS_DB[toGroup][toProj]) {
+    if (!PROJECTS_DB[toGroup][toProj].employees.includes(staffCode)) PROJECTS_DB[toGroup][toProj].employees.push(staffCode);
+  }
+  saveProjectsDB();
+}
+// Lấy tên hiển thị NV theo staff code — dò trong WLB_XLS trước (nguồn nhân sự), sau đó DB (chấm công OT).
+
+// ============================================================
+//  ACTION PLAN — OVERTIME (OT) MANAGEMENT (tab con của WLB)
+// ============================================================
+// Lấy tên hiển thị NV theo staff code — dò trong WLB_XLS trước (nguồn nhân sự), sau đó DB (chấm công OT).
+function employeeNameByCode(code) {
+  const wx = Object.values(WLB_XLS.employees || {}).find(e => e.code === code);
+  if (wx) return wx.name;
+  for (const mk in DB) {
+    const n = DB[mk].names.find(nm => DB[mk].employees[nm]?.staffCode === code);
+    if (n) return n;
+  }
+  return code;
+}
+
+function renderActionPlan() {
+  const mk = latestOtMk();
+  const lbl = document.getElementById('wlbActionMonthLabel');
+  if (lbl) lbl.textContent = mk ? `Số liệu OT tháng gần nhất: ${fmtMK(mk)}` : 'Chưa có dữ liệu OT (chấm công hàng ngày) để tính OT thường/OT đêm.';
+  buildActionPlanTable('HCM-EC', 'actionPlanTBodyEC', mk);
+  buildActionPlanTable('S-ED', 'actionPlanTBodyED', mk);
+}
+
+function buildActionPlanTable(group, tbodyId, mk) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  const projNames = projectsInGroup(group).sort();
+  if (!projNames.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = projNames.map((proj, i) => {
+    const p = PROJECTS_DB[group][proj];
+    const stats = getProjectOTStats(group, proj, mk);
+    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${proj.replace(/'/g,"\\'")}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    return `<tr>
+      <td style="text-align:center;color:var(--text2)">${i+1}</td>
+      <td>
+        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${proj.replace(/'/g,"\\'")}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
+        <div style="margin-top:4px;display:flex;gap:6px">
+          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${proj.replace(/'/g,"\\'")}')">Đổi tên</button>
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${proj.replace(/'/g,"\\'")}')">Xoá</button>
+        </div>
+        <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
+      </td>
+      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${proj.replace(/'/g,"\\'")}','pm',this.value)"></td>
+      <td style="font-size:12px;line-height:1.8;white-space:nowrap">
+        OT thường: <strong>${stats.otNormal}h</strong><br>
+        OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
+        Số NV OT: <strong>${stats.nvCount}</strong> người
+      </td>
+      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
+      <td>${editable('reason','Lý do...')}</td>
+      <td>${editable('approvedBy','Duyệt bởi...')}</td>
+      <td>${editable('note','Ghi chú...')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function saveProjectField(group, proj, field, value) {
+  if (!PROJECTS_DB[group] || !PROJECTS_DB[group][proj]) return;
+  PROJECTS_DB[group][proj][field] = value;
+  saveProjectsDB();
+}
+
+function promptAddProject(group) {
+  const name = prompt(`Tên dự án mới (nhóm ${group}):`);
+  if (!name) return;
+  if (addProject(group, name.trim())) { toast(`Đã thêm dự án "${name.trim()}"`); renderActionPlan(); }
+  else toast('Tên dự án đã tồn tại hoặc không hợp lệ');
+}
+function renameProjectPrompt(group, proj) {
+  const name = prompt('Đổi tên dự án thành:', proj);
+  if (!name || name.trim() === proj) return;
+  if (renameProject(group, proj, name.trim())) { toast('Đã đổi tên dự án'); renderActionPlan(); }
+  else toast('Tên mới đã tồn tại hoặc không hợp lệ');
+}
+function deleteProjectConfirm(group, proj) {
+  const n = (PROJECTS_DB[group]?.[proj]?.employees || []).length;
+  if (!confirm(`Xoá dự án "${proj}"? ${n} nhân viên trong dự án này sẽ trở thành "chưa gán dự án".`)) return;
+  deleteProject(group, proj);
+  toast('Đã xoá dự án');
+  renderActionPlan();
+}
+
+function toggleProjectEmployees(group, proj) {
+  const boxId = `projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}`;
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  // Đóng các box khác đang mở để đỡ rối
+  document.querySelectorAll('[id^="projEmpBox_"]').forEach(b => b.style.display = 'none');
+  renderProjectEmployeeBox(group, proj, box);
+  box.style.display = 'block';
+}
+function renderProjectEmployeeBox(group, proj, box) {
+  const p = PROJECTS_DB[group][proj];
+  const allProjOptions = [];
+  projectGroups().forEach(g => projectsInGroup(g).forEach(pr => allProjOptions.push({g, pr})));
+  box.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      ${p.employees.map(code => `
+        <span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border2);border-radius:999px;padding:3px 6px 3px 10px;font-family:var(--font-mono)">
+          ${code} — ${employeeNameByCode(code)}
+          <select style="font-size:10px;border:none;background:transparent;cursor:pointer" onchange="if(this.value){moveEmployeeToProject('${code}',this.value.split('|')[0],this.value.split('|')[1]);renderActionPlan();toast('Đã chuyển NV');}">
+            <option value="">Chuyển đến...</option>
+            ${allProjOptions.filter(o=>!(o.g===group&&o.pr===proj)).map(o=>`<option value="${o.g}|${o.pr}">${o.g} / ${o.pr}</option>`).join('')}
+          </select>
+          <span style="cursor:pointer;color:var(--red)" title="Bỏ khỏi dự án" onclick="moveEmployeeToProject('${code}',null,null);renderActionPlan();toast('Đã bỏ NV khỏi dự án');">✕</span>
+        </span>`).join('') || '<span style="color:var(--text3)">Chưa có nhân viên nào.</span>'}
+    </div>
+    <div style="display:flex;gap:6px">
+      <input type="text" id="addEmpInput_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" placeholder="Nhập Staff Code để thêm..." style="flex:1;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:11.5px">
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="(function(){
+        const inp=document.getElementById('addEmpInput_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}');
+        const code=inp.value.trim(); if(!code) return;
+        moveEmployeeToProject(code,'${group}','${proj.replace(/'/g,"\\'")}');
+        renderActionPlan(); toast('Đã thêm NV vào dự án');
+      })()">+ Thêm</button>
+    </div>`;
+}
+
+
+// Tính OT thường + OT đêm + số NV có OT, cho 1 dự án cụ thể — lấy từ DB chấm công hàng ngày
+// (không phải WLB_XLS, vì WLB_XLS không tách riêng OT ngày/đêm). Dùng tháng gần nhất có dữ liệu.
+function getProjectOTStats(group, projectName, mk) {
+  const proj = PROJECTS_DB[group] && PROJECTS_DB[group][projectName];
+  if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0 };
+  const codes = new Set(proj.employees);
+  let otNormal = 0, otNight = 0, nvCount = 0;
+  DB[mk].names.forEach(n => {
+    const e = DB[mk].employees[n];
+    if (!e || !e.staffCode || !codes.has(e.staffCode)) return;
+    const tot = totalOf(e);
+    const night = Math.min(nightTotalOf(e), tot);
+    otNormal += (tot - night);
+    otNight += night;
+    if (tot > 0) nvCount++;
+  });
+  return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount };
+}
+function latestOtMk() {
+  const keys = Object.keys(DB).sort();
+  return keys.length ? keys[keys.length-1] : null;
+}
+
 const WLB_XLS_KEY = 'ot_manager_wlb_xls_v1';
 let WLB_XLS = { year: new Date().getFullYear(), employees: {} }; // employees[staffCode] = {name,dept,position,ot:{1..12},off:{1..12}}
 
@@ -3560,7 +3807,7 @@ function clearOffDay() {
   OFF_DB = {};
   saveOffDB();
   renderWlbSummary();
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
   toast('Đã xóa toàn bộ dữ liệu Off Day');
 }
 
@@ -4662,6 +4909,7 @@ function init() {
     if (lm.length) activeLateMK = lm[lm.length-1];
     loadOffDB();
     loadWlbXls();
+    loadProjectsDB();
     rebuildLateUI();
     renderWlbSummary();
     document.getElementById('loadingState').style.display = 'none';
