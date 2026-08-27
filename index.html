@@ -68,6 +68,10 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 010 20"/><path d="M12 2a14.5 14.5 0 000 20"/></svg>
       <span class="nt-label"><span class="nt-vi">WLB</span><span class="nt-en">Work-Life Balance</span></span>
     </button>
+    <button class="nt" data-page="action" onclick="goPage('action')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      <span class="nt-label"><span class="nt-vi">Action Plan</span><span class="nt-en">OT Action Plan</span></span>
+    </button>
 
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
     <button class="nt" data-page="report" onclick="goPage('report')">
@@ -223,6 +227,14 @@
     <div style="position:relative;width:100%;height:340px"><canvas id="cDashOverBar" role="img" aria-label="Nhân viên vượt mức">Vượt mức.</canvas></div>
   </div>
 
+  <!-- Biểu đồ: OT theo dự án (chỉ tính NV thuộc HCM-EC đã gán dự án) -->
+  <div class="card ac-top ac-blue" id="dashProjectBarCard" style="display:none">
+    <div class="card-title">🏗️ OT theo dự án</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tổng OT của từng dự án (HCM-EC) trong kỳ đang xem — bấm cột để xem chi tiết ở Action Plan.</div>
+    <div id="dashProjectBarEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án.</div>
+    <div style="position:relative;width:100%;height:340px"><canvas id="cDashProjectBar" role="img" aria-label="OT theo dự án">OT theo dự án.</canvas></div>
+  </div>
+
   <!-- ROW 2: Bottom full-width chart -->
   <div class="dash-row2">
     <div id="dashTrendCard" class="card ac-top ac-amber">
@@ -249,6 +261,11 @@
   <div class="page-title">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
     <span>Danh sách nhân viên OT <span style="font-size:12px;color:var(--text2);font-weight:400">/ Employee OT List</span></span>
+  </div>
+
+  <div id="empProjectFilterBanner" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--accent-bg);border:1px solid var(--accent);border-radius:10px;font-size:12.5px;display:flex;align-items:center;gap:10px">
+    <span id="empProjectFilterText"></span>
+    <button class="btn" style="padding:3px 10px;font-size:11px;margin-left:auto" onclick="clearEmpProjectFilter()">✕ Bỏ lọc, xem tất cả</button>
   </div>
 
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
@@ -597,7 +614,6 @@
     <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:10px;border:1px solid var(--border);width:fit-content">
       <button id="wlbTabMonth"   class="wbtn active" onclick="setWlbTab('month')"   style="font-size:13px;padding:7px 18px">📅 Theo tháng</button>
       <button id="wlbTabQuarter" class="wbtn"         onclick="setWlbTab('quarter')" style="font-size:13px;padding:7px 18px">🗂️ Theo quý</button>
-      <button id="wlbTabAction"  class="wbtn"         onclick="setWlbTab('action')"  style="font-size:13px;padding:7px 18px">📋 Action Plan</button>
     </div>
     <span style="font-size:11.5px;color:var(--text2);font-style:italic">ℹ️ Dữ liệu WLB được cập nhật theo data từ nhân sự (không tự động tính từ chấm công).</span>
   </div>
@@ -700,61 +716,72 @@
       </div>
     </div>
   </div>
+</div>
 
-  <!-- TAB: ACTION PLAN -->
-  <div id="wlb-action" style="display:none">
-    <div class="card" style="text-align:center;background:var(--bg2);border:1px solid var(--border2)">
-      <div style="font-size:18px;font-weight:800;letter-spacing:.02em">ACTION PLAN – OVERTIME (OT) MANAGEMENT</div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px" id="wlbActionMonthLabel"></div>
+<!-- ====== ACTION PLAN (trang riêng, dưới WLB) ====== -->
+<div class="pg" id="pg-action">
+  <div class="page-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    <span>Action Plan <span style="font-size:12px;color:var(--text2);font-weight:400">/ OT Action Plan</span></span>
+  </div>
+
+  <div class="card" style="text-align:center;background:var(--bg2);border:1px solid var(--border2)">
+    <div style="font-size:18px;font-weight:800;letter-spacing:.02em">ACTION PLAN – OVERTIME (OT) MANAGEMENT</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-top:4px" id="wlbActionMonthLabel"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--text2)">Tháng xem:</span>
+      <select id="actionPlanMonthSel" onchange="renderActionPlan()" style="min-width:150px"></select>
     </div>
-
-    <div class="card">
-      <div style="font-size:12px;color:var(--text2);line-height:1.7">
-        Mỗi dòng là 1 <strong>dự án</strong> — nhân viên được gán vào dự án theo nơi chấm công nhiều nhất trong tháng.
-        Bấm vào tên dự án để xem/chỉnh danh sách nhân viên. Các cột <strong>Kế hoạch, Lý do, Duyệt bởi, Ghi chú</strong> do PM/quản lý tự điền trực tiếp — tự động lưu lại.
-      </div>
-      <div class="action-row" style="margin-top:12px">
-        <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)</button>
-        <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)</button>
-      </div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.7">
+      Mỗi dòng là 1 <strong>dự án</strong> — nhân viên được gán vào dự án theo nơi chấm công nhiều nhất.
+      Bấm vào tên dự án để xem/chỉnh danh sách nhân viên. Bấm vào "Số NV OT" để xem đúng danh sách NV đó ở trang Danh sách NV OT.
+      Các cột <strong>Kế hoạch, Lý do, Ghi chú</strong> do PM tự điền — tự động lưu lại.
     </div>
-
-    <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Phần 1: HCM-EC</div>
-      <div class="tbl-wrap">
-        <table id="actionPlanTableEC">
-          <thead>
-            <tr>
-              <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
-              <th style="min-width:150px">Thông tin OT của dự án</th>
-              <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
-              <th style="min-width:140px">Lý do by PM</th>
-              <th style="min-width:140px">Duyệt bởi ECM / HODs</th>
-              <th style="min-width:120px">Ghi chú</th>
-            </tr>
-          </thead>
-          <tbody id="actionPlanTBodyEC"></tbody>
-        </table>
-      </div>
+    <div class="action-row" style="margin-top:12px">
+      <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)</button>
+      <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)</button>
     </div>
+  </div>
 
-    <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Phần 2: S-ED</div>
-      <div class="tbl-wrap">
-        <table id="actionPlanTableED">
-          <thead>
-            <tr>
-              <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
-              <th style="min-width:150px">Thông tin OT của dự án</th>
-              <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
-              <th style="min-width:140px">Lý do by PM</th>
-              <th style="min-width:140px">Duyệt bởi ECM / HODs</th>
-              <th style="min-width:120px">Ghi chú</th>
-            </tr>
-          </thead>
-          <tbody id="actionPlanTBodyED"></tbody>
-        </table>
-      </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Phần 1: HCM-EC</div>
+    <div class="tbl-wrap">
+      <table id="actionPlanTableEC">
+        <thead>
+          <tr>
+            <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
+            <th style="min-width:150px">Project OT Summary</th>
+            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
+            <th style="min-width:140px">Lý do by PM</th>
+            <th style="min-width:170px">Duyệt bởi ECM / HODs</th>
+            <th style="min-width:120px">Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody id="actionPlanTBodyEC"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Phần 2: S-ED</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Danh sách NV lấy chung từ Danh sách NV OT (phòng ban S-ED) — không tách theo dự án riêng.</div>
+    <div class="tbl-wrap">
+      <table id="actionPlanTableED">
+        <thead>
+          <tr>
+            <th style="width:34px">No.</th><th>Tên dự án</th><th>Tên PM / Quản lý</th>
+            <th style="min-width:150px">Project OT Summary</th>
+            <th style="min-width:160px">Kế hoạch tháng tiếp theo by PM</th>
+            <th style="min-width:140px">Lý do by PM</th>
+            <th style="min-width:170px">Duyệt bởi ECM / HODs</th>
+            <th style="min-width:120px">Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody id="actionPlanTBodyED"></tbody>
+      </table>
     </div>
   </div>
 </div>
