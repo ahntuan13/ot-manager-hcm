@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.21';
+const APP_VERSION = '2026.22';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -3081,11 +3081,13 @@ async function syncSave() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang tải lên...');
   try {
-    // Gói chung OT (DB) + Đi trễ (LATE_DB) vào 1 payload để Sheet luôn đồng bộ cả 2 cùng lúc
+    // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
+    // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
+    // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB } })
     });
     let json;
     try { json = await res.json(); }
@@ -3097,7 +3099,8 @@ async function syncSave() {
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
-      toast('Đã tải lên Google Sheet! (OT + Đi trễ + Off Day WLB)');
+      if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
+      toast('Đã tải lên Google Sheet! (OT + Đi trễ + Off Day WLB + Action Plan)');
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
     updateSyncBadge('err','Lỗi sync');
@@ -3109,7 +3112,7 @@ async function syncSave() {
 async function syncLoad() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   const hasData = Object.keys(DB).length || Object.keys(LATE_DB).length || Object.keys(OFF_DB).length;
-  if (hasData && !confirm('Dữ liệu hiện tại (OT + Đi trễ + Off Day WLB) sẽ bị thay bằng dữ liệu trên Sheet. Tiếp tục?')) return;
+  if (hasData && !confirm('Dữ liệu hiện tại (OT + Đi trễ + Off Day WLB + Action Plan) sẽ bị thay bằng dữ liệu trên Sheet. Tiếp tục?')) return;
   updateSyncBadge('busy','Đang tải xuống...');
   try {
     const res = await fetch(SYNC_URL, {
@@ -3126,10 +3129,16 @@ async function syncLoad() {
     if (json.ok) {
       const parsed = JSON.parse(json.data || '{}');
       // Hỗ trợ cả payload mới { ot, late, off } và payload cũ (chỉ OT)
-      const isNewFormat = parsed && typeof parsed === 'object' && (parsed.ot || parsed.late || parsed.off);
+      const isNewFormat = parsed && typeof parsed === 'object' && (parsed.ot || parsed.late || parsed.off || parsed.projects);
       DB = isNewFormat ? (parsed.ot || {}) : (parsed && typeof parsed === 'object' ? parsed : {});
       LATE_DB = isNewFormat ? (parsed.late || {}) : {};
       OFF_DB = isNewFormat ? (parsed.off || {}) : {};
+      // Chỉ ghi đè PROJECTS_DB nếu Sheet THỰC SỰ có dữ liệu dự án — tránh trường hợp Sheet cũ
+      // chưa từng lưu projects (payload cũ) làm mất sạch dữ liệu Action Plan đang có trên máy này.
+      if (isNewFormat && parsed.projects && Object.keys(parsed.projects).length) {
+        PROJECTS_DB = parsed.projects;
+        saveProjectsDB();
+      }
       migrateOldFormat();
       migrateOffDBKeys();
       const keys = Object.keys(DB).sort();
@@ -3146,6 +3155,7 @@ async function syncLoad() {
       rebuildLateUI();
       renderWlbSummary();
       if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
+      if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3541,6 +3551,12 @@ function renderActionPlan() {
   if (lbl) lbl.textContent = mk ? `Số liệu OT tháng: ${fmtMK(mk)}` : 'Chưa có dữ liệu OT (chấm công hàng ngày) để tính OT thường/OT đêm.';
   buildActionPlanTable('HCM-EC', 'actionPlanTBodyEC', mk);
   buildActionPlanTableSED('actionPlanTBodyED', mk);
+  const syncNote = document.getElementById('actionPlanSyncNote');
+  if (syncNote) {
+    syncNote.textContent = lastSyncedAt
+      ? `Lần đồng bộ gần nhất: ${lastSyncedAt}`
+      : SYNC_URL ? '⚠️ Chưa đồng bộ lần nào trong phiên này — nhớ bấm "Lưu & Đồng bộ" sau khi điền xong.' : '⚠️ Chưa cấu hình Google Sheets — vào Cài đặt để bật đồng bộ, nếu không dữ liệu chỉ lưu trên máy này.';
+  }
 }
 
 // Khung "Duyệt bởi ECM/HODs": 2 nút Duyệt/Từ chối + 1 ô comment riêng — trạng thái + comment lưu
@@ -3571,7 +3587,8 @@ function buildActionPlanTable(group, tbodyId, mk) {
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
     const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
-    return `<tr>
+    const isRejected = (p.approvedBy||'').startsWith('REJECTED|');
+    return `<tr class="${isRejected ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
       <td>
         <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
@@ -3587,8 +3604,8 @@ function buildActionPlanTable(group, tbodyId, mk) {
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
         Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')" title="Bấm để xem đúng ${stats.nvCount} NV này ở Danh sách NV OT">${stats.nvCount}</strong> người
       </td>
-      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
       <td>${editable('reason','Lý do...')}</td>
+      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
       <td>${approvalBoxHtml(group, proj, p)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`;
@@ -3619,8 +3636,9 @@ function buildActionPlanTableSED(tbodyId, mk) {
   const sedKey = '__SED_ALL__';
   if (!PROJECTS_DB[group][sedKey]) PROJECTS_DB[group][sedKey] = { employees:[], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
   const pAuto = PROJECTS_DB[group][sedKey];
+  const isAutoRejected = (pAuto.approvedBy||'').startsWith('REJECTED|');
   const rowsHtml = [];
-  rowsHtml.push(`<tr>
+  rowsHtml.push(`<tr class="${isAutoRejected ? 'row-rejected' : ''}">
     <td style="text-align:center;color:var(--text2)">1</td>
     <td><div style="font-weight:600">S-ED (tất cả)</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">Tự động lấy từ Danh sách NV OT</div></td>
     <td><input type="text" value="${(pAuto.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${sedKey}','pm',this.value)"></td>
@@ -3629,8 +3647,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
       OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
       Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployeesByCodes('${JSON.stringify(codes).replace(/"/g,'&quot;')}','S-ED','${mk}')">${nvCount}</strong> người
     </td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value)">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value)">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value)">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
     <td>${approvalBoxHtml(group, sedKey, pAuto)}</td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value)">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
   </tr>`);
@@ -3641,7 +3659,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
     const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
-    rowsHtml.push(`<tr>
+    const isRejected2 = (p.approvedBy||'').startsWith('REJECTED|');
+    rowsHtml.push(`<tr class="${isRejected2 ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${idx+2}</td>
       <td>
         <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
@@ -3657,8 +3676,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
         Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')">${stats.nvCount}</strong> người
       </td>
-      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
       <td>${editable('reason','Lý do...')}</td>
+      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
       <td>${approvalBoxHtml(group, proj, p)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`);
