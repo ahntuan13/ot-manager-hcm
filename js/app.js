@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.22';
+const APP_VERSION = '2026.23';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -2042,15 +2042,47 @@ function renderDept() {
     if (!ds) return '';
     const ci = allDepts.indexOf(dname);
     const col = DEPT_COLORS[ci % DEPT_COLORS.length];
-    return `<tr>
+    const isEC = dname === 'HCM-EC';
+    const boxIdD = `deptProjBox_${mk.replace(/[^a-zA-Z0-9]/g,'_')}_${deptTab}`;
+    let row = `<tr>
       <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
-        <span style="width:10px;height:10px;border-radius:3px;background:${col};flex-shrink:0"></span>${dname}</span></td>
+        <span style="width:10px;height:10px;border-radius:3px;background:${col};flex-shrink:0"></span>${dname}</span>${isEC ? projectExpandButtonHtml(boxIdD) : ''}</td>
       <td>${ds.nvCount}</td>
       <td style="font-weight:700;font-family:var(--font-mono)">${ds.total}h</td>
       <td>${ds.over>0?`<span class="badge bd">${ds.over}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
       <td><button class="btn" onclick="goPage('employees','${dname}')" style="padding:3px 10px;font-size:11px">Chi tiết →</button></td></tr>`;
+    if (isEC) {
+      row += `<tr><td colspan="5" style="padding:0;border:none"><div id="${boxIdD}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`;
+      const useDeltaD = deptTab === 'week';
+      const projRowsD = projectsInGroup('HCM-EC').sort().map(proj => {
+        const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaD);
+        return { name: proj, display: s.total+'h', nv: s.nvCount };
+      });
+      setTimeout(() => fillProjectBox(boxIdD, projRowsD, 'OT (h)'), 0);
+    }
+    return row;
   }).join('') || `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>`;
   document.getElementById('deptTBody').innerHTML = deptRows;
+
+  // Chart mới: OT theo dự án (HCM-EC) — đúng theo kỳ đang xem (tuần/tháng)
+  if (allDepts.includes('HCM-EC')) {
+    const useDeltaChart = deptTab === 'week';
+    const projEntriesD = projectsInGroup('HCM-EC').sort().map(proj => {
+      const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaChart);
+      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+    }).filter(e => e.value > 0);
+    const lblD = document.getElementById('deptProjChartLabel');
+    if (lblD) lblD.textContent = periodLabel;
+    renderGenericProjectBarChart(CH, killChart, 'cDeptProj',
+      document.getElementById('cDeptProj'), document.getElementById('cDeptProjEmpty'),
+      projEntriesD, 'h', '#6B4FA0');
+    const card = document.getElementById('deptProjCard');
+    if (card) card.style.display = 'block';
+  } else {
+    killChart('cDeptProj');
+    const card = document.getElementById('deptProjCard');
+    if (card) card.style.display = 'none';
+  }
 }
 
 // ============================================================
@@ -2207,9 +2239,10 @@ function renderCompareWeek() {
   });
 
   // Table — cùng số liệu với 2 chart
+  const weekBoxId = 'cmpProjBox_week';
   document.getElementById('periodTHead').innerHTML =
-    `<tr><th>Tuần</th>${allDepts.map(d=>`<th>${d}</th>`).join('')}<th>Tổng công ty</th></tr>`;
-  document.getElementById('periodTBody').innerHTML = periods.map((p,pi) => {
+    `<tr><th>Tuần</th>${allDepts.map(d=>`<th>${d}${d==='HCM-EC'?projectExpandButtonHtml(weekBoxId):''}</th>`).join('')}<th>Tổng công ty</th></tr>`;
+  const periodRowsHtml = periods.map((p,pi) => {
     const deptCells = deptWeekMatrix[pi].map(val =>
       `<td style="font-family:var(--font-mono)">${val}h</td>`
     ).join('');
@@ -2219,7 +2252,29 @@ function renderCompareWeek() {
       ${deptCells}
       <td style="font-family:var(--font-mono);font-weight:600;color:var(--accent)">${co}h</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+  }).join('');
+  document.getElementById('periodTBody').innerHTML = periodRowsHtml
+    ? periodRowsHtml + `<tr><td colspan="${allDepts.length+2}" style="padding:0;border:none"><div id="${weekBoxId}" style="display:none;padding:8px 0"></div></td></tr>`
+    : '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+
+  // Chart mới: OT theo dự án (HCM-EC) — tuần đang chọn (tuần cuối cùng trong bảng, mới nhất)
+  if (allDepts.includes('HCM-EC') && periods.length) {
+    const lastPeriodIdx = periods.length - 1;
+    const lblW = document.getElementById('cmpProjWeekLabel');
+    if (lblW) lblW.textContent = periods[lastPeriodIdx]?.label || '';
+    const projEntriesW = projectsInGroup('HCM-EC').sort().map(proj => {
+      const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
+      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+    }).filter(e => e.value > 0);
+    renderGenericProjectBarChart(CH, killChart, 'cCmpProjWeek',
+      document.getElementById('cCmpProjWeek'), document.getElementById('cCmpProjWeekEmpty'),
+      projEntriesW, 'h', '#6B4FA0');
+    const projRowsW = projectsInGroup('HCM-EC').sort().map(proj => {
+      const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
+      return { name: proj, display: s.total+'h', nv: s.nvCount };
+    });
+    setTimeout(() => fillProjectBox(weekBoxId, projRowsW, 'OT (h)'), 0);
+  }
 }
 
 // ── Monthly compare: existing month-over-month charts ──
@@ -2356,16 +2411,44 @@ function renderCompareMonth() {
     allD.forEach(dept => {
       const nvs  = DB[mk].depts[dept];
       const tots = nvs.map(n=>totalOf(DB[mk].employees[n]));
+      const boxIdM = `cmpProjBox_m_${mk.replace(/[^a-zA-Z0-9]/g,'_')}`;
+      const expandBtnM = dept === 'HCM-EC' ? projectExpandButtonHtml(boxIdM) : '';
       cmpRows.push(`<tr>
         <td style="font-weight:500">${fmtMK(mk)}</td>
-        <td>${dept}</td><td>${nvs.length}</td>
+        <td>${dept}${expandBtnM}</td><td>${nvs.length}</td>
         <td><span class="badge bd">${tots.filter(t=>t>70).length}</span></td>
         <td><span class="badge bo">${tots.filter(t=>t<=70).length}</span></td>
         <td style="font-weight:600;color:var(--accent)">${Math.round(tots.reduce((a,b)=>a+b,0)*10)/10}h</td></tr>`);
+      if (dept === 'HCM-EC') {
+        cmpRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxIdM}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`);
+        const periodsM = buildPeriods(mk);
+        const pIdxM = periodsM.length ? periodsM.length - 1 : null;
+        const projRowsM = projectsInGroup('HCM-EC').sort().map(proj => {
+          const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxM, false);
+          return { name: proj, display: s.total+'h', nv: s.nvCount };
+        });
+        setTimeout(() => fillProjectBox(boxIdM, projRowsM, 'OT (h)'), 0);
+      }
     });
   });
   document.getElementById('cmpTBody').innerHTML = cmpRows.join('') ||
     '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+
+  // Chart mới: OT theo dự án (HCM-EC) — tháng đang chọn (cmpMonthSel, hoặc tháng cuối)
+  const cmpSelMk = document.getElementById('cmpMonthSel')?.value || keys[keys.length-1];
+  const lblM2 = document.getElementById('cmpProjMonthLabel2');
+  if (lblM2) lblM2.textContent = cmpSelMk ? fmtMK(cmpSelMk) : '';
+  if (cmpSelMk && DB[cmpSelMk]) {
+    const periodsM2 = buildPeriods(cmpSelMk);
+    const pIdxM2 = periodsM2.length ? periodsM2.length - 1 : null;
+    const projEntriesM = projectsInGroup('HCM-EC').sort().map(proj => {
+      const s = getProjectOTForPeriod('HCM-EC', proj, cmpSelMk, pIdxM2, false);
+      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+    }).filter(e => e.value > 0);
+    renderGenericProjectBarChart(CH, killChart, 'cCmpProjMonth',
+      document.getElementById('cCmpProjMonth'), document.getElementById('cCmpProjMonthEmpty'),
+      projEntriesM, 'h', '#6B4FA0');
+  }
 }
 
 // ── Quý lịch chuẩn: Q1=T1–T3, Q2=T4–T6, Q3=T7–T9, Q4=T10–T12 ──
@@ -2487,16 +2570,52 @@ function renderCompareQuarter() {
           if (t > 70) overCount++; else normalCount++;
         });
       });
+      const boxIdQ = `cmpProjBox_q_${qk.replace(/[^a-zA-Z0-9]/g,'_')}`;
+      const expandBtnQ = dept === 'HCM-EC' ? projectExpandButtonHtml(boxIdQ) : '';
       qRows.push(`<tr>
         <td style="font-weight:500">${fmtQK(qk)}</td>
-        <td>${dept}</td><td>${entries}</td>
+        <td>${dept}${expandBtnQ}</td><td>${entries}</td>
         <td><span class="badge bd">${overCount}</span></td>
         <td><span class="badge bo">${normalCount}</span></td>
         <td style="font-weight:600;color:var(--accent)">${Math.round(totalSum*10)/10}h</td></tr>`);
+      if (dept === 'HCM-EC') {
+        qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxIdQ}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`);
+        const projRowsQ = projectsInGroup('HCM-EC').sort().map(proj => {
+          let sum = 0, nv = 0;
+          mks.forEach(mk => {
+            const periodsQ = buildPeriods(mk);
+            const pIdxQ = periodsQ.length ? periodsQ.length - 1 : null;
+            const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ, false);
+            sum += s.total; nv = Math.max(nv, s.nvCount);
+          });
+          return { name: proj, display: Math.round(sum*10)/10+'h', nv };
+        });
+        setTimeout(() => fillProjectBox(boxIdQ, projRowsQ, 'OT (h)'), 0);
+      }
     });
   });
   document.getElementById('cmpQtrTBody').innerHTML = qRows.join('') ||
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
+
+  // Chart mới: OT theo dự án (HCM-EC) — quý gần nhất có dữ liệu
+  const lastQk = qKeys[qKeys.length-1];
+  const lblQ2 = document.getElementById('cmpProjQtrLabel');
+  if (lblQ2) lblQ2.textContent = lastQk ? fmtQK(lastQk) : '';
+  if (lastQk) {
+    const mksLastQ = keys.filter(mk => quarterKeyOf(mk) === lastQk);
+    const projEntriesQ = projectsInGroup('HCM-EC').sort().map(proj => {
+      let sum = 0;
+      mksLastQ.forEach(mk => {
+        const periodsQ2 = buildPeriods(mk);
+        const pIdxQ2 = periodsQ2.length ? periodsQ2.length - 1 : null;
+        sum += getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ2, false).total;
+      });
+      return { name: proj.replace(/^HCM\s+/i,''), value: Math.round(sum*10)/10 };
+    }).filter(e => e.value > 0);
+    renderGenericProjectBarChart(CH, killChart, 'cCmpProjQtr',
+      document.getElementById('cCmpProjQtr'), document.getElementById('cCmpProjQtrEmpty'),
+      projEntriesQ, 'h', '#6B4FA0');
+  }
 }
 
 // ============================================================
@@ -3796,6 +3915,106 @@ function getProjectOTStats(group, projectName, mk) {
   });
   return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount };
 }
+// ============================================================
+//  PHÂN TÍCH THEO DỰ ÁN (dùng chung cho WLB / So sánh OT / OT phòng ban)
+// ============================================================
+// OT của 1 dự án, tổng quát cho MỌI loại kỳ (tuần/tháng): periodIdx=null → luỹ kế (tháng),
+// periodIdx=số cụ thể + useDelta=true → đúng riêng tuần đó (không cộng dồn), khớp quy ước
+// "Theo tuần" đã dùng khắp app (deltaTotal). Dùng chung 1 nguồn getTotals() để luôn khớp số.
+function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  if (!p || !mk || !DB[mk]) return { total: 0, nvCount: 0 };
+  const codes = new Set(p.employees);
+  const totals = getTotals(mk, '__all__', periodIdx);
+  let total = 0, nvCount = 0;
+  totals.forEach(t => {
+    if (!t.staffCode || !codes.has(t.staffCode)) return;
+    const v = useDelta ? (t.deltaTotal||0) : t.total;
+    total += v;
+    if (v > 0) nvCount++;
+  });
+  return { total: Math.round(total*10)/10, nvCount };
+}
+// WLB (off÷OT) của 1 dự án cho ĐÚNG 1 tháng dương lịch (monthNum 1-12) — lấy từ WLB_XLS
+// (nguồn nhân sự), vì Off Day chỉ có ở đó, không có trong DB chấm công hàng ngày.
+function getProjectWlbForMonth(group, proj, monthNum) {
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  if (!p) return { ot: 0, off: 0, wlb: null };
+  let ot = 0, off = 0;
+  p.employees.forEach(code => {
+    const e = Object.values(WLB_XLS.employees || {}).find(x => x.code === code);
+    if (!e) return;
+    ot += (e.ot[monthNum] || 0);
+    off += (e.off[monthNum] || 0);
+  });
+  return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+}
+// WLB của 1 dự án cho 1 NHÓM THÁNG (quý chồng lấp) — cộng dồn OT + Off trước rồi mới chia,
+// đúng công thức Excel (không phải trung bình cộng của từng tháng riêng lẻ).
+function getProjectWlbForMonths(group, proj, monthNums) {
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  if (!p) return { ot: 0, off: 0, wlb: null };
+  let ot = 0, off = 0;
+  p.employees.forEach(code => {
+    const e = Object.values(WLB_XLS.employees || {}).find(x => x.code === code);
+    if (!e) return;
+    monthNums.forEach(m => { ot += (e.ot[m]||0); off += (e.off[m]||0); });
+  });
+  return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+}
+
+// ── UI: nút "▾ Xem theo dự án" — bấm vào hiện bảng mini liệt kê từng dự án HCM-EC + giá trị.
+// `valueFn(proj)` trả về {label, value, extra} để hiển thị — dùng chung cho mọi trang.
+function projectExpandButtonHtml(boxId) {
+  return `<button class="btn" style="padding:3px 10px;font-size:11px;margin-left:8px" onclick="toggleGenericProjectBox('${boxId}')">▾ Xem theo dự án</button>
+    <div id="${boxId}" style="display:none;margin-top:8px"></div>`;
+}
+function toggleGenericProjectBox(boxId) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.style.display = box.style.display === 'block' ? 'none' : 'block';
+}
+// renderFn(box) tự build nội dung — cho phép mỗi trang tự định nghĩa cách tính/hiển thị,
+// nhưng dùng chung khung bảng để đồng nhất giao diện.
+function fillProjectBox(boxId, rows, valueLabel) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  if (!rows.length) { box.innerHTML = '<div style="font-size:11.5px;color:var(--text2);padding:8px">Chưa có dự án nào (HCM-EC).</div>'; return; }
+  box.innerHTML = `<div class="tbl-wrap tbl-grid"><table style="font-size:11.5px">
+    <thead><tr><th>Dự án</th><th style="text-align:right">${valueLabel}</th><th style="text-align:right">Số NV</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${r.name}</td><td style="text-align:right;font-family:var(--font-mono);font-weight:600">${r.display}</td><td style="text-align:right;font-family:var(--font-mono);color:var(--text2)">${r.nv}</td></tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── UI: biểu đồ cột ngang OT/WLB theo dự án — dùng chung, chỉ cần truyền labels+values+màu.
+function renderGenericProjectBarChart(store, killFn, chartId, canvasEl, emptyEl, entries, unitSuffix, color) {
+  if (!canvasEl) return;
+  killFn(chartId);
+  if (!entries.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    canvasEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  canvasEl.style.display = 'block';
+  const barH = Math.max(220, entries.length * 26 + 60);
+  canvasEl.parentElement.style.height = barH + 'px';
+  safeMakeChart(store, killFn, chartId, canvasEl, {
+    type: 'bar',
+    data: { labels: entries.map(e => e.name),
+      datasets: [{ data: entries.map(e => e.value), backgroundColor: color || '#2D6CDF', borderWidth: 0, borderRadius: 3 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
+      plugins: { legend: { display: false }, barValueLabels: { suffix: unitSuffix || '' },
+        tooltip: { callbacks: { label: c => ` ${c.raw}${unitSuffix||''}` } } },
+      scales: {
+        x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
+             suggestedMax: Math.ceil(Math.max(1, ...entries.map(e=>e.value)) * 1.15) },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    }
+  });
+}
+
 function latestOtMk() {
   const keys = Object.keys(DB).sort();
   return keys.length ? keys[keys.length-1] : null;
@@ -4313,6 +4532,20 @@ function renderWlb() {
       else if (wlbMonthCanvas) wlbMonthCanvas.style.display = 'none';
     }
 
+    // ── Biểu đồ mới: WLB từng dự án (HCM-EC) — tháng đang chọn ──
+    const wlbProjLbl = document.getElementById('wlbProjMonthSelLabel');
+    if (wlbProjLbl) wlbProjLbl.textContent = selMk ? fmtMK(selMk) : '';
+    if (selMk) {
+      const monthNumP = parseInt(selMk.split('-')[1], 10);
+      const projEntries = projectsInGroup('HCM-EC').sort().map(proj => {
+        const w = getProjectWlbForMonth('HCM-EC', proj, monthNumP);
+        return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
+      }).filter(e => e.value !== null && e.value !== undefined);
+      renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjMonth',
+        document.getElementById('cWlbProjMonth'), document.getElementById('cWlbProjMonthEmpty'),
+        projEntries, '', '#6B4FA0');
+    }
+
     // ── Biểu đồ 2: Line — WLB các tháng, từng phòng ban ──
     // Chỉ dùng tháng ĐÃ CÓ Off Day (khớp với bảng bên dưới) — tránh vẽ đường WLB=0 giả cho tháng
     // chưa upload Off Day (trước đây dùng allMks khiến đường kẻ bị kéo về 0 sai lệch).
@@ -4370,13 +4603,25 @@ function renderWlb() {
         const ot = Math.round(getTotalOT(mk,d)); const off = Math.round(getOffDays(mk,d));
         if (!ot && !off) return;
         const v = wlbRatio(off, ot);
+        const boxId = `wlbProjBox_m_${mk.replace(/[^a-zA-Z0-9]/g,'_')}`;
+        const expandBtn = d === 'HCM-EC' ? projectExpandButtonHtml(boxId) : '';
         rows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${fmtMK(mk)}</td>
-          <td>${d}</td>
+          <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
           <td>${wlbBadge(v)}</td></tr>`);
+        if (d === 'HCM-EC') {
+          const monthNum = parseInt(mk.split('-')[1], 10);
+          const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
+            const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
+            return { name: proj, display: w.wlb ?? '—', nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+          });
+          rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
+          // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
+          setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
+        }
       });
     });
     document.getElementById('wlbMonthTBody').innerHTML = rows.join('') || EMPTY;
@@ -4457,6 +4702,20 @@ function renderWlb() {
       killWlbChart('cWlbQuarter');
     }
 
+    // ── Biểu đồ mới: WLB từng dự án (HCM-EC) — quý đang chọn ──
+    const wlbProjQLbl = document.getElementById('wlbProjQtrSelLabel');
+    if (wlbProjQLbl) wlbProjQLbl.textContent = selQk ? qLabel[selQk] : '';
+    if (selQk) {
+      const monthNumsQ = qMks(selQk).map(mk => parseInt(mk.split('-')[1], 10));
+      const projEntriesQ = projectsInGroup('HCM-EC').sort().map(proj => {
+        const w = getProjectWlbForMonths('HCM-EC', proj, monthNumsQ);
+        return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
+      }).filter(e => e.value !== null && e.value !== undefined);
+      renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjQtr',
+        document.getElementById('cWlbProjQtr'), document.getElementById('cWlbProjQtrEmpty'),
+        projEntriesQ, '', '#6B4FA0');
+    }
+
     // ── Biểu đồ 2: Line — WLB các quý, từng phòng ban ──
     document.getElementById('wlbQtrCmpLeg').innerHTML =
       allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
@@ -4508,13 +4767,24 @@ function renderWlb() {
         const off= Math.round(mks.reduce((s,mk)=>s+getOffDays(mk,d),0));
         if (!ot && !off) return;
         const v = wlbRatio(off, ot);
+        const boxId = `wlbProjBox_q_${qk.replace(/[^a-zA-Z0-9]/g,'_')}`;
+        const expandBtn = d === 'HCM-EC' ? projectExpandButtonHtml(boxId) : '';
         qRows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${qLabel[qk]}</td>
-          <td>${d}</td>
+          <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
           <td>${wlbBadge(v)}</td></tr>`);
+        if (d === 'HCM-EC') {
+          const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
+          const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
+            const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
+            return { name: proj, display: w.wlb ?? '—', nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+          });
+          qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
+          setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
+        }
       });
     });
     document.getElementById('wlbQtrTBody').innerHTML = qRows.join('') || EMPTY;
