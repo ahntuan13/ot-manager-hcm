@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.20';
+const APP_VERSION = '2026.21';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -227,6 +227,7 @@ let dashTab = 'week'; // 'week' | 'month'
 let empMK = null;
 let empPeriod = null;
 let empTab = 'month'; // 'week' | 'month' — trang Danh sách nhân viên OT, độc lập với dashTab
+let empProjectFilter = null; // {group, proj, codes:[staffCode..]} — lọc riêng theo dự án khi bấm từ Action Plan, null = không lọc
 let CH = {};
 
 // ============================================================
@@ -707,7 +708,7 @@ function toggleTheme() {
   if (saved === 'dark' || saved === 'light') applyTheme(saved);
 })();
 
-function goPage(p, deptFilter) {
+function goPage(p, deptFilter, keepProjectFilter) {
   const dashGroup = ['dash','dept','compare','late','wlb'];
   document.querySelectorAll('.pg').forEach(x => x.classList.remove('show'));
   document.querySelectorAll('.nt[data-page]').forEach(x => x.classList.remove('active'));
@@ -719,7 +720,9 @@ function goPage(p, deptFilter) {
   const pg = document.getElementById('pg-' + p);
   if (pg) pg.classList.add('show');
   if (p === 'settings')  { renderSavedMonths(); renderSyncPage(); }
+  if (p === 'action') renderActionPlan();
   if (p === 'employees') {
+    if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
       const empDF = document.getElementById('empDeptFilter');
       // Đảm bảo select đã có option của phòng ban này trước khi gán giá trị
@@ -749,7 +752,7 @@ function goSub(p) {
   if (p === 'dept')    renderDept();
   if (p === 'compare') renderCompare();
   if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
-  if (p === 'wlb')     { renderWlbSummary(); if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
+  if (p === 'wlb')     { renderWlbSummary(); renderWlb(); }
   // Lưới an toàn cuối cùng: dù render function ở trên có tính đúng kích thước hay không, ép TẤT
   // CẢ chart hiện có đo lại kích thước thật ngay khi trang này đã thực sự hiện ra trên màn hình.
   scheduleChartResize();
@@ -1173,7 +1176,7 @@ async function handleFile(inp) {
   }
   saveDB(); rebuildUI();
   // WLB dùng dữ liệu OT để tính → cập nhật luôn khi upload OT mới
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
   else renderWlbSummary();
 
   if (allLateMonths.size) {
@@ -1257,7 +1260,7 @@ function deleteMonth(mk) {
   const ks = Object.keys(DB).sort();
   activeMK = ks.length ? ks[ks.length-1] : null;
   saveDB(); rebuildUI(); renderSavedMonths(); renderWlbSummary();
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
   toast(`Đã xóa ${fmtMK(mk)}`);
 }
 
@@ -1387,6 +1390,7 @@ function renderDash() {
   renderDashWarnList(totals);
   renderNightOtFreqChart(df, periodIdx);
   renderDashOverBarChart(totals);
+  renderDashProjectBarChart(totals);
 }
 
 // Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng (lấy đúng danh sách
@@ -1429,6 +1433,62 @@ function renderDashOverBarChart(totals) {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
              suggestedMax: Math.ceil(Math.max(...over.map(t=>t.total)) * 1.15) },
         y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    }
+  });
+}
+
+// Biểu đồ cột ngang: Tổng OT theo TỪNG DỰ ÁN (HCM-EC) — chỉ hiện ở tab Theo tháng. Dùng lại
+// `totals` đã tính sẵn cho Dashboard (không tính lại), chỉ nhóm theo dự án qua PROJECTS_DB.
+function renderDashProjectBarChart(totals) {
+  const card = document.getElementById('dashProjectBarCard');
+  const emptyEl = document.getElementById('dashProjectBarEmpty');
+  const canvasEl = document.getElementById('cDashProjectBar');
+  if (!card) return;
+
+  if (dashTab !== 'month' || !PROJECTS_DB) {
+    card.style.display = 'none';
+    killChart('cDashProjectBar');
+    return;
+  }
+  card.style.display = 'block';
+  killChart('cDashProjectBar');
+
+  // Gộp OT theo dự án — chỉ tính NV có staffCode đã được gán vào 1 dự án cụ thể trong PROJECTS_DB.
+  const projTotals = {}; // "group/proj" -> tổng OT
+  totals.forEach(t => {
+    if (!t.staffCode) return;
+    const info = findEmployeeProject(t.staffCode);
+    if (!info) return;
+    const key = `${info.group}/${info.proj.replace(/^HCM\s+/i,'')}`;
+    if (!projTotals[key]) projTotals[key] = 0;
+    projTotals[key] += t.total;
+  });
+  const entries = Object.entries(projTotals).map(([k,v]) => ({ key:k, total: Math.round(v*10)/10 }))
+    .filter(e => e.total > 0).sort((a,b) => b.total - a.total);
+
+  if (!entries.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (canvasEl) canvasEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (canvasEl) canvasEl.style.display = 'block';
+
+  const barH = Math.max(340, entries.length * 26 + 60);
+  canvasEl.parentElement.style.height = barH + 'px';
+  CH['cDashProjectBar'] = new Chart(canvasEl, {
+    type: 'bar',
+    data: { labels: entries.map(e => e.key),
+      datasets: [{ data: entries.map(e => e.total), backgroundColor: '#2D6CDF', borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
+      plugins: { legend: { display: false }, barValueLabels: { suffix: 'h' },
+        tooltip: { callbacks: { label: c => ` ${c.raw}h` } } },
+      scales: {
+        x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
+             suggestedMax: Math.ceil(Math.max(...entries.map(e=>e.total)) * 1.15) },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, elements) => { if (elements.length) goPage('action'); }
     }
   });
 }
@@ -1771,6 +1831,7 @@ function renderDashTable(totals, periods) {
   const rows = totals.filter(t => {
     if (fs !== 'all' && stOf(t.total) !== fs) return false;
     if (q && !t.name.toLowerCase().includes(q)) return false;
+    if (empProjectFilter && !empProjectFilter.codes.includes(t.staffCode)) return false;
     return true;
   });
   document.getElementById('dtHead').innerHTML =
@@ -1786,10 +1847,13 @@ function renderDashTable(totals, periods) {
     // Cách này đảm bảo LUÔN ĐÚNG: OT bình thường + OT sau 22h = Tổng OT luỹ kế (không còn lệch số).
     const night = Math.min(rawNight, t.total);
     const normal = Math.round((t.total - night)*10)/10;
+    const projInfo = t.staffCode ? findEmployeeProject(t.staffCode) : null;
+    const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
+    const deptDisplay = projInfo ? `${projInfo.group}/${projName}` : t.dept;
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;${over?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${t.staffCode||'—'}</td>
       <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
-      <td style="color:var(--text2)">${t.dept}</td>
+      <td style="color:var(--text2)" title="${deptDisplay}">${deptDisplay}</td>
       <td style="color:var(--text2)">${normal}h</td>
       <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
       <td style="${rc || 'font-weight:700'}">${t.total}h</td>
@@ -1846,6 +1910,17 @@ function renderEmployeeList() {
   document.getElementById('empTabWeek')?.classList.toggle('active', empTab==='week');
   document.getElementById('empTabMonth')?.classList.toggle('active', empTab==='month');
   if (empTab === 'week') renderEmployeePeriodChips();
+
+  const banner = document.getElementById('empProjectFilterBanner');
+  if (banner) {
+    if (empProjectFilter) {
+      banner.style.display = 'flex';
+      document.getElementById('empProjectFilterText').innerHTML =
+        `🔎 Đang lọc theo dự án: <strong>${empProjectFilter.group}/${empProjectFilter.proj}</strong> (${empProjectFilter.codes.length} NV)`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
 
   if (!empMK || !DB[empMK]) {
     document.getElementById('dtHead').innerHTML = '';
@@ -3070,7 +3145,7 @@ async function syncLoad() {
       rebuildUI();
       rebuildLateUI();
       renderWlbSummary();
-      if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
+      if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3157,12 +3232,9 @@ function setWlbTab(tab) {
   wlbTab = tab;
   document.getElementById('wlbTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('wlbTabQuarter').classList.toggle('active', tab==='quarter');
-  document.getElementById('wlbTabAction').classList.toggle('active', tab==='action');
   document.getElementById('wlb-month').style.display   = tab==='month'   ? 'block' : 'none';
   document.getElementById('wlb-quarter').style.display = tab==='quarter' ? 'block' : 'none';
-  document.getElementById('wlb-action').style.display  = tab==='action'  ? 'block' : 'none';
-  if (tab === 'action') renderActionPlan();
-  else renderWlb();
+  renderWlb();
   scheduleChartResize();
 }
 
@@ -3442,12 +3514,48 @@ function employeeNameByCode(code) {
   return code;
 }
 
+// Bấm "Số NV OT: X người" ở Action Plan → chuyển qua Danh sách NV OT, lọc đúng NV của dự án đó.
+function viewProjectEmployees(group, proj, mk) {
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  if (!p) return;
+  empProjectFilter = { group, proj, codes: [...p.employees] };
+  if (mk) { empMK = mk; empTab = 'month'; empPeriod = null; }
+  goPage('employees', null, true);
+}
+function clearEmpProjectFilter() {
+  empProjectFilter = null;
+  renderEmployeeList();
+}
+
 function renderActionPlan() {
-  const mk = latestOtMk();
+  const sel = document.getElementById('actionPlanMonthSel');
+  const allMk = Object.keys(DB).sort();
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = allMk.map(mk => `<option value="${mk}">${fmtMK(mk)}</option>`).join('') || '<option value="">— Chưa có dữ liệu OT —</option>';
+    if (allMk.includes(prev)) sel.value = prev;
+    else sel.value = allMk[allMk.length-1] || '';
+  }
+  const mk = sel ? sel.value : latestOtMk();
   const lbl = document.getElementById('wlbActionMonthLabel');
-  if (lbl) lbl.textContent = mk ? `Số liệu OT tháng gần nhất: ${fmtMK(mk)}` : 'Chưa có dữ liệu OT (chấm công hàng ngày) để tính OT thường/OT đêm.';
+  if (lbl) lbl.textContent = mk ? `Số liệu OT tháng: ${fmtMK(mk)}` : 'Chưa có dữ liệu OT (chấm công hàng ngày) để tính OT thường/OT đêm.';
   buildActionPlanTable('HCM-EC', 'actionPlanTBodyEC', mk);
-  buildActionPlanTable('S-ED', 'actionPlanTBodyED', mk);
+  buildActionPlanTableSED('actionPlanTBodyED', mk);
+}
+
+// Khung "Duyệt bởi ECM/HODs": 2 nút Duyệt/Từ chối + 1 ô comment riêng — trạng thái + comment lưu
+// vào p.approvedBy (dạng "Đạt|Từ chối|" + text comment) để không cần thêm field mới.
+function approvalBoxHtml(group, proj, p) {
+  const raw = p.approvedBy || '';
+  const status = raw.startsWith('APPROVED|') ? 'approved' : raw.startsWith('REJECTED|') ? 'rejected' : '';
+  const comment = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : raw;
+  const projEsc = proj.replace(/'/g,"\\'");
+  return `
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='approved'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setApprovalStatus('${group}','${projEsc}','APPROVED')">✅ Duyệt</button>
+      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='rejected'?'background:#C0392B;color:#fff;border-color:#C0392B':''}" onclick="setApprovalStatus('${group}','${projEsc}','REJECTED')">❌ Từ chối</button>
+    </div>
+    <textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Comment của ECM/HODs..." onchange="setApprovalComment('${group}','${projEsc}',this.value)">${comment.replace(/</g,'&lt;')}</textarea>`;
 }
 
 function buildActionPlanTable(group, tbodyId, mk) {
@@ -3461,30 +3569,128 @@ function buildActionPlanTable(group, tbodyId, mk) {
   tbody.innerHTML = projNames.map((proj, i) => {
     const p = PROJECTS_DB[group][proj];
     const stats = getProjectOTStats(group, proj, mk);
-    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${proj.replace(/'/g,"\\'")}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    const projEsc = proj.replace(/'/g,"\\'");
+    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
     return `<tr>
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
       <td>
-        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${proj.replace(/'/g,"\\'")}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
+        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
         <div style="margin-top:4px;display:flex;gap:6px">
-          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${proj.replace(/'/g,"\\'")}')">Đổi tên</button>
-          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${proj.replace(/'/g,"\\'")}')">Xoá</button>
+          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
         </div>
         <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
       </td>
-      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${proj.replace(/'/g,"\\'")}','pm',this.value)"></td>
+      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value)"></td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
-        Số NV OT: <strong>${stats.nvCount}</strong> người
+        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')" title="Bấm để xem đúng ${stats.nvCount} NV này ở Danh sách NV OT">${stats.nvCount}</strong> người
       </td>
       <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
       <td>${editable('reason','Lý do...')}</td>
-      <td>${editable('approvedBy','Duyệt bởi...')}</td>
+      <td>${approvalBoxHtml(group, proj, p)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`;
   }).join('');
 }
+
+// Phần S-ED: KHÔNG dùng dự án riêng trong PROJECTS_DB — lấy chung toàn bộ NV có dept=S-ED
+// trực tiếp từ dữ liệu OT (giống hệt "Danh sách NV OT"), vì S-ED không tách theo site/dự án.
+function buildActionPlanTableSED(tbodyId, mk) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  const group = 'S-ED';
+  const manualProjs = projectsInGroup(group).sort();
+
+  // Hàng "S-ED (tất cả)" tự động — luôn hiện đầu tiên. Dùng ĐÚNG getTotals() (giống Danh sách NV OT).
+  let otNormal = 0, otNight = 0, nvCount = 0, codes = [];
+  if (mk && DB[mk]) {
+    const periods = buildPeriods(mk);
+    const periodIdx = periods.length ? periods.length - 1 : null;
+    const totals = getTotals(mk, 'S-ED', periodIdx);
+    totals.forEach(t => {
+      const night = Math.min(t.nightTotal || 0, t.total);
+      otNormal += (t.total - night); otNight += night;
+      if (t.total > 0) nvCount++;
+      if (t.staffCode) codes.push(t.staffCode);
+    });
+  }
+  const sedKey = '__SED_ALL__';
+  if (!PROJECTS_DB[group][sedKey]) PROJECTS_DB[group][sedKey] = { employees:[], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
+  const pAuto = PROJECTS_DB[group][sedKey];
+  const rowsHtml = [];
+  rowsHtml.push(`<tr>
+    <td style="text-align:center;color:var(--text2)">1</td>
+    <td><div style="font-weight:600">S-ED (tất cả)</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">Tự động lấy từ Danh sách NV OT</div></td>
+    <td><input type="text" value="${(pAuto.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${sedKey}','pm',this.value)"></td>
+    <td style="font-size:12px;line-height:1.8;white-space:nowrap">
+      OT thường: <strong>${Math.round((otNormal)*10)/10}h</strong><br>
+      OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
+      Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployeesByCodes('${JSON.stringify(codes).replace(/"/g,'&quot;')}','S-ED','${mk}')">${nvCount}</strong> người
+    </td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value)">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value)">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
+    <td>${approvalBoxHtml(group, sedKey, pAuto)}</td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value)">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
+  </tr>`);
+
+  // Các dự án S-ED được thêm thủ công (nếu có) — hiện tiếp bên dưới, giống HCM-EC
+  manualProjs.filter(p => p !== sedKey).forEach((proj, idx) => {
+    const p = PROJECTS_DB[group][proj];
+    const stats = getProjectOTStats(group, proj, mk);
+    const projEsc = proj.replace(/'/g,"\\'");
+    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    rowsHtml.push(`<tr>
+      <td style="text-align:center;color:var(--text2)">${idx+2}</td>
+      <td>
+        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
+        <div style="margin-top:4px;display:flex;gap:6px">
+          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
+        </div>
+        <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
+      </td>
+      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value)"></td>
+      <td style="font-size:12px;line-height:1.8;white-space:nowrap">
+        OT thường: <strong>${stats.otNormal}h</strong><br>
+        OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
+        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')">${stats.nvCount}</strong> người
+      </td>
+      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
+      <td>${editable('reason','Lý do...')}</td>
+      <td>${approvalBoxHtml(group, proj, p)}</td>
+      <td>${editable('note','Ghi chú...')}</td>
+    </tr>`);
+  });
+  tbody.innerHTML = rowsHtml.join('');
+}
+
+function setApprovalStatus(group, proj, status) {
+  const p = PROJECTS_DB[group]?.[proj]; if (!p) return;
+  const comment = (p.approvedBy||'').includes('|') ? p.approvedBy.slice(p.approvedBy.indexOf('|')+1) : (p.approvedBy||'');
+  p.approvedBy = `${status}|${comment}`;
+  saveProjectsDB();
+  renderActionPlan();
+  toast(status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối');
+}
+function setApprovalComment(group, proj, comment) {
+  const p = PROJECTS_DB[group]?.[proj]; if (!p) return;
+  const status = (p.approvedBy||'').startsWith('APPROVED|') ? 'APPROVED' : (p.approvedBy||'').startsWith('REJECTED|') ? 'REJECTED' : '';
+  p.approvedBy = status ? `${status}|${comment}` : comment;
+  saveProjectsDB();
+}
+// Xem danh sách NV theo 1 mảng staff code cụ thể (dùng cho hàng "S-ED (tất cả)" tự động,
+// không nằm trong PROJECTS_DB nên không dùng chung viewProjectEmployees được).
+function viewProjectEmployeesByCodes(codesJson, label, mk) {
+  let codes = [];
+  try { codes = JSON.parse(codesJson); } catch(e) {}
+  empProjectFilter = { group: label, proj: '(tất cả)', codes };
+  if (mk) { empMK = mk; empTab = 'month'; empPeriod = null; }
+  goPage('employees', null, true);
+}
+
+
 
 function saveProjectField(group, proj, field, value) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][proj]) return;
@@ -3556,15 +3762,18 @@ function getProjectOTStats(group, projectName, mk) {
   const proj = PROJECTS_DB[group] && PROJECTS_DB[group][projectName];
   if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0 };
   const codes = new Set(proj.employees);
+  // Dùng ĐÚNG getTotals() — cùng 1 hàm mà trang "Danh sách NV OT" đang dùng để hiển thị — đảm bảo
+  // 2 nơi luôn ra cùng 1 con số, không tính lại bằng công thức khác dễ gây lệch.
+  const periods = buildPeriods(mk);
+  const periodIdx = periods.length ? periods.length - 1 : null;
+  const totals = getTotals(mk, '__all__', periodIdx);
   let otNormal = 0, otNight = 0, nvCount = 0;
-  DB[mk].names.forEach(n => {
-    const e = DB[mk].employees[n];
-    if (!e || !e.staffCode || !codes.has(e.staffCode)) return;
-    const tot = totalOf(e);
-    const night = Math.min(nightTotalOf(e), tot);
-    otNormal += (tot - night);
+  totals.forEach(t => {
+    if (!t.staffCode || !codes.has(t.staffCode)) return;
+    const night = Math.min(t.nightTotal || 0, t.total);
+    otNormal += (t.total - night);
     otNight += night;
-    if (tot > 0) nvCount++;
+    if (t.total > 0) nvCount++;
   });
   return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount };
 }
@@ -3807,7 +4016,7 @@ function clearOffDay() {
   OFF_DB = {};
   saveOffDB();
   renderWlbSummary();
-  if (document.getElementById('pg-wlb')?.classList.contains('show')) { if (wlbTab === 'action') renderActionPlan(); else renderWlb(); }
+  if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
   toast('Đã xóa toàn bộ dữ liệu Off Day');
 }
 
