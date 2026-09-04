@@ -237,15 +237,11 @@
 
   <!-- ROW 2: Bottom full-width chart -->
   <div class="dash-row2">
-    <div id="dashKpiPctCard" class="card ac-top ac-amber">
-      <div class="card-title">📊 % Giới hạn KPI (45h) — <span id="dashKpiPctLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div id="cDashKpiPctEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có NV nào phát sinh OT trong kỳ này.</div>
-      <div style="position:relative;width:100%;height:300px"><canvas id="cDashKpiPct" role="img" aria-label="% Giới hạn KPI">% KPI.</canvas></div>
-    </div>
-    <div id="dashPayPctCard" class="card ac-top ac-red">
-      <div class="card-title">📊 % Giới hạn Chi trả (70h) — <span id="dashPayPctLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div id="cDashPayPctEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có NV nào phát sinh OT trong kỳ này.</div>
-      <div style="position:relative;width:100%;height:300px"><canvas id="cDashPayPct" role="img" aria-label="% Giới hạn Chi trả">% Chi trả.</canvas></div>
+    <div id="dashLimitPctCard" class="card ac-top ac-amber">
+      <div class="card-title">📊 % Giới hạn KPI (45h) &amp; Chi trả (70h) — <span id="dashLimitPctLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Tính trên tổng OT luỹ kế từ ngày 16 đến hết tuần đang xem (không phải riêng OT phát sinh trong tuần đó).</div>
+      <div id="cDashLimitPctEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có NV nào phát sinh OT trong kỳ này.</div>
+      <div style="position:relative;width:100%;height:300px"><canvas id="cDashLimitPct" role="img" aria-label="% Giới hạn KPI và Chi trả">% Giới hạn.</canvas></div>
     </div>
     <div class="card ac-top ac-green">
       <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
