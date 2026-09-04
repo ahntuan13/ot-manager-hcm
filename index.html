@@ -246,7 +246,9 @@
         <span><span class="ldot" style="background:#C0392B"></span>Vượt Chi trả (&gt;70h)</span>
       </div>
       <div id="cDashLimitPctEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có NV nào phát sinh OT trong kỳ này.</div>
-      <div style="position:relative;width:100%;height:300px"><canvas id="cDashLimitPct" role="img" aria-label="Giới hạn KPI và Chi trả">Giới hạn KPI/Chi trả.</canvas></div>
+      <div class="chart-hscroll" style="width:100%;overflow-x:auto;overflow-y:hidden">
+        <div style="position:relative;height:300px"><canvas id="cDashLimitPct" role="img" aria-label="Giới hạn KPI và Chi trả">Giới hạn KPI/Chi trả.</canvas></div>
+      </div>
     </div>
     <div class="card ac-top ac-green">
       <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
@@ -298,7 +300,8 @@
     <div class="action-row">
       <select id="stFilter" onchange="renderEmployeeList()">
         <option value="all">Tất cả trạng thái</option>
-        <option value="d">Vượt &gt;70h</option>
+        <option value="d">Vượt mức &gt;70h</option>
+        <option value="w45">Vượt mức 45 (45-70h)</option>
         <option value="o">Bình thường</option>
       </select>
       <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
