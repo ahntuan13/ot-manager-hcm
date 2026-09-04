@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.24';
+const APP_VERSION = '2026.25';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -1312,7 +1312,7 @@ function renderDash() {
   if (!activeMK || !DB[activeMK]) {
     document.getElementById('dashMetrics').innerHTML =
       '<div style="grid-column:1/-1;font-size:13px;color:var(--text2);padding:16px 0">Chưa có dữ liệu. Vào tab <strong>Upload</strong> để bắt đầu.</div>';
-    ['cBar','cTrendPeriod'].forEach(killChart);
+    ['cBar','cDashKpiPct','cDashPayPct'].forEach(killChart);
     document.getElementById('dtHead').innerHTML = '';
     document.getElementById('dtBody').innerHTML = '';
     const dwl = document.getElementById('dashWarnList');
@@ -1347,8 +1347,10 @@ function renderDash() {
   const periodSubLabel = dashTab==='month' ? fmtCompanyMK(activeMK) : periodLabel;
 
   const isWeek = dashTab === 'week';
+  const overKpiWeek = totals.filter(t => t.total > 45).length;
   document.getElementById('dashMetrics').innerHTML = isWeek ? `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
+    <div class="mc ${overKpiWeek>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">NV OT trong tuần &gt; 45h</div><div class="mv">${overKpiWeek}</div><div class="ms">vượt giới hạn KPI</div></div>
     <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
     <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>` : `
@@ -1378,12 +1380,10 @@ function renderDash() {
   else renderBarChart(totals, true);
 
   if (dashTab === 'week') {
-    renderTrendPeriodChart(df, periodIdx);
-    document.querySelector('#cTrendPeriod').closest('.card').style.display = 'block';
+    renderDashKpiPctChart(totals, periodLabel);
+    renderDashPayPctChart(totals, periodLabel);
   } else {
-    // Month mode: hide the week trend chart, show a simple summary bar instead
-    document.querySelector('#cTrendPeriod').closest('.card').style.display = 'none';
-    killChart('cTrendPeriod');
+    killChart('cDashKpiPct'); killChart('cDashPayPct');
   }
 
   renderDashDeptLineChart();
@@ -1391,6 +1391,29 @@ function renderDash() {
   renderNightOtFreqChart(df, periodIdx);
   renderDashOverBarChart(totals);
   renderDashProjectBarChart(totals);
+}
+
+// 2 biểu đồ mới (thay cho "Top 8 NV" cũ) — % Giới hạn KPI (45h) và % Giới hạn Chi trả (70h),
+// tính trên đúng OT PHÁT SINH TRONG TUẦN đang xem (t.deltaTotal), sắp theo % giảm dần.
+function renderDashKpiPctChart(totals, periodLabel) {
+  const lbl = document.getElementById('dashKpiPctLabel');
+  if (lbl) lbl.textContent = periodLabel || '';
+  const entries = totals.filter(t => (t.deltaTotal||0) > 0)
+    .map(t => ({ name: t.name, value: Math.round((t.deltaTotal||0)/45*1000)/10 }))
+    .sort((a,b) => b.value - a.value).slice(0, 15);
+  renderGenericProjectBarChart(CH, killChart, 'cDashKpiPct',
+    document.getElementById('cDashKpiPct'), document.getElementById('cDashKpiPctEmpty'),
+    entries, '%', '#E8A33D');
+}
+function renderDashPayPctChart(totals, periodLabel) {
+  const lbl = document.getElementById('dashPayPctLabel');
+  if (lbl) lbl.textContent = periodLabel || '';
+  const entries = totals.filter(t => (t.deltaTotal||0) > 0)
+    .map(t => ({ name: t.name, value: Math.round((t.deltaTotal||0)/70*1000)/10 }))
+    .sort((a,b) => b.value - a.value).slice(0, 15);
+  renderGenericProjectBarChart(CH, killChart, 'cDashPayPct',
+    document.getElementById('cDashPayPct'), document.getElementById('cDashPayPctEmpty'),
+    entries, '%', '#C0392B');
 }
 
 // Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng (lấy đúng danh sách
