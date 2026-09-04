@@ -262,8 +262,8 @@
   /* SIDEBAR — khung nổi riêng biệt, bo góc đều, tách khỏi nền */
   .sidebar {
     width: 200px; flex-shrink: 0;
-    background: #2D6CDF;
-    border: 1px solid #2159BD;
+    background: #1E4D8C;
+    border: 1px solid #163A6B;
     border-radius: 16px;
     box-shadow: 0 8px 20px rgba(20,24,30,0.10), 0 2px 6px rgba(20,24,30,0.08);
     display: flex; flex-direction: column;
@@ -304,7 +304,7 @@
   .sb-nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
   .sb-section-label {
     font-size: 9.5px; font-weight: 700; letter-spacing: .1em;
-    text-transform: uppercase; color: #7FA0C4;
+    text-transform: uppercase; color: #9DBBDC;
     padding: 12px 8px 5px; display: block;
   }
   .sb-section-label i { font-style: normal; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: .7; font-size: 9px; }
@@ -312,22 +312,22 @@
     display: flex; align-items: center; gap: 9px;
     width: 100%; padding: 7px 10px;
     border-radius: 8px; border: none; background: transparent;
-    color: #C7D9EC; font-family: inherit;
-    font-size: 13px; font-weight: 500;
+    color: #EAF2FC; font-family: inherit;
+    font-size: 13px; font-weight: 600;
     cursor: pointer; transition: all .12s;
     text-align: left;
   }
-  .nt svg { flex-shrink: 0; opacity: .8; }
+  .nt svg { flex-shrink: 0; opacity: .9; }
   .nt-label { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
-  .nt-en { font-size: 9px; font-weight: 500; opacity: .65; letter-spacing: .02em; }
-  .nt:hover:not(.active) { background: rgba(255,255,255,0.10); color: #fff; }
+  .nt-en { font-size: 9px; font-weight: 600; opacity: .75; letter-spacing: .02em; }
+  .nt:hover:not(.active) { background: rgba(255,255,255,0.14); color: #fff; }
   .nt:hover:not(.active) svg { opacity: 1; }
   .nt.active {
     background: #fff; color: var(--accent);
-    font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.2);
   }
   .nt.active svg { opacity: 1; color: var(--accent); }
-  .nt.active .nt-en { opacity: .7; }
+  .nt.active .nt-en { opacity: .8; }
 
   /* SIDEBAR — ACTIONS */
   .sb-actions {
@@ -340,11 +340,11 @@
     display: flex; align-items: center; gap: 8px;
     width: 100%; padding: 8px 10px;
     border-radius: 8px; border: none; background: transparent;
-    color: #C7D9EC; font-family: inherit;
-    font-size: 12.5px; font-weight: 500;
+    color: #EAF2FC; font-family: inherit;
+    font-size: 12.5px; font-weight: 600;
     cursor: pointer; transition: all .12s; text-align: left;
   }
-  .sb-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+  .sb-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
   .sb-btn svg { flex-shrink: 0; }
   .sb-btn.primary { background: var(--accent); color: #fff; margin-top: 2px; }
   .sb-btn.primary:hover { background: #5A43C4; }
