@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.26';
+const APP_VERSION = '2026.27';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -1417,23 +1417,26 @@ function renderDashLimitPctChart(totals, periodLabel) {
   if (canvasEl) canvasEl.style.display = 'block';
   const barH = Math.max(300, rows.length * 30 + 70);
   canvasEl.parentElement.style.height = barH + 'px';
-  const kpiVals = rows.map(r => Math.round(r.cum/45*1000)/10);
-  const payVals = rows.map(r => Math.round(r.cum/70*1000)/10);
+  // Hiện đúng SỐ GIỜ luỹ kế (không phải %) — tô màu theo mốc đã vượt: xanh (≤45h, chưa vượt KPI),
+  // cam (>45h — vượt KPI, chưa tới mức Chi trả), đỏ (>70h — vượt cả mức Chi trả).
+  const colorFor = h => h > 70 ? '#C0392B' : h > 45 ? '#E8A33D' : '#7A9468';
   safeMakeChart(CH, killChart, 'cDashLimitPct', canvasEl, {
     type: 'bar',
     data: { labels: rows.map(r=>r.name),
       datasets: [
-        { label:'% Giới hạn KPI (45h)', data: kpiVals, backgroundColor:'#E8A33D', borderWidth:0, borderRadius:3 },
-        { label:'% Giới hạn Chi trả (70h)', data: payVals, backgroundColor:'#C0392B', borderWidth:0, borderRadius:3 }
+        { label:'Tổng OT luỹ kế (h)', data: rows.map(r=>r.cum), backgroundColor: rows.map(r=>colorFor(r.cum)), borderWidth:0, borderRadius:3 }
       ] },
     options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:44, top:4, bottom:4, left:4 } },
-      plugins:{ legend:{display:true, position:'top', labels:{font:{size:10.5},boxWidth:12,padding:8}},
-        barValueLabels:{ suffix:'%' },
-        tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw}%` } } },
+      plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+        tooltip:{ callbacks:{ label:c=>{
+          const h = c.raw;
+          const note = h>70 ? ' — vượt mức Chi trả (70h)' : h>45 ? ' — vượt mức KPI (45h)' : ' — trong giới hạn KPI';
+          return ` ${h}h${note}`;
+        } } } },
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-            suggestedMax: Math.ceil(Math.max(1, ...kpiVals, ...payVals) * 1.2) },
+            suggestedMax: Math.ceil(Math.max(45,70, ...rows.map(r=>r.cum)) * 1.15) },
         y:{ grid:{display:false}, ticks:{font:{size:10}} } }
     }
   });
