@@ -238,10 +238,15 @@
   <!-- ROW 2: Bottom full-width chart -->
   <div class="dash-row2">
     <div id="dashLimitPctCard" class="card ac-top ac-amber">
-      <div class="card-title">📊 % Giới hạn KPI (45h) &amp; Chi trả (70h) — <span id="dashLimitPctLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Tính trên tổng OT luỹ kế từ ngày 16 đến hết tuần đang xem (không phải riêng OT phát sinh trong tuần đó).</div>
+      <div class="card-title">📊 Giới hạn KPI (45h) &amp; Chi trả (70h) — <span id="dashLimitPctLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Tổng OT luỹ kế (giờ) từ ngày 16 đến hết tuần đang xem (không phải riêng OT phát sinh trong tuần đó).</div>
+      <div class="legend">
+        <span><span class="ldot" style="background:#7A9468"></span>Trong giới hạn KPI (≤45h)</span>
+        <span><span class="ldot" style="background:#E8A33D"></span>Vượt KPI (&gt;45h)</span>
+        <span><span class="ldot" style="background:#C0392B"></span>Vượt Chi trả (&gt;70h)</span>
+      </div>
       <div id="cDashLimitPctEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có NV nào phát sinh OT trong kỳ này.</div>
-      <div style="position:relative;width:100%;height:300px"><canvas id="cDashLimitPct" role="img" aria-label="% Giới hạn KPI và Chi trả">% Giới hạn.</canvas></div>
+      <div style="position:relative;width:100%;height:300px"><canvas id="cDashLimitPct" role="img" aria-label="Giới hạn KPI và Chi trả">Giới hạn KPI/Chi trả.</canvas></div>
     </div>
     <div class="card ac-top ac-green">
       <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
