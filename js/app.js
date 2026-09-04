@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.27';
+const APP_VERSION = '2026.28';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -302,10 +302,11 @@ function fmtMK(mk) {
   const [y,m] = mk.split('-').map(Number);
   return `${MONTH_NAMES_EN[m-1]} ${y}`;
 }
-function stOf(t) { return t > 70 ? 'd' : 'o'; }
+function stOf(t) { return t > 70 ? 'd' : t > 45 ? 'w45' : 'o'; }
 function stBadge(t) {
   const s = stOf(t);
   return s==='d' ? '<span class="badge bd">Vượt mức</span>'
+       : s==='w45' ? '<span class="badge bw">Vượt mức 45</span>'
                  : '<span class="badge bo">Bình thường</span>';
 }
 function killChart(id) { if (CH[id]) { CH[id].destroy(); CH[id] = null; } }
@@ -1403,9 +1404,11 @@ function renderDashLimitPctChart(totals, periodLabel) {
   if (lbl) lbl.textContent = periodLabel || '';
   const emptyEl = document.getElementById('cDashLimitPctEmpty');
   const canvasEl = document.getElementById('cDashLimitPct');
-  const rows = totals.filter(t => (t.cumulativeTotal||0) > 0)
+  // CHỈ hiện NV đã vượt mức 45h (cả 2 mức "Vượt mức 45" và "Vượt mức") — không còn là biểu đồ
+  // "top 15 bất kỳ" như trước, vì mục đích giờ là liệt kê rõ TOÀN BỘ người vượt để dễ theo dõi.
+  const rows = totals.filter(t => (t.cumulativeTotal||0) > 45)
     .map(t => ({ name: t.name, cum: t.cumulativeTotal||0 }))
-    .sort((a,b) => b.cum - a.cum).slice(0, 15);
+    .sort((a,b) => b.cum - a.cum);
 
   killChart('cDashLimitPct');
   if (!rows.length) {
@@ -1415,29 +1418,34 @@ function renderDashLimitPctChart(totals, periodLabel) {
   }
   if (emptyEl) emptyEl.style.display = 'none';
   if (canvasEl) canvasEl.style.display = 'block';
-  const barH = Math.max(300, rows.length * 30 + 70);
-  canvasEl.parentElement.style.height = barH + 'px';
-  // Hiện đúng SỐ GIỜ luỹ kế (không phải %) — tô màu theo mốc đã vượt: xanh (≤45h, chưa vượt KPI),
-  // cam (>45h — vượt KPI, chưa tới mức Chi trả), đỏ (>70h — vượt cả mức Chi trả).
-  const colorFor = h => h > 70 ? '#C0392B' : h > 45 ? '#E8A33D' : '#7A9468';
+  // Biểu đồ CỘT DỌC (không phải nằm ngang nữa) — vì số lượng NV vượt mức có thể rất nhiều, cho
+  // canvas rộng theo số lượng + cuộn ngang, thay vì kéo dài mãi xuống dưới như bản nằm ngang cũ.
+  const wrapEl = canvasEl.parentElement;
+  const scrollWrap = wrapEl.parentElement; // .chart-hscroll
+  const barW = Math.max(scrollWrap ? scrollWrap.clientWidth || 700 : 700, rows.length * 46 + 60);
+  wrapEl.style.width = barW + 'px';
+  wrapEl.style.height = '380px';
+  // Hiện đúng SỐ GIỜ luỹ kế (không phải %) — tô màu theo mốc đã vượt: cam (Vượt mức 45, 45-70h),
+  // đỏ (Vượt mức, >70h).
+  const colorFor = h => h > 70 ? '#C0392B' : '#E8A33D';
   safeMakeChart(CH, killChart, 'cDashLimitPct', canvasEl, {
     type: 'bar',
     data: { labels: rows.map(r=>r.name),
       datasets: [
-        { label:'Tổng OT luỹ kế (h)', data: rows.map(r=>r.cum), backgroundColor: rows.map(r=>colorFor(r.cum)), borderWidth:0, borderRadius:3 }
+        { label:'Tổng OT luỹ kế (h)', data: rows.map(r=>r.cum), backgroundColor: rows.map(r=>colorFor(r.cum)), borderWidth:0, borderRadius:4, maxBarThickness:34 }
       ] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:44, top:4, bottom:4, left:4 } },
+    options: { responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top:22, right:8, bottom:4, left:4 } },
       plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
         tooltip:{ callbacks:{ label:c=>{
           const h = c.raw;
-          const note = h>70 ? ' — vượt mức Chi trả (70h)' : h>45 ? ' — vượt mức KPI (45h)' : ' — trong giới hạn KPI';
+          const note = h>70 ? ' — vượt mức Chi trả (70h)' : ' — vượt mức KPI (45h)';
           return ` ${h}h${note}`;
         } } } },
       scales:{
-        x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-            suggestedMax: Math.ceil(Math.max(45,70, ...rows.map(r=>r.cum)) * 1.15) },
-        y:{ grid:{display:false}, ticks:{font:{size:10}} } }
+        x:{ grid:{display:false}, ticks:{font:{size:10.5}, maxRotation:60, minRotation:60, autoSkip:false} },
+        y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
+            suggestedMax: Math.ceil(Math.max(45,70, ...rows.map(r=>r.cum)) * 1.15) } }
     }
   });
 }
@@ -1741,8 +1749,9 @@ function renderMonthDonut(totals) {
   }
 
   const groups = [
-    { key:'o', label:'Bình thường ≤70h', color:'#7A9468' },
-    { key:'d', label:'Vượt 70h',          color:'#C0392B' }
+    { key:'o', label:'Bình thường ≤45h', color:'#7A9468' },
+    { key:'w45', label:'Vượt mức 45 (45-70h)', color:'#E8A33D' },
+    { key:'d', label:'Vượt mức (>70h)',          color:'#C0392B' }
   ];
   groups.forEach(g => { g.hours = 0; g.count = 0; });
   totals.forEach(t => {
@@ -1893,7 +1902,7 @@ function renderDashTable(totals, periods) {
     const pctPay = Math.min(999, Math.round(t.total/70*100));
     const fcKpi  = pctKpi>=100 ? '#C0392B' : pctKpi>=80 ? '#E8A33D' : '#7A9468';
     const fcPay  = pctPay>=100 ? '#C0392B' : pctPay>=80 ? '#E8A33D' : '#7A9468';
-    const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w'?'#E8A33D':'#7A9468';
+    const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w45'?'#E8A33D':'#7A9468';
     const over = t.total > 70;
     const rc = over ? 'color:#C0392B;font-weight:700' : '';
     const rawNight = t.nightTotal || 0;
@@ -2862,8 +2871,8 @@ ${autoprintScript}
 const MONTHS = ${dataJson};
 const DEPT_COLORS = ${DEPT_COLORS_JSON};
 const NV_COLORS = ${NV_COLORS_JSON};
-function stOf(t){ return t>70?'d':'o'; }
-function stBadge(t){ const s=stOf(t); return s==='d'?'<span class="badge bd">Vượt mức</span>':'<span class="badge bo">Bình thường</span>'; }
+function stOf(t){ return t>70?'d':t>45?'w45':'o'; }
+function stBadge(t){ const s=stOf(t); return s==='d'?'<span class="badge bd">Vượt mức</span>':s==='w45'?'<span class="badge bw">Vượt mức 45</span>':'<span class="badge bo">Bình thường</span>'; }
 
 const root = document.getElementById('root');
 if (!MONTHS.length) {
