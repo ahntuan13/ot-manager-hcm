@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.25';
+const APP_VERSION = '2026.26';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -785,7 +785,10 @@ function getAllDeptsForWlb() {
 // (chỉ riêng tuần đang xem, KHÔNG cộng dồn từ ngày 16) — áp dụng cho Dashboard & Danh sách NV OT.
 // Tab "Theo tháng" giữ nguyên luỹ kế như cũ (không gọi hàm này).
 function applyWeekDelta(totals) {
-  return totals.map(t => ({ ...t, total: t.deltaTotal, nightTotal: t.deltaNightTotal }));
+  // Giữ lại tổng LŨY KẾ gốc (từ ngày 16 đến hết tuần đang xem) dưới tên cumulativeTotal, TRƯỚC
+  // khi ghi đè total = deltaTotal (chỉ riêng tuần đó) — để nơi nào cần "tổng lũy kế các tuần"
+  // (như biểu đồ % Giới hạn KPI/Chi trả) vẫn lấy được đúng số, không bị mất sau bước này.
+  return totals.map(t => ({ ...t, cumulativeTotal: t.total, total: t.deltaTotal, nightTotal: t.deltaNightTotal }));
 }
 
 function getTotals(mk, deptFilter = '__all__', pIdx = null) {
@@ -1312,7 +1315,7 @@ function renderDash() {
   if (!activeMK || !DB[activeMK]) {
     document.getElementById('dashMetrics').innerHTML =
       '<div style="grid-column:1/-1;font-size:13px;color:var(--text2);padding:16px 0">Chưa có dữ liệu. Vào tab <strong>Upload</strong> để bắt đầu.</div>';
-    ['cBar','cDashKpiPct','cDashPayPct'].forEach(killChart);
+    ['cBar','cDashLimitPct'].forEach(killChart);
     document.getElementById('dtHead').innerHTML = '';
     document.getElementById('dtBody').innerHTML = '';
     const dwl = document.getElementById('dashWarnList');
@@ -1380,10 +1383,9 @@ function renderDash() {
   else renderBarChart(totals, true);
 
   if (dashTab === 'week') {
-    renderDashKpiPctChart(totals, periodLabel);
-    renderDashPayPctChart(totals, periodLabel);
+    renderDashLimitPctChart(totals, periodLabel);
   } else {
-    killChart('cDashKpiPct'); killChart('cDashPayPct');
+    killChart('cDashLimitPct');
   }
 
   renderDashDeptLineChart();
@@ -1393,27 +1395,48 @@ function renderDash() {
   renderDashProjectBarChart(totals);
 }
 
-// 2 biểu đồ mới (thay cho "Top 8 NV" cũ) — % Giới hạn KPI (45h) và % Giới hạn Chi trả (70h),
-// tính trên đúng OT PHÁT SINH TRONG TUẦN đang xem (t.deltaTotal), sắp theo % giảm dần.
-function renderDashKpiPctChart(totals, periodLabel) {
-  const lbl = document.getElementById('dashKpiPctLabel');
+// Biểu đồ gộp (thay cho "Top 8 NV" cũ) — % Giới hạn KPI (45h) và % Giới hạn Chi trả (70h) trong
+// CÙNG 1 biểu đồ (2 cột cạnh nhau mỗi NV), tính trên TỔNG LŨY KẾ từ ngày 16 đến hết tuần đang
+// xem (t.cumulativeTotal) — KHÔNG phải chỉ riêng OT phát sinh trong tuần đó — theo đúng yêu cầu.
+function renderDashLimitPctChart(totals, periodLabel) {
+  const lbl = document.getElementById('dashLimitPctLabel');
   if (lbl) lbl.textContent = periodLabel || '';
-  const entries = totals.filter(t => (t.deltaTotal||0) > 0)
-    .map(t => ({ name: t.name, value: Math.round((t.deltaTotal||0)/45*1000)/10 }))
-    .sort((a,b) => b.value - a.value).slice(0, 15);
-  renderGenericProjectBarChart(CH, killChart, 'cDashKpiPct',
-    document.getElementById('cDashKpiPct'), document.getElementById('cDashKpiPctEmpty'),
-    entries, '%', '#E8A33D');
-}
-function renderDashPayPctChart(totals, periodLabel) {
-  const lbl = document.getElementById('dashPayPctLabel');
-  if (lbl) lbl.textContent = periodLabel || '';
-  const entries = totals.filter(t => (t.deltaTotal||0) > 0)
-    .map(t => ({ name: t.name, value: Math.round((t.deltaTotal||0)/70*1000)/10 }))
-    .sort((a,b) => b.value - a.value).slice(0, 15);
-  renderGenericProjectBarChart(CH, killChart, 'cDashPayPct',
-    document.getElementById('cDashPayPct'), document.getElementById('cDashPayPctEmpty'),
-    entries, '%', '#C0392B');
+  const emptyEl = document.getElementById('cDashLimitPctEmpty');
+  const canvasEl = document.getElementById('cDashLimitPct');
+  const rows = totals.filter(t => (t.cumulativeTotal||0) > 0)
+    .map(t => ({ name: t.name, cum: t.cumulativeTotal||0 }))
+    .sort((a,b) => b.cum - a.cum).slice(0, 15);
+
+  killChart('cDashLimitPct');
+  if (!rows.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (canvasEl) canvasEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (canvasEl) canvasEl.style.display = 'block';
+  const barH = Math.max(300, rows.length * 30 + 70);
+  canvasEl.parentElement.style.height = barH + 'px';
+  const kpiVals = rows.map(r => Math.round(r.cum/45*1000)/10);
+  const payVals = rows.map(r => Math.round(r.cum/70*1000)/10);
+  safeMakeChart(CH, killChart, 'cDashLimitPct', canvasEl, {
+    type: 'bar',
+    data: { labels: rows.map(r=>r.name),
+      datasets: [
+        { label:'% Giới hạn KPI (45h)', data: kpiVals, backgroundColor:'#E8A33D', borderWidth:0, borderRadius:3 },
+        { label:'% Giới hạn Chi trả (70h)', data: payVals, backgroundColor:'#C0392B', borderWidth:0, borderRadius:3 }
+      ] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ right:44, top:4, bottom:4, left:4 } },
+      plugins:{ legend:{display:true, position:'top', labels:{font:{size:10.5},boxWidth:12,padding:8}},
+        barValueLabels:{ suffix:'%' },
+        tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw}%` } } },
+      scales:{
+        x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
+            suggestedMax: Math.ceil(Math.max(1, ...kpiVals, ...payVals) * 1.2) },
+        y:{ grid:{display:false}, ticks:{font:{size:10}} } }
+    }
+  });
 }
 
 // Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng (lấy đúng danh sách
