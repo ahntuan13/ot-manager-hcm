@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.23';
+const APP_VERSION = '2026.24';
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -1835,9 +1835,15 @@ function renderDashTable(totals, periods) {
     return true;
   });
   document.getElementById('dtHead').innerHTML =
-    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>OT bình thường <span style="font-weight:400;color:var(--text3)">/ Normal OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>% Giới hạn <span style="font-weight:400;color:var(--text3)">/ Limit</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
+    `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>OT bình thường <span style="font-weight:400;color:var(--text3)">/ Normal OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>% Giới hạn KPI <span style="font-weight:400;color:var(--text3)">(45h)</span></th><th>% Giới hạn Chi trả <span style="font-weight:400;color:var(--text3)">(70h)</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
   document.getElementById('dtBody').innerHTML = rows.map(t => {
-    const pct = Math.min(100, Math.round(t.total/70*100));
+    // % Giới hạn KPI: tính trên mốc 45h/tháng (mục tiêu KPI nội bộ) — % Giới hạn Chi trả: tính
+    // trên mốc 70h/tháng (mức trần được công ty chi trả OT theo quy định) — 2 mốc khác nhau,
+    // hiển thị riêng để PM/HR phân biệt rõ "vượt KPI" khác với "vượt mức chi trả".
+    const pctKpi = Math.min(999, Math.round(t.total/45*100));
+    const pctPay = Math.min(999, Math.round(t.total/70*100));
+    const fcKpi  = pctKpi>=100 ? '#C0392B' : pctKpi>=80 ? '#E8A33D' : '#7A9468';
+    const fcPay  = pctPay>=100 ? '#C0392B' : pctPay>=80 ? '#E8A33D' : '#7A9468';
     const fc  = stOf(t.total)==='d'?'#C0392B':stOf(t.total)==='w'?'#E8A33D':'#7A9468';
     const over = t.total > 70;
     const rc = over ? 'color:#C0392B;font-weight:700' : '';
@@ -1857,10 +1863,12 @@ function renderDashTable(totals, periods) {
       <td style="color:var(--text2)">${normal}h</td>
       <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
       <td style="${rc || 'font-weight:700'}">${t.total}h</td>
-      <td><div style="font-size:10px;color:var(--text2)">${pct}%</div>
-          <div class="pb"><div class="pf" style="width:${pct}%;background:${fc}"></div></div></td>
+      <td><div style="font-size:10px;color:var(--text2)">${pctKpi}%</div>
+          <div class="pb"><div class="pf" style="width:${Math.min(100,pctKpi)}%;background:${fcKpi}"></div></div></td>
+      <td><div style="font-size:10px;color:var(--text2)">${pctPay}%</div>
+          <div class="pb"><div class="pf" style="width:${Math.min(100,pctPay)}%;background:${fcPay}"></div></div></td>
       <td>${stBadge(t.total)}</td></tr>`;
-  }).join('') || `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
+  }).join('') || `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
 }
 
 // ============================================================
@@ -3218,7 +3226,7 @@ async function syncSave() {
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
-      if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
+      const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
       toast('Đã tải lên Google Sheet! (OT + Đi trễ + Off Day WLB + Action Plan)');
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
@@ -3274,7 +3282,7 @@ async function syncLoad() {
       rebuildLateUI();
       renderWlbSummary();
       if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
-      if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
+      const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3721,7 +3729,9 @@ function buildActionPlanTable(group, tbodyId, mk) {
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
-        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')" title="Bấm để xem đúng ${stats.nvCount} NV này ở Danh sách NV OT">${stats.nvCount}</strong> người
+        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')" title="Bấm để xem đúng ${stats.nvCount} NV này ở Danh sách NV OT">${stats.nvCount}</strong> người<br>
+        <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
+        <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
       <td>${editable('reason','Lý do...')}</td>
       <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
@@ -3740,7 +3750,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
   const manualProjs = projectsInGroup(group).sort();
 
   // Hàng "S-ED (tất cả)" tự động — luôn hiện đầu tiên. Dùng ĐÚNG getTotals() (giống Danh sách NV OT).
-  let otNormal = 0, otNight = 0, nvCount = 0, codes = [];
+  let otNormal = 0, otNight = 0, nvCount = 0, codes = [], overKpiSed = 0, overPaySed = 0;
   if (mk && DB[mk]) {
     const periods = buildPeriods(mk);
     const periodIdx = periods.length ? periods.length - 1 : null;
@@ -3750,6 +3760,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
       otNormal += (t.total - night); otNight += night;
       if (t.total > 0) nvCount++;
       if (t.staffCode) codes.push(t.staffCode);
+      if (t.total > 45) overKpiSed++;
+      if (t.total > 70) overPaySed++;
     });
   }
   const sedKey = '__SED_ALL__';
@@ -3764,7 +3776,9 @@ function buildActionPlanTableSED(tbodyId, mk) {
     <td style="font-size:12px;line-height:1.8;white-space:nowrap">
       OT thường: <strong>${Math.round((otNormal)*10)/10}h</strong><br>
       OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
-      Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployeesByCodes('${JSON.stringify(codes).replace(/"/g,'&quot;')}','S-ED','${mk}')">${nvCount}</strong> người
+      Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployeesByCodes('${JSON.stringify(codes).replace(/"/g,'&quot;')}','S-ED','${mk}')">${nvCount}</strong> người<br>
+      <span style="color:${overKpiSed>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${overKpiSed}</strong> NV</span><br>
+      <span style="color:${overPaySed>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${overPaySed}</strong> NV</span>
     </td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value)">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value)">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
@@ -3793,7 +3807,9 @@ function buildActionPlanTableSED(tbodyId, mk) {
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
-        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')">${stats.nvCount}</strong> người
+        Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')">${stats.nvCount}</strong> người<br>
+        <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
+        <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
       <td>${editable('reason','Lý do...')}</td>
       <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
@@ -3898,22 +3914,25 @@ function renderProjectEmployeeBox(group, proj, box) {
 // (không phải WLB_XLS, vì WLB_XLS không tách riêng OT ngày/đêm). Dùng tháng gần nhất có dữ liệu.
 function getProjectOTStats(group, projectName, mk) {
   const proj = PROJECTS_DB[group] && PROJECTS_DB[group][projectName];
-  if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0 };
+  if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0, overKpi: 0, overPay: 0 };
   const codes = new Set(proj.employees);
   // Dùng ĐÚNG getTotals() — cùng 1 hàm mà trang "Danh sách NV OT" đang dùng để hiển thị — đảm bảo
   // 2 nơi luôn ra cùng 1 con số, không tính lại bằng công thức khác dễ gây lệch.
   const periods = buildPeriods(mk);
   const periodIdx = periods.length ? periods.length - 1 : null;
   const totals = getTotals(mk, '__all__', periodIdx);
-  let otNormal = 0, otNight = 0, nvCount = 0;
+  let otNormal = 0, otNight = 0, nvCount = 0, overKpi = 0, overPay = 0;
   totals.forEach(t => {
     if (!t.staffCode || !codes.has(t.staffCode)) return;
     const night = Math.min(t.nightTotal || 0, t.total);
     otNormal += (t.total - night);
     otNight += night;
     if (t.total > 0) nvCount++;
+    // % Giới hạn KPI = mốc 45h/tháng, % Giới hạn Chi trả = mốc 70h/tháng — đếm số NV vượt mỗi mốc.
+    if (t.total > 45) overKpi++;
+    if (t.total > 70) overPay++;
   });
-  return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount };
+  return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount, overKpi, overPay };
 }
 // ============================================================
 //  PHÂN TÍCH THEO DỰ ÁN (dùng chung cho WLB / So sánh OT / OT phòng ban)
@@ -5082,7 +5101,7 @@ function renderLate() {
   if (!activeLateMK || !LATE_DB[activeLateMK]) {
     document.getElementById('lateMetrics').innerHTML =
       '<div style="grid-column:1/-1;font-size:13px;color:var(--text2);padding:8px 0">Chưa có dữ liệu. Upload file chấm công bên dưới để bắt đầu.</div>';
-    killLateChart('cLateDeptMin'); killLateChart('cLateDeptCount'); killLateChart('cLateBar'); killLateChart('cLateTrend');
+    killLateChart('cLateDeptCombo'); killLateChart('cLateBar'); killLateChart('cLateTrend');
     document.getElementById('lateTHead').innerHTML = '';
     document.getElementById('lateTBody').innerHTML = '';
     const lrt = document.getElementById('lateRateTBody');
@@ -5131,46 +5150,45 @@ function renderLate() {
       </div></td></tr>`;
   }).join('') || `<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--text2)">Không có dữ liệu.</td></tr>`;
 
-  // ── Chart 1: Tổng số phút đi trễ theo phòng ban — 2 mốc ──
-  killLateChart('cLateDeptMin');
-  const deptStatsMin = LATE_DEPT_LIST.map(d => {
+  // ── Chart gộp: Tổng số phút đi trễ (cột) + Số lần đi trễ (line) — theo phòng ban, 2 mốc ──
+  // Gộp 2 biểu đồ trước đây thành 1: cột = tổng phút, line = số lần — dùng 2 trục Y riêng vì
+  // thang đo khác nhau hẳn (phút: hàng trăm, số lần: chỉ vài đơn vị). Màu tách biệt bar/line để
+  // dễ phân biệt: cột dùng màu đậm (xanh dương/đỏ), line dùng màu khác hẳn (xanh ngọc/cam).
+  killLateChart('cLateDeptCombo');
+  const deptStatsCombo = LATE_DEPT_LIST.map(d => {
     const t = getLateTotals(activeLateMK, d);
-    return { name:d, t1: t.reduce((a,b)=>a+b.t1Min,0), t2: t.reduce((a,b)=>a+b.t2Min,0) };
+    return {
+      name: d,
+      t1Min: t.reduce((a,b)=>a+b.t1Min,0), t2Min: t.reduce((a,b)=>a+b.t2Min,0),
+      t1Count: t.reduce((a,b)=>a+b.t1Count,0), t2Count: t.reduce((a,b)=>a+b.t2Count,0)
+    };
   });
-  CHL['cLateDeptMin'] = new Chart(document.getElementById('cLateDeptMin'), {
-    type:'bar',
-    data:{ labels: deptStatsMin.map(d=>d.name),
-           datasets:[
-             { data:deptStatsMin.map(d=>d.t1), backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, label:'Mốc 1: <15p' },
-             { data:deptStatsMin.map(d=>d.t2), backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, label:'Mốc 2: ≥30p' }
-           ] },
-    options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:24,right:14,left:6,bottom:6}},
-      plugins:{ legend:{display:false}, barValueLabels:{},
-        tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw} phút` } } },
-      scales:{ x:{ grid:{display:false}, ticks:{ font:{size:11} } },
-               y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10} },
-                   suggestedMax: Math.ceil(Math.max(1, ...deptStatsMin.map(d=>Math.max(d.t1,d.t2)))*1.2) } } }
-  });
-
-  // ── Chart 2: Số lần đi trễ theo phòng ban — 2 mốc ──
-  killLateChart('cLateDeptCount');
-  const deptStatsCount = LATE_DEPT_LIST.map(d => {
-    const t = getLateTotals(activeLateMK, d);
-    return { name:d, t1: t.reduce((a,b)=>a+b.t1Count,0), t2: t.reduce((a,b)=>a+b.t2Count,0) };
-  });
-  CHL['cLateDeptCount'] = new Chart(document.getElementById('cLateDeptCount'), {
-    type:'bar',
-    data:{ labels: deptStatsCount.map(d=>d.name),
-           datasets:[
-             { data:deptStatsCount.map(d=>d.t1), backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, label:'Mốc 1: <15p' },
-             { data:deptStatsCount.map(d=>d.t2), backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, label:'Mốc 2: ≥30p' }
-           ] },
-    options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:24,right:14,left:6,bottom:6}},
-      plugins:{ legend:{display:false}, barValueLabels:{},
-        tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw} lần` } } },
-      scales:{ x:{ grid:{display:false}, ticks:{ font:{size:11} } },
-               y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10}, stepSize:1 },
-                   suggestedMax: Math.ceil(Math.max(1, ...deptStatsCount.map(d=>Math.max(d.t1,d.t2)))*1.2) } } }
+  const minMax = Math.ceil(Math.max(1, ...deptStatsCombo.map(d=>Math.max(d.t1Min,d.t2Min)))*1.25);
+  const countMax = Math.ceil(Math.max(1, ...deptStatsCombo.map(d=>Math.max(d.t1Count,d.t2Count)))*1.3);
+  CHL['cLateDeptCombo'] = new Chart(document.getElementById('cLateDeptCombo'), {
+    data:{ labels: deptStatsCombo.map(d=>d.name),
+      datasets:[
+        { type:'bar', label:'Phút — Mốc 1 (<15p)', data:deptStatsCombo.map(d=>d.t1Min),
+          backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, yAxisID:'yMin', order:2 },
+        { type:'bar', label:'Phút — Mốc 2 (≥30p)', data:deptStatsCombo.map(d=>d.t2Min),
+          backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, yAxisID:'yMin', order:2 },
+        { type:'line', label:'Số lần — Mốc 1 (<15p)', data:deptStatsCombo.map(d=>d.t1Count),
+          borderColor:'#17A2B8', backgroundColor:'#17A2B8', borderWidth:2.5, pointRadius:5, pointHoverRadius:6,
+          tension:.25, yAxisID:'yCount', order:1 },
+        { type:'line', label:'Số lần — Mốc 2 (≥30p)', data:deptStatsCombo.map(d=>d.t2Count),
+          borderColor:'#E8890C', backgroundColor:'#E8890C', borderWidth:2.5, pointRadius:5, pointHoverRadius:6,
+          tension:.25, yAxisID:'yCount', order:1 }
+      ] },
+    options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:16,right:14,left:6,bottom:6}},
+      plugins:{ legend:{display:true, position:'top', labels:{font:{size:10.5},boxWidth:12,padding:8}},
+        tooltip:{ callbacks:{ label:c=> c.dataset.type==='line' ? ` ${c.dataset.label}: ${c.raw} lần` : ` ${c.dataset.label}: ${c.raw} phút` } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{size:11} } },
+        yMin:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10} }, position:'left', min:0, max:minMax,
+               title:{display:true, text:'Tổng phút', font:{size:10}, color:'#2D6CDF'} },
+        yCount:{ grid:{display:false}, ticks:{ font:{size:10}, stepSize:1 }, position:'right', min:0, max:countMax,
+               title:{display:true, text:'Số lần', font:{size:10}, color:'#E8890C'} }
+      } }
   });
 
   // ── Chart 3: Top NV đi trễ nhiều nhất — stacked 2 mốc (chủ yếu là Mốc 1: <15p) ──
