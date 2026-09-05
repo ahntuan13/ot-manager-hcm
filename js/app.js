@@ -1,7 +1,43 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.28';
+const APP_VERSION = '2026.29';
+
+// ============================================================
+//  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
+// ============================================================
+// Lưu vào sessionStorage (KHÔNG phải localStorage) — mỗi lần mở tab/trình duyệt MỚI sẽ phải chọn
+// lại vai trò, tránh trường hợp lỡ để chế độ Admin mở sẵn qua nhiều ngày rồi ai đó vô tình xoá.
+// LƯU Ý: đây là app chạy hoàn toàn phía trình duyệt (không có máy chủ xác thực) nên đây KHÔNG phải
+// bảo mật thực sự (ai rành kỹ thuật vẫn có thể qua mặt) — mục đích chính là NGĂN THAO TÁC NHẦM của
+// người dùng thường, không phải chống truy cập trái phép có chủ đích.
+const ROLE_KEY = 'ot_manager_role_v1';
+function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
+function enterAsRole(role) {
+  sessionStorage.setItem(ROLE_KEY, role);
+  document.getElementById('roleGate').style.display = 'none';
+  applyRoleUI();
+}
+function switchRole() {
+  sessionStorage.removeItem(ROLE_KEY);
+  document.getElementById('roleGate').style.display = 'flex';
+}
+// Ẩn mục "Cài đặt" khỏi sidebar + cập nhật hiển thị vai trò hiện tại, nếu không phải Admin.
+function applyRoleUI() {
+  const adminSection = document.querySelector('.sb-admin');
+  if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
+  document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
+  const badge = document.getElementById('roleBadge');
+  if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : '👤 User';
+}
+// Dùng để bọc quanh MỌI hành động xoá dữ liệu — nếu không phải Admin, chặn lại + báo rõ lý do,
+// thay vì ẩn nút lặt vặt ở từng nơi (dễ sót) — gọi hàm này ở ĐẦU mỗi hàm xoá là đủ an toàn.
+function requireAdmin(actionLabel) {
+  if (isAdmin()) return true;
+  toast(`⚠️ Chỉ Admin mới được ${actionLabel || 'xoá dữ liệu'}. Bấm vào tên app để đổi vai trò.`);
+  return false;
+}
+
 (() => {
   const el = document.getElementById('appVersionBadge');
   if (el) el.textContent = 'v' + APP_VERSION;
@@ -710,6 +746,11 @@ function toggleTheme() {
 })();
 
 function goPage(p, deptFilter, keepProjectFilter) {
+  // Chặn vào Cài đặt nếu không phải Admin — kể cả khi gọi trực tiếp qua code, không chỉ ẩn nút.
+  if (p === 'settings' && !isAdmin()) {
+    toast('⚠️ Chỉ Admin mới vào được mục Cài đặt. Bấm vào tên app để đổi vai trò.');
+    return;
+  }
   const dashGroup = ['dash','dept','compare','late','wlb'];
   document.querySelectorAll('.pg').forEach(x => x.classList.remove('show'));
   document.querySelectorAll('.nt[data-page]').forEach(x => x.classList.remove('active'));
@@ -1259,6 +1300,7 @@ function loadDemo() {
 }
 
 function deleteMonth(mk) {
+  if (!requireAdmin('xoá dữ liệu tháng')) return;
   if (!confirm(`Xóa dữ liệu ${fmtMK(mk)}?`)) return;
   delete DB[mk];
   const ks = Object.keys(DB).sort();
@@ -1269,6 +1311,7 @@ function deleteMonth(mk) {
 }
 
 function clearAll() {
+  if (!requireAdmin('xoá toàn bộ dữ liệu OT')) return;
   if (!confirm('Xóa TOÀN BỘ dữ liệu OT? Không thể khôi phục!')) return;
   DB = {}; activeMK = null;
   saveDB(); rebuildUI(); renderSavedMonths(); renderWlbSummary();
@@ -1383,9 +1426,12 @@ function renderDash() {
   if (dashTab === 'month') renderMonthDonut(totals);
   else renderBarChart(totals, true);
 
+  const limitCard = document.getElementById('dashLimitPctCard');
   if (dashTab === 'week') {
+    if (limitCard) limitCard.style.display = 'block';
     renderDashLimitPctChart(totals, periodLabel);
   } else {
+    if (limitCard) limitCard.style.display = 'none';
     killChart('cDashLimitPct');
   }
 
@@ -3923,6 +3969,7 @@ function renameProjectPrompt(group, proj) {
   else toast('Tên mới đã tồn tại hoặc không hợp lệ');
 }
 function deleteProjectConfirm(group, proj) {
+  if (!requireAdmin('xoá dự án')) return;
   const n = (PROJECTS_DB[group]?.[proj]?.employees || []).length;
   if (!confirm(`Xoá dự án "${proj}"? ${n} nhân viên trong dự án này sẽ trở thành "chưa gán dự án".`)) return;
   deleteProject(group, proj);
@@ -4327,6 +4374,7 @@ function getTotalOT(mk, deptFilter) {
 }
 
 function clearOffDay() {
+  if (!requireAdmin('xoá dữ liệu Off Day')) return;
   if (!confirm('Xóa toàn bộ dữ liệu Off Day? Không thể khôi phục!')) return;
   OFF_DB = {};
   saveOffDB();
@@ -4359,10 +4407,11 @@ function renderWlbSummary() {
   }
 }
 
-const WLB_THRESHOLD = 10;
-function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*10)/10 : null; }
+const WLB_THRESHOLD = 1000; // = 10 (tỷ lệ cũ) × 100, vì WLB giờ hiển thị dạng %
+function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; } // ×100 để ra %, giữ 1 số thập phân
 function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
 function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
+function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
 
 // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
 // (nếu cả 2 nguồn đều có mã), fallback theo tên nếu thiếu mã. Trả về mảng đã tính WLB, sắp xếp
@@ -4434,7 +4483,7 @@ function renderEmployeeWlbTable(theadId, tbodyId, rows) {
     <td style="color:var(--text2)">${r.dept||'—'}</td>
     <td style="font-family:var(--font-mono)">${r.ot}h</td>
     <td style="font-family:var(--font-mono)">${r.off}</td>
-    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.wlb??(r.ot===0?'N/A':'—')}</td>
+    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.ot===0?'N/A':wlbDisplay(r.wlb)}</td>
     <td>${r.ot===0 ? '<span style="color:var(--text3);font-size:11.5px" title="NV không phát sinh OT trong kỳ này — không có cơ sở để đánh giá WLB">— (không có OT)</span>' : wlbBadge(r.wlb)}</td></tr>`).join('') ||
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy nhân viên phù hợp.</td></tr>';
 }
@@ -4527,7 +4576,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${ratio??'—'}</div><div class="ms">${ok?'✅ Đạt (>10)':'⚠️ Không đạt (≤10)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (>1000%)':'⚠️ Không đạt (≤1000%)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4588,7 +4637,7 @@ function renderWlb() {
           ]},
         options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
           plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'':'  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
+            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'%':'%  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
             y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: otMax,
@@ -4645,7 +4694,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 10', data:cmpMks.map(()=>THRESHOLD),
+            { label:'Ngưỡng 1000%', data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -4672,7 +4721,7 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
       }
       // Dòng từng phòng ban
@@ -4687,7 +4736,7 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNum = parseInt(mk.split('-')[1], 10);
@@ -4807,7 +4856,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng 10', data:qKeys.map(()=>THRESHOLD),
+            { label:'Ngưỡng 1000%', data:qKeys.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -4835,7 +4884,7 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
       }
       // Dòng từng phòng ban
@@ -4851,7 +4900,7 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${v??'—'}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
@@ -5147,6 +5196,7 @@ function updateLateSelects() {
 }
 function setActiveLateMK(mk) { activeLateMK = mk; renderLate(); }
 function deleteLateMonth(mk) {
+  if (!requireAdmin('xoá dữ liệu đi trễ')) return;
   if (!mk || !confirm(`Xóa dữ liệu đi trễ tháng ${fmtMK(mk)}?`)) return;
   delete LATE_DB[mk];
   const ks = Object.keys(LATE_DB).sort();
@@ -5488,6 +5538,13 @@ function init() {
     renderWlbSummary();
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('appBody').style.display = 'block';
+    // Nếu phiên này đã chọn vai trò rồi (refresh lại trang cùng tab) thì khỏi hỏi lại — ngược lại
+    // vẫn hiện màn hình chọn vai trò (đã hiện sẵn theo mặc định trong HTML).
+    if (sessionStorage.getItem(ROLE_KEY)) {
+      const gate = document.getElementById('roleGate');
+      if (gate) gate.style.display = 'none';
+    }
+    applyRoleUI();
     if (!ok || !keys.length) loadDemo();
     else rebuildUI();
   } catch (err) {
