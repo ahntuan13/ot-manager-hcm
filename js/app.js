@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.29';
+const APP_VERSION = '2026.30';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -13,6 +13,85 @@ const APP_VERSION = '2026.29';
 // người dùng thường, không phải chống truy cập trái phép có chủ đích.
 const ROLE_KEY = 'ot_manager_role_v1';
 function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
+
+// ── Danh sách tài khoản User do Admin tạo — lưu localStorage + đồng bộ qua Google Sheets (dùng
+// chung cơ chế Update data/Lưu & Đồng bộ đã có) để quản lý ở máy khác cũng đăng nhập được.
+// LƯU Ý: chỉ để NGĂN THAO TÁC NHẦM, không phải bảo mật thực sự (mật khẩu lưu dạng thường, ai
+// mở DevTools cũng xem được) — phù hợp với mục đích "chống xoá nhầm data", không phải chống truy
+// cập trái phép có chủ đích.
+const USERS_KEY = 'ot_manager_users_v1';
+let USERS_DB = {}; // { username: { password, note, createdAt } }
+function loadUsersDB() { try { const raw = localStorage.getItem(USERS_KEY); if (raw) USERS_DB = JSON.parse(raw); } catch(e) {} }
+function saveUsersDB() { try { localStorage.setItem(USERS_KEY, JSON.stringify(USERS_DB)); } catch(e) {} }
+function addUser(username, password, note) {
+  username = (username||'').trim();
+  if (!username || !password) return false;
+  if (USERS_DB[username]) return false;
+  USERS_DB[username] = { password, note: note||'', createdAt: new Date().toLocaleString('vi-VN') };
+  saveUsersDB();
+  return true;
+}
+function deleteUser(username) {
+  if (!requireAdmin('xoá tài khoản User')) return;
+  if (!confirm(`Xoá tài khoản "${username}"?`)) return;
+  delete USERS_DB[username];
+  saveUsersDB();
+  renderUsersManage();
+  toast('Đã xoá tài khoản');
+}
+function promptAddUser() {
+  if (!requireAdmin('tạo tài khoản User')) return;
+  const username = prompt('Tên đăng nhập (VD: pm_reddragon):');
+  if (!username) return;
+  const password = prompt(`Mật khẩu cho "${username}":`);
+  if (!password) return;
+  const note = prompt('Ghi chú (VD: PM dự án Red Dragon) — có thể để trống:') || '';
+  if (addUser(username, password, note)) { toast(`Đã tạo tài khoản "${username}"`); renderUsersManage(); }
+  else toast('Tên đăng nhập đã tồn tại hoặc không hợp lệ');
+}
+function renderUsersManage() {
+  const box = document.getElementById('usersManageBox');
+  if (!box) return;
+  const names = Object.keys(USERS_DB).sort();
+  box.innerHTML = names.length ? names.map(u => {
+    const info = USERS_DB[u];
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:6px">
+      <div style="flex:1">
+        <div style="font-weight:600;font-family:var(--font-mono);font-size:12.5px">${u}</div>
+        <div style="font-size:11px;color:var(--text2)">${info.note ? info.note+' · ' : ''}Mật khẩu: <span style="font-family:var(--font-mono)">${info.password}</span> · Tạo lúc ${info.createdAt}</div>
+      </div>
+      <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteUser('${u.replace(/'/g,"\\'")}')">Xoá</button>
+    </div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--text2);padding:8px">Chưa có tài khoản User nào. Bấm "+ Tạo tài khoản" để thêm.</div>';
+}
+
+// ── Màn hình đăng nhập (vai trò User) — nhập đúng username/password do Admin tạo mới vào được.
+function showLoginForm() {
+  document.getElementById('roleGateMain').style.display = 'none';
+  document.getElementById('roleGateLogin').style.display = 'block';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  setTimeout(() => document.getElementById('loginUsername').focus(), 50);
+}
+function backToRoleMain() {
+  document.getElementById('roleGateLogin').style.display = 'none';
+  document.getElementById('roleGateMain').style.display = 'block';
+}
+function attemptLogin() {
+  const u = document.getElementById('loginUsername').value.trim();
+  const p = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  if (USERS_DB[u] && USERS_DB[u].password === p) {
+    sessionStorage.setItem(ROLE_KEY, 'user');
+    sessionStorage.setItem('ot_manager_username', u);
+    document.getElementById('roleGate').style.display = 'none';
+    applyRoleUI();
+  } else {
+    if (errEl) { errEl.textContent = 'Sai tên đăng nhập hoặc mật khẩu.'; errEl.style.display = 'block'; }
+  }
+}
+
 function enterAsRole(role) {
   sessionStorage.setItem(ROLE_KEY, role);
   document.getElementById('roleGate').style.display = 'none';
@@ -20,7 +99,9 @@ function enterAsRole(role) {
 }
 function switchRole() {
   sessionStorage.removeItem(ROLE_KEY);
+  sessionStorage.removeItem('ot_manager_username');
   document.getElementById('roleGate').style.display = 'flex';
+  backToRoleMain();
 }
 // Ẩn mục "Cài đặt" khỏi sidebar + cập nhật hiển thị vai trò hiện tại, nếu không phải Admin.
 function applyRoleUI() {
@@ -28,7 +109,8 @@ function applyRoleUI() {
   if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
   document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
   const badge = document.getElementById('roleBadge');
-  if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : '👤 User';
+  const uname = sessionStorage.getItem('ot_manager_username');
+  if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : (uname ? `👤 ${uname}` : '👤 User');
 }
 // Dùng để bọc quanh MỌI hành động xoá dữ liệu — nếu không phải Admin, chặn lại + báo rõ lý do,
 // thay vì ẩn nút lặt vặt ở từng nơi (dễ sót) — gọi hàm này ở ĐẦU mỗi hàm xoá là đủ an toàn.
@@ -761,7 +843,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   }
   const pg = document.getElementById('pg-' + p);
   if (pg) pg.classList.add('show');
-  if (p === 'settings')  { renderSavedMonths(); renderSyncPage(); }
+  if (p === 'settings')  { renderSavedMonths(); renderSyncPage(); renderUsersManage(); }
   if (p === 'action') renderActionPlan();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
@@ -3318,7 +3400,7 @@ async function syncSave() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB } })
     });
     let json;
     try { json = await res.json(); }
@@ -3369,6 +3451,12 @@ async function syncLoad() {
       if (isNewFormat && parsed.projects && Object.keys(parsed.projects).length) {
         PROJECTS_DB = parsed.projects;
         saveProjectsDB();
+      }
+      // Tương tự với danh sách tài khoản User — chỉ ghi đè nếu Sheet THỰC SỰ có dữ liệu, để tài
+      // khoản Admin vừa tạo trên máy này không bị mất khi Pull về từ 1 Sheet cũ chưa có mục này.
+      if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
+        USERS_DB = parsed.users;
+        saveUsersDB();
       }
       migrateOldFormat();
       migrateOffDBKeys();
@@ -4407,10 +4495,10 @@ function renderWlbSummary() {
   }
 }
 
-const WLB_THRESHOLD = 1000; // = 10 (tỷ lệ cũ) × 100, vì WLB giờ hiển thị dạng %
+const WLB_THRESHOLD = 10; // ngưỡng 10% — theo yêu cầu mới nhất: >10% = Không đạt, ≤10% = Đạt
 function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; } // ×100 để ra %, giữ 1 số thập phân
-function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
-function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
+function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--red)':'var(--green)'; }
+function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bd">⚠️ Không đạt</span>':'<span class="badge bo">✅ Đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
 
 // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
@@ -4566,7 +4654,7 @@ function renderWlb() {
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
-    const ok = ratio !== null && ratio > THRESHOLD;
+    const ok = ratio !== null && ratio <= THRESHOLD;
     const otherOffHint = withOff.length
       ? ` · Có Off Day ở: ${withOff.map(fmtMK).join(', ')}`
       : '';
@@ -4576,7 +4664,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (>1000%)':'⚠️ Không đạt (≤1000%)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (≤10%)':'⚠️ Không đạt (>10%)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4637,7 +4725,7 @@ function renderWlb() {
           ]},
         options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
           plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'%':'%  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
+            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'%':'%  ('+((c.raw??'—')>THRESHOLD?'Không đạt':'Đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
             y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: otMax,
@@ -4663,12 +4751,25 @@ function renderWlb() {
     if (wlbProjLbl) wlbProjLbl.textContent = selMk ? fmtMK(selMk) : '';
     if (selMk) {
       const monthNumP = parseInt(selMk.split('-')[1], 10);
-      const projEntries = projectsInGroup('HCM-EC').sort().map(proj => {
+      const allEcProjects = projectsInGroup('HCM-EC');
+      const projEntries = allEcProjects.sort().map(proj => {
         const w = getProjectWlbForMonth('HCM-EC', proj, monthNumP);
         return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
       }).filter(e => e.value !== null && e.value !== undefined);
+      // Thông báo rõ nguyên nhân khi rỗng — tránh để trắng trơn khiến người dùng tưởng bị lỗi/mất
+      // dữ liệu, trong khi thực ra chỉ đơn giản là tháng đang xem chưa có dữ liệu Excel WLB.
+      const emptyElP = document.getElementById('cWlbProjMonthEmpty');
+      if (emptyElP) {
+        if (!allEcProjects.length) {
+          emptyElP.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
+        } else if (!wlbXlsMonthsWithData().includes(monthNumP)) {
+          emptyElP.textContent = `Chưa có dữ liệu Excel WLB cho ${fmtMK(selMk)} — vào Cài đặt upload lại file Excel WLB có đủ tháng này.`;
+        } else {
+          emptyElP.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho tháng này.';
+        }
+      }
       renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjMonth',
-        document.getElementById('cWlbProjMonth'), document.getElementById('cWlbProjMonthEmpty'),
+        document.getElementById('cWlbProjMonth'), emptyElP,
         projEntries, '', '#6B4FA0');
     }
 
@@ -4694,7 +4795,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 1000%', data:cmpMks.map(()=>THRESHOLD),
+            { label:'Ngưỡng 10%', data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -4833,12 +4934,24 @@ function renderWlb() {
     if (wlbProjQLbl) wlbProjQLbl.textContent = selQk ? qLabel[selQk] : '';
     if (selQk) {
       const monthNumsQ = qMks(selQk).map(mk => parseInt(mk.split('-')[1], 10));
-      const projEntriesQ = projectsInGroup('HCM-EC').sort().map(proj => {
+      const allEcProjectsQ = projectsInGroup('HCM-EC');
+      const projEntriesQ = allEcProjectsQ.sort().map(proj => {
         const w = getProjectWlbForMonths('HCM-EC', proj, monthNumsQ);
         return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
       }).filter(e => e.value !== null && e.value !== undefined);
+      const emptyElQ = document.getElementById('cWlbProjQtrEmpty');
+      if (emptyElQ) {
+        const hasAnyMonth = monthNumsQ.some(m => wlbXlsMonthsWithData().includes(m));
+        if (!allEcProjectsQ.length) {
+          emptyElQ.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
+        } else if (!hasAnyMonth) {
+          emptyElQ.textContent = `Chưa có dữ liệu Excel WLB cho quý ${qLabel[selQk]||''} — vào Cài đặt upload lại file Excel WLB có đủ các tháng này.`;
+        } else {
+          emptyElQ.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho quý này.';
+        }
+      }
       renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjQtr',
-        document.getElementById('cWlbProjQtr'), document.getElementById('cWlbProjQtrEmpty'),
+        document.getElementById('cWlbProjQtr'), emptyElQ,
         projEntriesQ, '', '#6B4FA0');
     }
 
@@ -4856,7 +4969,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng 1000%', data:qKeys.map(()=>THRESHOLD),
+            { label:'Ngưỡng 10%', data:qKeys.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -5534,6 +5647,7 @@ function init() {
     loadOffDB();
     loadWlbXls();
     loadProjectsDB();
+    loadUsersDB();
     rebuildLateUI();
     renderWlbSummary();
     document.getElementById('loadingState').style.display = 'none';
