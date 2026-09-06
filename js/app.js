@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.31';
+const APP_VERSION = '2026.32';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4539,6 +4539,19 @@ function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; } 
 function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
 function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
+// Ngưỡng OT tối thiểu để WLB% được coi là "đại diện" — dưới mức này, mẫu số (OT) quá nhỏ khiến
+// tỷ lệ dễ nhảy vọt bất thường (VD: OT=5h, Off=57.5h → 1150%) dù công thức tính hoàn toàn đúng.
+// KHÔNG ẩn số (vẫn hiện đúng số đã tính) — chỉ thêm cảnh báo để người xem biết số liệu này chưa
+// đủ đại diện, tránh hiểu nhầm phòng ban "mất cân bằng nghiêm trọng" khi thực ra chỉ vì họ hầu
+// như không phát sinh OT.
+const WLB_LOW_OT_THRESHOLD = 10;
+function wlbDisplayWithWarn(v, ot) {
+  const base = wlbDisplay(v);
+  if (ot !== undefined && ot !== null && ot < WLB_LOW_OT_THRESHOLD && v !== null) {
+    return `${base} <span title="OT quá thấp (${ot}h) — số liệu không đại diện" style="cursor:help;color:var(--amber)">⚠️</span>`;
+  }
+  return base;
+}
 
 // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
 // (nếu cả 2 nguồn đều có mã), fallback theo tên nếu thiếu mã. Trả về mảng đã tính WLB, sắp xếp
@@ -4703,7 +4716,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4861,7 +4874,7 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, coOT)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
       }
       // Dòng từng phòng ban
@@ -4876,13 +4889,13 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, ot)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNum = parseInt(mk.split('-')[1], 10);
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
             const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
-            return { name: proj, display: w.wlb ?? '—', nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
           });
           rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
@@ -5036,7 +5049,7 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, coOT)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
       }
       // Dòng từng phòng ban
@@ -5052,13 +5065,13 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplay(v)}</td>
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, ot)}</td>
           <td>${wlbBadge(v)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
             const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
-            return { name: proj, display: w.wlb ?? '—', nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
           });
           qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
