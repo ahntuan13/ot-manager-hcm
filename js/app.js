@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.34';
+const APP_VERSION = '2026.35';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -14,10 +14,10 @@ const APP_VERSION = '2026.34';
 const ROLE_KEY = 'ot_manager_role_v1';
 function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
 
-// ── Mật khẩu Admin — mặc định "admin123" lúc đầu, ĐỔI NGAY trong Cài đặt sau khi vào lần đầu.
-// Đồng bộ qua Google Sheets giống USERS_DB để dùng được ở nhiều máy.
+// ── Mật khẩu Admin — đặt sẵn 1 mật khẩu cụ thể (không phải mặc định kiểu ai cũng đoán được),
+// đổi lại trong Cài đặt bất cứ lúc nào nếu muốn.
 const ADMIN_PW_KEY = 'ot_manager_admin_pw_v1';
-function getAdminPassword() { return localStorage.getItem(ADMIN_PW_KEY) || 'admin123'; }
+function getAdminPassword() { return localStorage.getItem(ADMIN_PW_KEY) || 'OTHcm@2026'; }
 function setAdminPassword(newPw) { localStorage.setItem(ADMIN_PW_KEY, newPw); }
 function changeAdminPassword() {
   if (!requireAdmin('đổi mật khẩu Admin')) return;
