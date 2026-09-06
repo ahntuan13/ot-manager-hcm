@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.30';
+const APP_VERSION = '2026.31';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -13,6 +13,24 @@ const APP_VERSION = '2026.30';
 // người dùng thường, không phải chống truy cập trái phép có chủ đích.
 const ROLE_KEY = 'ot_manager_role_v1';
 function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
+
+// ── Mật khẩu Admin — mặc định "admin123" lúc đầu, ĐỔI NGAY trong Cài đặt sau khi vào lần đầu.
+// Đồng bộ qua Google Sheets giống USERS_DB để dùng được ở nhiều máy.
+const ADMIN_PW_KEY = 'ot_manager_admin_pw_v1';
+function getAdminPassword() { return localStorage.getItem(ADMIN_PW_KEY) || 'admin123'; }
+function setAdminPassword(newPw) { localStorage.setItem(ADMIN_PW_KEY, newPw); }
+function changeAdminPassword() {
+  if (!requireAdmin('đổi mật khẩu Admin')) return;
+  const cur = prompt('Nhập mật khẩu Admin HIỆN TẠI để xác nhận:');
+  if (cur === null) return;
+  if (cur !== getAdminPassword()) { toast('Mật khẩu hiện tại không đúng'); return; }
+  const next = prompt('Nhập mật khẩu Admin MỚI:');
+  if (!next) return;
+  const confirmNext = prompt('Nhập lại mật khẩu mới để xác nhận:');
+  if (next !== confirmNext) { toast('2 lần nhập không khớp — huỷ đổi mật khẩu'); return; }
+  setAdminPassword(next);
+  toast('Đã đổi mật khẩu Admin — nhớ bấm "Lưu & Đồng bộ" để dùng được ở máy khác.');
+}
 
 // ── Danh sách tài khoản User do Admin tạo — lưu localStorage + đồng bộ qua Google Sheets (dùng
 // chung cơ chế Update data/Lưu & Đồng bộ đã có) để quản lý ở máy khác cũng đăng nhập được.
@@ -74,8 +92,16 @@ function showLoginForm() {
   document.getElementById('loginError').style.display = 'none';
   setTimeout(() => document.getElementById('loginUsername').focus(), 50);
 }
+function showAdminPwForm() {
+  document.getElementById('roleGateMain').style.display = 'none';
+  document.getElementById('roleGateAdminPw').style.display = 'block';
+  document.getElementById('adminPwInput').value = '';
+  document.getElementById('adminPwError').style.display = 'none';
+  setTimeout(() => document.getElementById('adminPwInput').focus(), 50);
+}
 function backToRoleMain() {
   document.getElementById('roleGateLogin').style.display = 'none';
+  document.getElementById('roleGateAdminPw').style.display = 'none';
   document.getElementById('roleGateMain').style.display = 'block';
 }
 function attemptLogin() {
@@ -89,6 +115,15 @@ function attemptLogin() {
     applyRoleUI();
   } else {
     if (errEl) { errEl.textContent = 'Sai tên đăng nhập hoặc mật khẩu.'; errEl.style.display = 'block'; }
+  }
+}
+function attemptAdminLogin() {
+  const p = document.getElementById('adminPwInput').value;
+  const errEl = document.getElementById('adminPwError');
+  if (p === getAdminPassword()) {
+    enterAsRole('admin');
+  } else {
+    if (errEl) { errEl.style.display = 'block'; }
   }
 }
 
@@ -3400,7 +3435,7 @@ async function syncSave() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword() } })
     });
     let json;
     try { json = await res.json(); }
@@ -3457,6 +3492,10 @@ async function syncLoad() {
       if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
         USERS_DB = parsed.users;
         saveUsersDB();
+      }
+      // Tương tự với mật khẩu Admin — chỉ ghi đè nếu Sheet có sẵn giá trị này (payload mới).
+      if (isNewFormat && parsed.adminPw) {
+        setAdminPassword(parsed.adminPw);
       }
       migrateOldFormat();
       migrateOffDBKeys();
@@ -4495,10 +4534,10 @@ function renderWlbSummary() {
   }
 }
 
-const WLB_THRESHOLD = 10; // ngưỡng 10% — theo yêu cầu mới nhất: >10% = Không đạt, ≤10% = Đạt
+const WLB_THRESHOLD = 10; // ngưỡng 10% — >10% = Đạt, ≤10% = Không đạt
 function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; } // ×100 để ra %, giữ 1 số thập phân
-function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--red)':'var(--green)'; }
-function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bd">⚠️ Không đạt</span>':'<span class="badge bo">✅ Đạt</span>'; }
+function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
+function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
 
 // Gộp dữ liệu OT + Off Day theo TỪNG NHÂN VIÊN cho 1 danh sách tháng (mks) — khớp theo Staff Code
@@ -4654,7 +4693,7 @@ function renderWlb() {
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
-    const ok = ratio !== null && ratio <= THRESHOLD;
+    const ok = ratio !== null && ratio > THRESHOLD;
     const otherOffHint = withOff.length
       ? ` · Có Off Day ở: ${withOff.map(fmtMK).join(', ')}`
       : '';
@@ -4664,7 +4703,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (≤10%)':'⚠️ Không đạt (>10%)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplay(ratio)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4725,7 +4764,7 @@ function renderWlb() {
           ]},
         options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:10,right:12}},
           plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'%':'%  ('+((c.raw??'—')>THRESHOLD?'Không đạt':'Đạt')+')'}`}} },
+            tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}${c.datasetIndex<2?'%':'%  ('+((c.raw??'—')>THRESHOLD?'Đạt':'Không đạt')+')'}`}} },
           scales:{
             x:{grid:{display:false}, ticks:{font:{size:10}}},
             y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: otMax,
