@@ -225,7 +225,8 @@
 
   /* WEEK BUTTONS */
   .wbtn { padding: 4px 11px; border-radius: 999px; font-size: 11px; font-family: var(--font-mono); border: 1px solid var(--border2); background: transparent; color: var(--text2); cursor: pointer; transition: all .12s; }
-  .wbtn.active { background: var(--ink); color: var(--bg); border-color: transparent; }
+  .wbtn.active { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; box-shadow: 0 2px 6px rgba(45,108,223,.3); }
+  .wbtn:hover:not(.active) { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 
   /* FORM CONTROLS */
   select, input[type="text"] { font-size: 12.5px; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border2); background: var(--bg); color: var(--text); font-family: inherit; outline: none; }
