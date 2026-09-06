@@ -32,22 +32,13 @@
       </div>
       <div style="font-size:17px;font-weight:800;color:var(--text)">OT Manager HCM</div>
       <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:24px">Chọn vai trò để tiếp tục</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="showLoginForm()">
-        👤 Đăng nhập <span style="font-weight:400;opacity:.85">— tài khoản do Admin cấp</span>
+      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="enterAsRole('user')">
+        👤 Đăng nhập <span style="font-weight:400;opacity:.85">— xem &amp; thao tác thường</span>
       </button>
       <button class="btn" style="width:100%;padding:12px;font-size:14px;border:1.5px solid var(--border2)" onclick="showAdminPwForm()">
         🔑 Admin <span style="font-weight:400;opacity:.7">— cần mật khẩu, toàn quyền</span>
       </button>
-      <div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6">Tài khoản "Đăng nhập" do Admin tạo sẵn (mục Cài đặt → Quản lý User) — dùng bình thường nhưng <strong>không xoá được</strong> tháng/tuần/dự án và không vào được mục Cài đặt.</div>
-    </div>
-
-    <div id="roleGateLogin" style="display:none">
-      <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:16px">👤 Đăng nhập</div>
-      <input id="loginUsername" type="text" placeholder="Tên đăng nhập" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
-      <input id="loginPassword" type="password" placeholder="Mật khẩu" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')attemptLogin()">
-      <div id="loginError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px;text-align:left">Sai tên đăng nhập hoặc mật khẩu.</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptLogin()">Đăng nhập</button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6">Vai trò "Đăng nhập" không cần mật khẩu nhưng <strong>không xoá được</strong> tháng/tuần/dự án và không vào được mục Cài đặt — giúp tránh xoá nhầm dữ liệu.</div>
     </div>
 
     <div id="roleGateAdminPw" style="display:none">
@@ -880,16 +871,6 @@
     <strong>Lưu ý:</strong> Khi <em>Tải lên (Save)</em>, dữ liệu trên Sheet sẽ bị <strong>ghi đè</strong> bằng dữ liệu hiện tại của bạn. Khi <em>Tải xuống (Load)</em>, dữ liệu local sẽ bị thay bằng dữ liệu trên Sheet.
   </div>
 
-  <div class="card ac-top ac-blue">
-    <div class="card-title">👥 Quản lý tài khoản User</div>
-    <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px">
-      Tạo tài khoản (tên đăng nhập + mật khẩu) để gửi cho các quản lý dự án dùng — họ đăng nhập được, dùng bình thường nhưng <strong>không xoá được</strong> tháng/tuần/dự án và <strong>không vào được</strong> mục Cài đặt này.<br>
-      Sau khi tạo, nhớ bấm <strong>"💾 Lưu &amp; Đồng bộ lên Sheet"</strong> ở Action Plan (hoặc mục Sync bên dưới) để tài khoản dùng được trên máy khác.
-    </div>
-    <button class="btn btn-primary" onclick="promptAddUser()">+ Tạo tài khoản</button>
-    <div id="usersManageBox" style="margin-top:14px"></div>
-  </div>
-
   <div class="card ac-top ac-red">
     <div class="card-title">🔑 Mật khẩu Admin</div>
     <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px">
@@ -968,7 +949,7 @@
       2) File đơn giản: Tên NV &middot; Phòng Ban &middot; Ngày &middot; Giờ OT (đã có sẵn số giờ OT).<br>
       <strong>Chu kỳ tháng công ty:</strong> mỗi "tháng" tính từ ngày 16 đến ngày 15 tháng sau.<br>
       <strong>Upload theo từng mốc luỹ kế:</strong> mỗi lần upload, file chứa dữ liệu từ 16 đến ngày bất kỳ (ví dụ 16-26/04, lần sau 16/04-03/05, lần sau 16/04-10/05...). App lưu OT theo từng ngày cụ thể và ghi nhận mỗi lần upload là 1 "mốc" — vào tab Dashboard có nút chọn xem lại từng mốc, mốc cuối cùng (xa nhất) = báo cáo luỹ kế cả tháng.<br>
-      <strong>Lưu ý:</strong> Dữ liệu lưu trong trình duyệt này (localStorage). Dùng nút <em>Xuất Excel</em> hoặc <em>Xuất báo cáo (có chart)</em> ở mục Báo cáo để backup định kỳ.
+      <strong>Lưu ý:</strong> Dữ liệu lưu trong trình duyệt này (localStorage). Dùng nút <em>Xuất PDF</em> hoặc <em>Báo cáo HTML</em> ở mục Báo cáo để backup định kỳ.
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="up-zone" onclick="document.getElementById('fi').click()">
@@ -1021,23 +1002,33 @@
 
 <!-- ====== REPORT (Xuất báo cáo) ====== -->
 <div class="pg" id="pg-report">
-  <div class="report-grid">
-    <div class="report-card">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      <h3>Xuất Excel</h3>
-      <p>Toàn bộ dữ liệu OT theo tháng, phòng ban — định dạng .xlsx để lưu trữ hoặc gửi báo cáo.</p>
-      <button class="btn btn-primary" onclick="exportAll()" style="width:100%;justify-content:center">Xuất Excel</button>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:10px">📄 Chọn kỳ báo cáo</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">
+      Báo cáo gồm 4 mục: <strong>Tổng quan OT</strong>, <strong>OT phòng ban</strong>, <strong>So sánh OT</strong> (theo đúng <strong>tháng</strong> chọn bên dưới) và <strong>WLB</strong> (theo đúng <strong>quý</strong> chọn bên dưới).
     </div>
+    <div class="action-row">
+      <div>
+        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Tháng (cho Tổng quan/Phòng ban/So sánh)</label>
+        <select id="reportMonthSel" style="min-width:170px"></select>
+      </div>
+      <div>
+        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Quý (cho WLB)</label>
+        <select id="reportQuarterSel" style="min-width:220px"></select>
+      </div>
+    </div>
+  </div>
+  <div class="report-grid">
     <div class="report-card">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="13" y2="11"/></svg>
       <h3>Xuất PDF</h3>
-      <p>Báo cáo trực quan kèm biểu đồ, sẵn sàng để in hoặc chia sẻ qua email.</p>
+      <p>Báo cáo 4 mục theo tháng/quý đã chọn ở trên, sẵn sàng để in hoặc chia sẻ qua email.</p>
       <button class="btn btn-primary" onclick="exportPdfReport()" style="width:100%;justify-content:center">Xuất PDF</button>
     </div>
     <div class="report-card">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
       <h3>Báo cáo HTML</h3>
-      <p>Trang báo cáo tương tác, mở trực tiếp trên trình duyệt, dễ chia sẻ link nội bộ.</p>
+      <p>Cùng nội dung báo cáo trên, mở trực tiếp trên trình duyệt, dễ chia sẻ link nội bộ.</p>
       <button class="btn btn-primary" onclick="exportHtmlReport()" style="width:100%;justify-content:center">Xuất HTML</button>
     </div>
   </div>
