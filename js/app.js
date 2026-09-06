@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.32';
+const APP_VERSION = '2026.33';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4534,13 +4534,22 @@ function renderWlbSummary() {
   }
 }
 
-const WLB_THRESHOLD = 10; // ngưỡng 10% — >10% = Đạt, ≤10% = Không đạt
-function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; } // ×100 để ra %, giữ 1 số thập phân
+// Ngưỡng đổi từ 10 xuống 0.1 để KHỚP LẠI đúng với công thức mới (đã bỏ nhân ×100 ở wlbRatio) —
+// ngưỡng "10%" trước đây thực chất là tỷ lệ 0.10, nên giờ công thức không nhân 100 nữa thì ngưỡng
+// cũng phải chia lại tương ứng, để kết quả Đạt/Không đạt của MỌI phòng ban giữ nguyên như trước
+// (không bị lật ngược do đổi thang đo), chỉ có số hiển thị dễ đọc hơn hẳn (VD: 11.5 thay vì 1150).
+const WLB_THRESHOLD = 0.1; // tương đương "10%" theo công thức cũ — >0.1 = Đạt, ≤0.1 = Không đạt
+// Bỏ nhân ×100 (đã thử trước đây nhưng gây ra số quá lớn bất thường, VD: OT=5h, Off=57.5h ra
+// tới 1150% — trong khi ngưỡng chỉ 10%, chênh lệch quá xa gây khó đọc). Giờ dùng ĐÚNG tỷ lệ gốc
+// (off÷ot), giữ 2 số thập phân, gắn thêm "%" cho quen mắt — để số liệu và ngưỡng cùng 1 tầm nhìn
+// (VD: 11.50% so với ngưỡng 10% — hợp lý, dễ so sánh trực quan hơn hẳn).
+function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*100)/100 : null; }
 function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
 function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
 // Ngưỡng OT tối thiểu để WLB% được coi là "đại diện" — dưới mức này, mẫu số (OT) quá nhỏ khiến
-// tỷ lệ dễ nhảy vọt bất thường (VD: OT=5h, Off=57.5h → 1150%) dù công thức tính hoàn toàn đúng.
+// tỷ lệ dễ lệch cao bất thường (VD: OT=5h, Off=57.5h → 11.5, vẫn hợp lý hơn hẳn cách tính cũ
+// nhưng vẫn cần lưu ý vì OT quá ít không đủ đại diện) dù công thức tính hoàn toàn đúng.
 // KHÔNG ẩn số (vẫn hiện đúng số đã tính) — chỉ thêm cảnh báo để người xem biết số liệu này chưa
 // đủ đại diện, tránh hiểu nhầm phòng ban "mất cân bằng nghiêm trọng" khi thực ra chỉ vì họ hầu
 // như không phát sinh OT.
@@ -4716,7 +4725,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>0.1)':'⚠️ Không đạt (≤0.1)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4847,7 +4856,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 10%', data:cmpMks.map(()=>THRESHOLD),
+            { label:'Ngưỡng 0.1', data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -5021,7 +5030,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng 10%', data:qKeys.map(()=>THRESHOLD),
+            { label:'Ngưỡng 0.1', data:qKeys.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
