@@ -696,7 +696,7 @@
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
     <div class="card ac-top ac-blue">
       <div class="card-title">WLB từng phòng ban — <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;0.1 Đạt</span> <span class="badge bd">≤0.1 Không đạt</span></div>
       <div id="cWlbMonthEmpty" style="display:none;align-items:center;justify-content:center;height:280px;color:var(--text2);font-size:13px;text-align:center;padding:0 24px;line-height:1.5">Chưa có dữ liệu Off Day cho tháng này — vào <button type="button" onclick="goPage('settings')" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;padding:0;text-decoration:underline">Cài đặt → Upload Off Day</button> để xem biểu đồ WLB.</div>
       <div id="cWlbMonthWrap" style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
     </div>
@@ -750,7 +750,7 @@
     <!-- Biểu đồ 1: WLB quý đang chọn — từng phòng ban -->
     <div class="card ac-top ac-amber">
       <div class="card-title">WLB từng phòng ban — <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT. <span class="badge bo">&gt;0.1 Đạt</span> <span class="badge bd">≤0.1 Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
     </div>
 
@@ -814,11 +814,12 @@
       Bấm vào tên dự án để xem/chỉnh danh sách nhân viên. Bấm vào "Số NV OT" để xem đúng danh sách NV đó ở trang Danh sách NV OT.
       Các cột <strong>Kế hoạch, Lý do, Ghi chú</strong> do PM tự điền — tự động lưu vào máy đang dùng.
       <strong style="color:var(--red)">Bấm nút "💾 Lưu & Đồng bộ" bên dưới để người khác (ECM/HODs) trên máy khác cũng thấy được nội dung vừa nhập.</strong>
+      Nút này chỉ lưu riêng phần Action Plan, <strong>không đụng đến dữ liệu OT/Đi trễ/Off Day</strong> — an toàn để bấm bất cứ lúc nào, không lo ghi đè nhầm.
     </div>
     <div class="action-row" style="margin-top:12px;align-items:center">
       <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)</button>
       <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)</button>
-      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSave()">💾 Lưu &amp; Đồng bộ lên Sheet</button>
+      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSaveActionPlanOnly()">💾 Lưu &amp; Đồng bộ lên Sheet</button>
     </div>
     <div id="actionPlanSyncNote" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right"></div>
   </div>
