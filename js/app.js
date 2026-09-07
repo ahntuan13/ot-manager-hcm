@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.45';
+const APP_VERSION = '2026.46';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3439,6 +3439,7 @@ async function syncSave() {
     // liệu thực tế đã xảy ra — nên PHẢI kiểm tra trước, không chỉ ghi đè mù quáng.
     let sheetKeys = [];
     let sheetProjects = null;
+    let sheetTombstones = null;
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3450,6 +3451,7 @@ async function syncSave() {
         const sheetOt = (sheetParsed && typeof sheetParsed === 'object') ? (sheetParsed.ot || sheetParsed) : {};
         sheetKeys = Object.keys(sheetOt || {}).sort();
         if (sheetParsed && sheetParsed.projects) sheetProjects = sheetParsed.projects;
+        if (sheetParsed && sheetParsed.projectsTombstone) sheetTombstones = sheetParsed.projectsTombstone;
       }
     } catch(e) { /* Sheet trống hoặc lỗi mạng khi kiểm tra — bỏ qua, vẫn cho lưu bình thường */ }
 
@@ -3472,8 +3474,11 @@ async function syncSave() {
 
     // Ghép PROJECTS_DB (Action Plan) với bản trên Sheet TRƯỚC khi đẩy lên — tránh trường hợp máy
     // Admin đang upload OT mới nhưng PROJECTS_DB cục bộ đã cũ (chưa Update data gần đây), khiến
-    // Action Plan mà User khác vừa lưu riêng bị ghi đè mất.
-    const mergedProjects = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects) : PROJECTS_DB;
+    // Action Plan mà User khác vừa lưu riêng bị ghi đè mất. Đồng thời loại trừ đúng dự án đã bị
+    // xoá/đổi tên (qua tombstone) — không để Sheet cũ "hồi sinh" nhầm.
+    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
+    const mergedProjects = mergeResult.projects;
+    const mergedTombstones = mergeResult.tombstones;
 
     updateSyncBadge('busy','Đang tải lên...');
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
@@ -3482,7 +3487,7 @@ async function syncSave() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
     });
     let json;
     try { json = await res.json(); }
@@ -3495,6 +3500,8 @@ async function syncSave() {
       // thấy đầy đủ mọi dự án/thay đổi mà User khác đã đóng góp trên Sheet, không chỉ dữ liệu cũ.
       PROJECTS_DB = mergedProjects;
       saveProjectsDB();
+      PROJECTS_TOMBSTONES = mergedTombstones;
+      saveProjectsTombstones();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3520,7 +3527,7 @@ async function syncSaveActionPlanOnly() {
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
     // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel/Action Plan hiện có trên Sheet.
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null;
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null;
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3536,19 +3543,23 @@ async function syncSaveActionPlanOnly() {
           if (parsed.off) sheetOff = parsed.off;
           if (parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) sheetWlbXls = parsed.wlbXls;
           if (parsed.projects) sheetProjects = parsed.projects;
+          if (parsed.projectsTombstone) sheetTombstones = parsed.projectsTombstone;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
 
     // Bước 2: GHÉP — OT/Đi trễ/Off Day/WLB Excel lấy từ Sheet (mới nhất). Action Plan GHÉP (không
     // ghi đè thẳng) với bản trên Sheet — tránh trường hợp 2 người cùng sửa khác dự án gần nhau,
-    // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy.
-    const mergedProjects = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects) : PROJECTS_DB;
+    // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy. Loại trừ
+    // đúng dự án đã xoá/đổi tên (tombstone) — không để Sheet cũ hồi sinh nhầm.
+    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
+    const mergedProjects = mergeResult.projects;
+    const mergedTombstones = mergeResult.tombstones;
     updateSyncBadge('busy','Đang lưu Action Plan...');
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3562,6 +3573,8 @@ async function syncSaveActionPlanOnly() {
       // sửa đổi mà người khác đã làm trên Sheet, dù vừa lưu xong. "Lưu" giờ = lưu + tải về đầy đủ.
       PROJECTS_DB = mergedProjects;
       saveProjectsDB();
+      PROJECTS_TOMBSTONES = mergedTombstones;
+      saveProjectsTombstones();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3622,6 +3635,12 @@ async function syncLoad() {
       if (isNewFormat && parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) {
         WLB_XLS = parsed.wlbXls;
         saveWlbXls();
+      }
+      // Khôi phục danh sách tombstone (dự án đã xoá/đổi tên) — để máy này biết đúng dự án nào
+      // KHÔNG được hồi sinh nếu sau này chính máy này lại đi Lưu/Đồng bộ Action Plan.
+      if (isNewFormat && parsed.projectsTombstone) {
+        PROJECTS_TOMBSTONES = parsed.projectsTombstone;
+        saveProjectsTombstones();
       }
       migrateOldFormat();
       migrateOffDBKeys();
@@ -3960,10 +3979,29 @@ function findEmployeeProject(staffCode) {
   }
   return null;
 }
+// ── Tombstone: đánh dấu dự án đã bị XOÁ hoặc ĐỔI TÊN (khỏi tên cũ) ──
+// Đây là gốc rễ để sửa lỗi "xoá/đổi tên dự án không có tác dụng sau khi đồng bộ": nếu chỉ đơn
+// giản GHÉP (hợp) danh sách dự án giữa local và Sheet, hệ thống KHÔNG THỂ phân biệt "dự án này
+// chưa từng được tạo" với "dự án này VỪA bị xoá/đổi tên" — cả 2 trường hợp đều biểu hiện là "không
+// có trong local nhưng có trên Sheet", nên phép hợp luôn "hồi sinh" nhầm dự án đã xoá. Ghi lại các
+// key đã xoá vào đây, và LOẠI TRỪ chúng khi ghép — đồng thời đồng bộ danh sách này lên Sheet.
+const PROJECTS_TOMBSTONE_KEY = 'ot_manager_projects_tombstone_v1';
+let PROJECTS_TOMBSTONES = {}; // { "group::projectName": timestamp }
+function loadProjectsTombstones() { try { const raw = localStorage.getItem(PROJECTS_TOMBSTONE_KEY); if (raw) PROJECTS_TOMBSTONES = JSON.parse(raw); } catch(e) {} }
+function saveProjectsTombstones() { try { localStorage.setItem(PROJECTS_TOMBSTONE_KEY, JSON.stringify(PROJECTS_TOMBSTONES)); } catch(e) {} }
+function addTombstone(group, name) {
+  PROJECTS_TOMBSTONES[group+'::'+name] = Date.now();
+  saveProjectsTombstones();
+}
+
 function addProject(group, name) {
   if (!PROJECTS_DB[group]) PROJECTS_DB[group] = {};
   if (!name || PROJECTS_DB[group][name]) return false;
   PROJECTS_DB[group][name] = { employees:[], plans:{} };
+  // Nếu trước đây từng xoá dự án CÙNG TÊN rồi tạo lại — bỏ đánh dấu tombstone, vì giờ NGƯỜI DÙNG
+  // đang chủ động muốn dự án này tồn tại trở lại (không phải Sheet cũ hồi sinh nhầm).
+  delete PROJECTS_TOMBSTONES[group+'::'+name];
+  saveProjectsTombstones();
   saveProjectsDB();
   return true;
 }
@@ -3971,6 +4009,7 @@ function renameProject(group, oldName, newName) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][oldName] || !newName || PROJECTS_DB[group][newName]) return false;
   PROJECTS_DB[group][newName] = PROJECTS_DB[group][oldName];
   delete PROJECTS_DB[group][oldName];
+  addTombstone(group, oldName); // tên cũ coi như "đã xoá" — tránh Sheet hồi sinh lại tên cũ
   saveProjectsDB();
   return true;
 }
@@ -4011,7 +4050,15 @@ function setMonthPlanField(group, proj, mk, field, value) {
   saveProjectsDB();
 }
 
-function mergeProjectsDb(local, sheet) {
+function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
+  // ── Gộp tombstone (đánh dấu đã xoá/đổi tên) — hợp cả 2 bên, NHƯNG nếu dự án đó đang THỰC SỰ
+  // tồn tại trong local (vừa được tạo lại bằng đúng tên cũ) thì bỏ đánh dấu, ưu tiên sự tồn tại
+  // thực tế mới nhất hơn 1 tombstone cũ.
+  const mergedTombstones = { ...(sheetTombstones||{}), ...(localTombstones||{}) };
+  Object.keys(local||{}).forEach(group => {
+    Object.keys((local[group])||{}).forEach(proj => { delete mergedTombstones[group+'::'+proj]; });
+  });
+
   // ── Bước 1: xác định vị trí CUỐI CÙNG của mỗi nhân viên (thuộc dự án nào) ──
   // LỖI CŨ đã sửa: trước đây "hợp" (union) 2 danh sách employees của cùng 1 dự án — nghĩa là nếu
   // Admin CHUYỂN 1 NV từ dự án A sang B, nhưng Sheet chưa kịp cập nhật (vẫn còn NV đó ở A), phép
@@ -4044,9 +4091,13 @@ function mergeProjectsDb(local, sheet) {
     const allProjs = new Set([...Object.keys(localG), ...Object.keys(sheetG)]);
     allProjs.forEach(proj => {
       const l = localG[proj], s = sheetG[proj];
+      const key = group+'::'+proj;
+      // QUAN TRỌNG — sửa lỗi "xoá/đổi tên dự án không có tác dụng": nếu key này đã bị đánh dấu
+      // tombstone (xoá/đổi tên) VÀ local KHÔNG có (tức không phải vừa tạo lại) → bỏ qua hẳn, không
+      // để phép hợp "hồi sinh" nhầm dự án đã xoá từ bản Sheet cũ.
+      if (mergedTombstones[key] && !l) return;
       // Danh sách NV của dự án này = những NV mà finalEmpMap chỉ định thuộc ĐÚNG dự án này —
       // đảm bảo mỗi NV chỉ thuộc 1 dự án duy nhất sau khi ghép (không nhân đôi do union nữa).
-      const key = group+'::'+proj;
       const employees = Object.keys(finalEmpMap).filter(code => finalEmpMap[code] === key);
       if (l && !s) { merged[group][proj] = { ...l, employees }; return; }
       if (s && !l) { merged[group][proj] = { ...s, employees }; return; }
@@ -4067,12 +4118,13 @@ function mergeProjectsDb(local, sheet) {
       merged[group][proj] = { employees, plans };
     });
   });
-  return merged;
+  return { projects: merged, tombstones: mergedTombstones };
 }
 
 function deleteProject(group, name) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][name]) return false;
   delete PROJECTS_DB[group][name];
+  addTombstone(group, name);
   saveProjectsDB();
   return true;
 }
@@ -4192,14 +4244,16 @@ function planCellHtml(group, proj, mk, mp) {
   const hasContent = (mp.pm||mp.reason||mp.plan||'').trim();
   const projEsc = proj.replace(/'/g,"\\'");
   if (!hasContent) {
-    return `<button class="btn btn-primary" style="padding:6px 16px;font-size:16px;font-weight:800" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')" title="Nhập PM / Lý do / Kế hoạch">+</button>`;
+    return `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:90px">
+      <button class="btn btn-primary" style="padding:10px 26px;font-size:22px;font-weight:800;line-height:1;border-radius:10px" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')" title="Nhập PM / Lý do / Kế hoạch">+</button>
+    </div>`;
   }
   const short = (s, n) => s && s.length > n ? s.slice(0,n)+'…' : (s||'');
-  return `<div style="cursor:pointer" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">
-    ${mp.pm ? `<div style="font-weight:600;font-size:12px">👤 ${short(mp.pm,30)}</div>` : ''}
-    ${mp.reason ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">Lý do: ${short(mp.reason,40)}</div>` : ''}
-    ${mp.plan ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">KH: ${short(mp.plan,40)}</div>` : ''}
-    <div style="font-size:10px;color:var(--accent);margin-top:3px">✏️ Sửa</div>
+  return `<div style="display:flex;flex-direction:column;justify-content:center;height:100%;min-height:90px;gap:3px">
+    ${mp.pm ? `<div style="font-weight:600;font-size:12.5px">👤 ${short(mp.pm,30)}</div>` : ''}
+    ${mp.reason ? `<div style="font-size:11.5px;color:var(--text2)">Lý do: ${short(mp.reason,40)}</div>` : ''}
+    ${mp.plan ? `<div style="font-size:11.5px;color:var(--text2)">KH: ${short(mp.plan,40)}</div>` : ''}
+    <button class="btn" style="padding:5px 14px;font-size:12px;font-weight:600;margin-top:4px;align-self:flex-start" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">✏️ Sửa</button>
   </div>`;
 }
 
@@ -5986,6 +6040,7 @@ function init() {
     loadOffDB();
     loadWlbXls();
     loadProjectsDB();
+    loadProjectsTombstones();
     loadUsersDB();
     rebuildLateUI();
     renderWlbSummary();
