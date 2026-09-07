@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.37';
+const APP_VERSION = '2026.39';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3399,8 +3399,45 @@ async function sendNotifyAuto() {
 
 async function syncSave() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
-  updateSyncBadge('busy','Đang tải lên...');
+  updateSyncBadge('busy','Đang kiểm tra Sheet...');
   try {
+    // ── KIỂM TRA AN TOÀN TRƯỚC KHI GHI ĐÈ ──
+    // syncSave ghi đè TOÀN BỘ dữ liệu trên Sheet bằng dữ liệu máy đang bấm — nếu máy này có ít
+    // tháng hơn Sheet (VD: máy chỉ mới tới tháng 8 nhưng Sheet đã có tháng 9 do người khác upload),
+    // bấm Lưu sẽ XOÁ MẤT dữ liệu mới hơn đó mà không cảnh báo gì. Đây là nguyên nhân gây mất dữ
+    // liệu thực tế đã xảy ra — nên PHẢI kiểm tra trước, không chỉ ghi đè mù quáng.
+    let sheetKeys = [];
+    try {
+      const checkRes = await fetch(SYNC_URL, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'load' })
+      });
+      const checkJson = await checkRes.json();
+      if (checkJson.ok) {
+        const sheetParsed = JSON.parse(checkJson.data || '{}');
+        const sheetOt = (sheetParsed && typeof sheetParsed === 'object') ? (sheetParsed.ot || sheetParsed) : {};
+        sheetKeys = Object.keys(sheetOt || {}).sort();
+      }
+    } catch(e) { /* Sheet trống hoặc lỗi mạng khi kiểm tra — bỏ qua, vẫn cho lưu bình thường */ }
+
+    const localKeys = Object.keys(DB).sort();
+    const missingOnLocal = sheetKeys.filter(k => !localKeys.includes(k));
+    if (missingOnLocal.length) {
+      updateSyncBadge('err','Tạm dừng');
+      const proceed = confirm(
+        `⚠️ CẢNH BÁO: Sheet hiện đang có dữ liệu tháng ${missingOnLocal.map(fmtMK).join(', ')} mà MÁY NÀY KHÔNG CÓ.\n\n` +
+        `Nếu tiếp tục Lưu & Đồng bộ, dữ liệu ${missingOnLocal.map(fmtMK).join(', ')} trên Sheet sẽ bị XOÁ MẤT VĨNH VIỄN.\n\n` +
+        `Nên bấm "Cancel" rồi Update data (Tải xuống) trước để lấy đủ dữ liệu, sau đó mới Lưu lại.\n\n` +
+        `Bạn có CHẮC CHẮN muốn tiếp tục ghi đè không?`
+      );
+      if (!proceed) {
+        toast('Đã huỷ — vào Update data để tải dữ liệu mới nhất trước khi lưu.');
+        refreshSyncBadgeIdle();
+        return;
+      }
+    }
+
+    updateSyncBadge('busy','Đang tải lên...');
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
@@ -3426,6 +3463,63 @@ async function syncSave() {
     updateSyncBadge('err','Lỗi sync');
     toast('Lỗi tải lên: ' + err.message);
     console.error('syncSave error:', err);
+  }
+}
+
+// ── Lưu RIÊNG phần Action Plan (dự án/PM/lý do/duyệt + tài khoản User + mật khẩu Admin) ──
+// KHÁC với syncSave() (ghi đè toàn bộ, dùng cho Admin upload OT hàng tháng): hàm này LUÔN tự
+// PULL đúng dữ liệu OT/Đi trễ/Off Day MỚI NHẤT từ Sheet trước, rồi mới GHÉP với phần Action Plan
+// đang có trên máy này để đẩy lên — nhờ vậy, một PM chỉ định lưu 1 dòng comment sẽ KHÔNG BAO GIỜ
+// vô tình ghi đè/xoá mất dữ liệu OT mới hơn mà Admin đã upload, dù máy PM không có đủ dữ liệu đó.
+// Không cần sửa gì ở Google Apps Script — vẫn dùng chung 1 kho lưu trữ, chỉ khác cách GHÉP dữ liệu
+// phía client trước khi gửi lên.
+async function syncSaveActionPlanOnly() {
+  if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
+  updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
+  try {
+    // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day hiện có trên Sheet (không đụng tới local DB).
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB; // fallback: nếu Sheet trống/lỗi mạng, dùng tạm local
+    try {
+      const loadRes = await fetch(SYNC_URL, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'load' })
+      });
+      const loadJson = await loadRes.json();
+      if (loadJson.ok) {
+        const parsed = JSON.parse(loadJson.data || '{}');
+        const isNewFormat = parsed && typeof parsed === 'object' && (parsed.ot || parsed.late || parsed.off || parsed.projects);
+        if (isNewFormat) {
+          if (parsed.ot && Object.keys(parsed.ot).length) sheetOt = parsed.ot;
+          if (parsed.late) sheetLate = parsed.late;
+          if (parsed.off) sheetOff = parsed.off;
+        }
+      }
+    } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
+
+    // Bước 2: GHÉP — OT/Đi trễ/Off Day lấy từ Sheet (mới nhất), Action Plan lấy từ máy này (vừa sửa).
+    updateSyncBadge('busy','Đang lưu Action Plan...');
+    const res = await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword() } })
+    });
+    let json;
+    try { json = await res.json(); }
+    catch(parseErr) {
+      const text = await res.text().catch(()=> '');
+      throw new Error(`HTTP ${res.status} — phản hồi không phải JSON. ${text.slice(0,150)}`);
+    }
+    if (json.ok) {
+      lastSyncedAt = new Date().toLocaleString('vi-VN');
+      refreshSyncBadgeIdle();
+      renderSyncPage();
+      const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
+      toast('Đã lưu Action Plan lên Sheet! (không ảnh hưởng dữ liệu OT)');
+    } else throw new Error(json.error || 'unknown');
+  } catch (err) {
+    updateSyncBadge('err','Lỗi sync');
+    toast('Lỗi lưu Action Plan: ' + err.message);
+    console.error('syncSaveActionPlanOnly error:', err);
   }
 }
 
