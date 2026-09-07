@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.40';
+const APP_VERSION = '2026.41';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4481,12 +4481,22 @@ async function handleWlbMonthlyExcel(inp) {
     Object.keys(e.off).forEach(m=>monthsWithData.add(+m));
   });
   const mArr = [...monthsWithData].sort((a,b)=>a-b);
-  document.getElementById('wlbXlsLog').textContent = empCount
-    ? `✅ Đã đọc ${empCount} nhân viên · năm ${year} · ${mArr.length} tháng có dữ liệu: ${mArr.map(m=>MONTH_NAMES_VI[m-1]).join(', ')}${!otRows?' ⚠️ thiếu sheet OT List':''}${!offRows?' ⚠️ thiếu sheet Off-Day List':''}`
+  // QUAN TRỌNG: file Excel WLB chỉ lưu CỤC BỘ trên máy đang upload — người khác "Update data" sẽ
+  // KHÔNG bao giờ thấy dữ liệu mới này cho tới khi có ai đó bấm đồng bộ lên Sheet. Đây là nguyên
+  // nhân "Admin đã update đầy đủ nhưng User vẫn báo thiếu tháng" — vì thiếu bước đẩy lên Sheet sau
+  // khi upload. Hiện nhắc RÕ RÀNG + nút bấm 1 chạm để đóng gap này ngay tại chỗ.
+  const syncReminder = SYNC_URL
+    ? `<div style="margin-top:8px;padding:10px 12px;background:var(--accent-bg);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+         <span style="font-size:12px;color:var(--text)"><strong>⚠️ Bước cuối, đừng quên:</strong> dữ liệu này mới chỉ lưu trên máy này — bấm nút bên cạnh để người khác cũng thấy được.</span>
+         <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="syncSaveActionPlanOnly()">📤 Đồng bộ ngay lên Sheet</button>
+       </div>`
+    : `<div style="margin-top:8px;padding:10px 12px;background:var(--red-bg);border-radius:8px;font-size:12px;color:var(--red)">⚠️ Chưa cấu hình Google Sheets — dữ liệu này chỉ có trên máy này, người khác sẽ không thấy được. Vào mục Sync bên dưới để cấu hình.</div>`;
+  document.getElementById('wlbXlsLog').innerHTML = empCount
+    ? `✅ Đã đọc ${empCount} nhân viên · năm ${year} · ${mArr.length} tháng có dữ liệu: ${mArr.map(m=>MONTH_NAMES_VI[m-1]).join(', ')}${!otRows?' ⚠️ thiếu sheet OT List':''}${!offRows?' ⚠️ thiếu sheet Off-Day List':''}${syncReminder}`
     : '❌ Không đọc được dữ liệu nhân viên nào.';
   renderWlbSummary();
   renderWlb();
-  toast(empCount ? `Upload WLB Excel thành công! (${empCount} NV, năm ${year})` : 'Lỗi đọc file WLB Excel');
+  toast(empCount ? `Upload WLB Excel thành công! (${empCount} NV, năm ${year}) — nhớ Đồng bộ lên Sheet!` : 'Lỗi đọc file WLB Excel');
 }
 
 // ── Hàm tính toán trên WLB_XLS (dùng cho toàn bộ trang WLB) ──
@@ -4901,7 +4911,7 @@ function renderWlb() {
         if (!allEcProjects.length) {
           emptyElP.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
         } else if (!wlbXlsMonthsWithData().includes(monthNumP)) {
-          emptyElP.textContent = `Chưa có dữ liệu Excel WLB cho ${fmtMK(selMk)} — vào Cài đặt upload lại file Excel WLB có đủ tháng này.`;
+          emptyElP.textContent = `Chưa có dữ liệu Excel WLB cho ${fmtMK(selMk)} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'}`;
         } else {
           emptyElP.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho tháng này.';
         }
@@ -5083,7 +5093,7 @@ function renderWlb() {
         if (!allEcProjectsQ.length) {
           emptyElQ.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
         } else if (!hasAnyMonth) {
-          emptyElQ.textContent = `Chưa có dữ liệu Excel WLB cho quý ${qLabel[selQk]||''} — vào Cài đặt upload lại file Excel WLB có đủ các tháng này.`;
+          emptyElQ.textContent = `Chưa có dữ liệu Excel WLB cho quý ${qLabel[selQk]||''} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ các tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ các tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'}`;
         } else {
           emptyElQ.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho quý này.';
         }
