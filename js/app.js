@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.41';
+const APP_VERSION = '2026.42';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3407,6 +3407,7 @@ async function syncSave() {
     // bấm Lưu sẽ XOÁ MẤT dữ liệu mới hơn đó mà không cảnh báo gì. Đây là nguyên nhân gây mất dữ
     // liệu thực tế đã xảy ra — nên PHẢI kiểm tra trước, không chỉ ghi đè mù quáng.
     let sheetKeys = [];
+    let sheetProjects = null;
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3417,6 +3418,7 @@ async function syncSave() {
         const sheetParsed = JSON.parse(checkJson.data || '{}');
         const sheetOt = (sheetParsed && typeof sheetParsed === 'object') ? (sheetParsed.ot || sheetParsed) : {};
         sheetKeys = Object.keys(sheetOt || {}).sort();
+        if (sheetParsed && sheetParsed.projects) sheetProjects = sheetParsed.projects;
       }
     } catch(e) { /* Sheet trống hoặc lỗi mạng khi kiểm tra — bỏ qua, vẫn cho lưu bình thường */ }
 
@@ -3437,6 +3439,11 @@ async function syncSave() {
       }
     }
 
+    // Ghép PROJECTS_DB (Action Plan) với bản trên Sheet TRƯỚC khi đẩy lên — tránh trường hợp máy
+    // Admin đang upload OT mới nhưng PROJECTS_DB cục bộ đã cũ (chưa Update data gần đây), khiến
+    // Action Plan mà User khác vừa lưu riêng bị ghi đè mất.
+    const mergedProjects = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects) : PROJECTS_DB;
+
     updateSyncBadge('busy','Đang tải lên...');
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
@@ -3444,7 +3451,7 @@ async function syncSave() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
     });
     let json;
     try { json = await res.json(); }
@@ -3477,8 +3484,8 @@ async function syncSaveActionPlanOnly() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
-    // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel hiện có trên Sheet (không đụng local DB).
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS; // fallback: nếu Sheet trống/lỗi mạng, dùng tạm local
+    // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel/Action Plan hiện có trên Sheet.
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null;
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3493,16 +3500,20 @@ async function syncSaveActionPlanOnly() {
           if (parsed.late) sheetLate = parsed.late;
           if (parsed.off) sheetOff = parsed.off;
           if (parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) sheetWlbXls = parsed.wlbXls;
+          if (parsed.projects) sheetProjects = parsed.projects;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
 
-    // Bước 2: GHÉP — OT/Đi trễ/Off Day/WLB Excel lấy từ Sheet (mới nhất), Action Plan lấy từ máy này (vừa sửa).
+    // Bước 2: GHÉP — OT/Đi trễ/Off Day/WLB Excel lấy từ Sheet (mới nhất). Action Plan GHÉP (không
+    // ghi đè thẳng) với bản trên Sheet — tránh trường hợp 2 người cùng sửa khác dự án gần nhau,
+    // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy.
+    const mergedProjects = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects) : PROJECTS_DB;
     updateSyncBadge('busy','Đang lưu Action Plan...');
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3912,7 +3923,7 @@ function findEmployeeProject(staffCode) {
 function addProject(group, name) {
   if (!PROJECTS_DB[group]) PROJECTS_DB[group] = {};
   if (!name || PROJECTS_DB[group][name]) return false;
-  PROJECTS_DB[group][name] = { employees:[], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
+  PROJECTS_DB[group][name] = { employees:[], plans:{} };
   saveProjectsDB();
   return true;
 }
@@ -3923,6 +3934,77 @@ function renameProject(group, oldName, newName) {
   saveProjectsDB();
   return true;
 }
+// Ghép (merge) PROJECTS_DB giữa bản LOCAL (máy đang bấm) và bản trên SHEET — dùng khi Admin upload
+// OT/WLB mới rồi Lưu (syncSave ghi đè toàn bộ): nếu chỉ lấy PROJECTS_DB local, sẽ dễ XOÁ MẤT Action
+// Plan mà User khác đã lưu riêng (qua syncSaveActionPlanOnly) mà máy Admin chưa kịp Update data.
+// Quy tắc ghép: hợp (union) toàn bộ dự án ở cả 2 bên; với dự án trùng — hợp danh sách NV, còn các ô
+// text (PM/Kế hoạch/Lý do/Duyệt/Ghi chú) ưu tiên bên nào ĐANG có nội dung, nếu cả 2 khác nhau đều có
+// nội dung thì ưu tiên bản trên SHEET (đại diện cho đóng góp của người khác, tránh đè mất).
+// ── Action Plan theo TỪNG THÁNG ──────────────────────────────────────────
+// PM/Kế hoạch/Lý do/Duyệt/Ghi chú giờ lưu RIÊNG cho mỗi tháng (project.plans[mk]), KHÔNG còn là
+// 1 giá trị chung xuyên suốt — đúng yêu cầu "qua tháng mới thì tạo lại mới, tháng cũ vẫn lưu để
+// truy vết". Danh sách nhân viên (employees) vẫn dùng chung, không tách theo tháng.
+function blankMonthPlan() { return { pm:'', plan:'', reason:'', approvedBy:'', note:'' }; }
+// Lấy đúng bucket của 1 tháng — tự động MIGRATE dữ liệu kiểu cũ (pm/plan/... nằm thẳng trên
+// project, từ trước khi có tính năng theo tháng) vào bucket của THÁNG ĐANG XEM đầu tiên được mở,
+// để không mất dữ liệu cũ đã nhập trước đây.
+function getMonthPlan(group, proj, mk) {
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  if (!p) return blankMonthPlan();
+  if (!p.plans) p.plans = {};
+  // Migrate 1 lần: nếu project còn field cũ (pm/plan/reason/approvedBy/note nằm thẳng ngoài) và
+  // CHƯA có plans nào — chuyển toàn bộ vào bucket của mk hiện tại, giữ nguyên nội dung cũ.
+  const hasOldFlatData = ('pm' in p) || ('plan' in p) || ('reason' in p) || ('approvedBy' in p) || ('note' in p);
+  if (hasOldFlatData && Object.keys(p.plans).length === 0 && mk) {
+    p.plans[mk] = { pm: p.pm||'', plan: p.plan||'', reason: p.reason||'', approvedBy: p.approvedBy||'', note: p.note||'' };
+    delete p.pm; delete p.plan; delete p.reason; delete p.approvedBy; delete p.note;
+    saveProjectsDB();
+  }
+  if (!mk) return blankMonthPlan();
+  if (!p.plans[mk]) p.plans[mk] = blankMonthPlan();
+  return p.plans[mk];
+}
+function setMonthPlanField(group, proj, mk, field, value) {
+  if (!mk) return;
+  const plan = getMonthPlan(group, proj, mk); // đảm bảo bucket đã tồn tại (và đã migrate nếu cần)
+  plan[field] = value;
+  saveProjectsDB();
+}
+
+function mergeProjectsDb(local, sheet) {
+  const merged = {};
+  const allGroups = new Set([...Object.keys(local||{}), ...Object.keys(sheet||{})]);
+  const pickText = (a, b) => (b && b.trim()) ? b : (a || ''); // ưu tiên sheet (b) nếu có nội dung
+  allGroups.forEach(group => {
+    merged[group] = {};
+    const localG = (local && local[group]) || {};
+    const sheetG = (sheet && sheet[group]) || {};
+    const allProjs = new Set([...Object.keys(localG), ...Object.keys(sheetG)]);
+    allProjs.forEach(proj => {
+      const l = localG[proj], s = sheetG[proj];
+      if (l && !s) { merged[group][proj] = l; return; }
+      if (s && !l) { merged[group][proj] = s; return; }
+      // Có ở cả 2 bên — ghép nhân viên (hợp) + ghép plans theo TỪNG THÁNG, TỪNG Ô riêng biệt.
+      const employees = [...new Set([...(l.employees||[]), ...(s.employees||[])])];
+      const lPlans = l.plans || {}, sPlans = s.plans || {};
+      const allMks = new Set([...Object.keys(lPlans), ...Object.keys(sPlans)]);
+      const plans = {};
+      allMks.forEach(mk => {
+        const lp = lPlans[mk] || {}, sp = sPlans[mk] || {};
+        plans[mk] = {
+          pm: pickText(lp.pm, sp.pm),
+          plan: pickText(lp.plan, sp.plan),
+          reason: pickText(lp.reason, sp.reason),
+          approvedBy: pickText(lp.approvedBy, sp.approvedBy),
+          note: pickText(lp.note, sp.note),
+        };
+      });
+      merged[group][proj] = { employees, plans };
+    });
+  });
+  return merged;
+}
+
 function deleteProject(group, name) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][name]) return false;
   delete PROJECTS_DB[group][name];
@@ -3994,17 +4076,17 @@ function renderActionPlan() {
 
 // Khung "Duyệt bởi ECM/HODs": 2 nút Duyệt/Từ chối + 1 ô comment riêng — trạng thái + comment lưu
 // vào p.approvedBy (dạng "Đạt|Từ chối|" + text comment) để không cần thêm field mới.
-function approvalBoxHtml(group, proj, p) {
-  const raw = p.approvedBy || '';
+function approvalBoxHtml(group, proj, mp, mk) {
+  const raw = mp.approvedBy || '';
   const status = raw.startsWith('APPROVED|') ? 'approved' : raw.startsWith('REJECTED|') ? 'rejected' : '';
   const comment = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : raw;
   const projEsc = proj.replace(/'/g,"\\'");
   return `
     <div style="display:flex;gap:6px;margin-bottom:6px">
-      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='approved'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setApprovalStatus('${group}','${projEsc}','APPROVED')">✅ Duyệt</button>
-      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='rejected'?'background:#C0392B;color:#fff;border-color:#C0392B':''}" onclick="setApprovalStatus('${group}','${projEsc}','REJECTED')">❌ Từ chối</button>
+      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='approved'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setApprovalStatus('${group}','${projEsc}','APPROVED','${mk}')">✅ Duyệt</button>
+      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='rejected'?'background:#C0392B;color:#fff;border-color:#C0392B':''}" onclick="setApprovalStatus('${group}','${projEsc}','REJECTED','${mk}')">❌ Từ chối</button>
     </div>
-    <textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Comment của ECM/HODs..." onchange="setApprovalComment('${group}','${projEsc}',this.value)">${comment.replace(/</g,'&lt;')}</textarea>`;
+    <textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Comment của ECM/HODs..." onchange="setApprovalComment('${group}','${projEsc}',this.value,'${mk}')">${comment.replace(/</g,'&lt;')}</textarea>`;
 }
 
 function buildActionPlanTable(group, tbodyId, mk) {
@@ -4017,10 +4099,11 @@ function buildActionPlanTable(group, tbodyId, mk) {
   }
   tbody.innerHTML = projNames.map((proj, i) => {
     const p = PROJECTS_DB[group][proj];
+    const mp = getMonthPlan(group, proj, mk); // bucket riêng của THÁNG ĐANG XEM — tháng khác không ảnh hưởng
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
-    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
-    const isRejected = (p.approvedBy||'').startsWith('REJECTED|');
+    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    const isRejected = (mp.approvedBy||'').startsWith('REJECTED|');
     return `<tr class="${isRejected ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
       <td>
@@ -4031,7 +4114,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
         </div>
         <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
       </td>
-      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value)"></td>
+      <td><input type="text" value="${(mp.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value,'${mk}')"></td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4041,7 +4124,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
       </td>
       <td>${editable('reason','Lý do...')}</td>
       <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
-      <td>${approvalBoxHtml(group, proj, p)}</td>
+      <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`;
   }).join('');
@@ -4071,14 +4154,14 @@ function buildActionPlanTableSED(tbodyId, mk) {
     });
   }
   const sedKey = '__SED_ALL__';
-  if (!PROJECTS_DB[group][sedKey]) PROJECTS_DB[group][sedKey] = { employees:[], pm:'', plan:'', reason:'', approvedBy:'', note:'' };
-  const pAuto = PROJECTS_DB[group][sedKey];
+  if (!PROJECTS_DB[group][sedKey]) PROJECTS_DB[group][sedKey] = { employees:[], plans:{} };
+  const pAuto = getMonthPlan(group, sedKey, mk);
   const isAutoRejected = (pAuto.approvedBy||'').startsWith('REJECTED|');
   const rowsHtml = [];
   rowsHtml.push(`<tr class="${isAutoRejected ? 'row-rejected' : ''}">
     <td style="text-align:center;color:var(--text2)">1</td>
     <td><div style="font-weight:600">S-ED (tất cả)</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">Tự động lấy từ Danh sách NV OT</div></td>
-    <td><input type="text" value="${(pAuto.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${sedKey}','pm',this.value)"></td>
+    <td><input type="text" value="${(pAuto.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${sedKey}','pm',this.value,'${mk}')"></td>
     <td style="font-size:12px;line-height:1.8;white-space:nowrap">
       OT thường: <strong>${Math.round((otNormal)*10)/10}h</strong><br>
       OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
@@ -4086,19 +4169,20 @@ function buildActionPlanTableSED(tbodyId, mk) {
       <span style="color:${overKpiSed>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${overKpiSed}</strong> NV</span><br>
       <span style="color:${overPaySed>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${overPaySed}</strong> NV</span>
     </td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value)">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value)">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
-    <td>${approvalBoxHtml(group, sedKey, pAuto)}</td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value)">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value,'${mk}')">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value,'${mk}')">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
+    <td>${approvalBoxHtml(group, sedKey, pAuto, mk)}</td>
+    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value,'${mk}')">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
   </tr>`);
 
   // Các dự án S-ED được thêm thủ công (nếu có) — hiện tiếp bên dưới, giống HCM-EC
   manualProjs.filter(p => p !== sedKey).forEach((proj, idx) => {
     const p = PROJECTS_DB[group][proj];
+    const mp = getMonthPlan(group, proj, mk);
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
-    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value)">${(p[field]||'').replace(/</g,'&lt;')}</textarea>`;
-    const isRejected2 = (p.approvedBy||'').startsWith('REJECTED|');
+    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    const isRejected2 = (mp.approvedBy||'').startsWith('REJECTED|');
     rowsHtml.push(`<tr class="${isRejected2 ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${idx+2}</td>
       <td>
@@ -4109,7 +4193,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
         </div>
         <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
       </td>
-      <td><input type="text" value="${(p.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value)"></td>
+      <td><input type="text" value="${(mp.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value,'${mk}')"></td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4119,25 +4203,25 @@ function buildActionPlanTableSED(tbodyId, mk) {
       </td>
       <td>${editable('reason','Lý do...')}</td>
       <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
-      <td>${approvalBoxHtml(group, proj, p)}</td>
+      <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`);
   });
   tbody.innerHTML = rowsHtml.join('');
 }
 
-function setApprovalStatus(group, proj, status) {
-  const p = PROJECTS_DB[group]?.[proj]; if (!p) return;
-  const comment = (p.approvedBy||'').includes('|') ? p.approvedBy.slice(p.approvedBy.indexOf('|')+1) : (p.approvedBy||'');
-  p.approvedBy = `${status}|${comment}`;
+function setApprovalStatus(group, proj, status, mk) {
+  const mp = getMonthPlan(group, proj, mk); if (!mp) return;
+  const comment = (mp.approvedBy||'').includes('|') ? mp.approvedBy.slice(mp.approvedBy.indexOf('|')+1) : (mp.approvedBy||'');
+  mp.approvedBy = `${status}|${comment}`;
   saveProjectsDB();
   renderActionPlan();
   toast(status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối');
 }
-function setApprovalComment(group, proj, comment) {
-  const p = PROJECTS_DB[group]?.[proj]; if (!p) return;
-  const status = (p.approvedBy||'').startsWith('APPROVED|') ? 'APPROVED' : (p.approvedBy||'').startsWith('REJECTED|') ? 'REJECTED' : '';
-  p.approvedBy = status ? `${status}|${comment}` : comment;
+function setApprovalComment(group, proj, comment, mk) {
+  const mp = getMonthPlan(group, proj, mk); if (!mp) return;
+  const status = (mp.approvedBy||'').startsWith('APPROVED|') ? 'APPROVED' : (mp.approvedBy||'').startsWith('REJECTED|') ? 'REJECTED' : '';
+  mp.approvedBy = status ? `${status}|${comment}` : comment;
   saveProjectsDB();
 }
 // Xem danh sách NV theo 1 mảng staff code cụ thể (dùng cho hàng "S-ED (tất cả)" tự động,
@@ -4152,10 +4236,9 @@ function viewProjectEmployeesByCodes(codesJson, label, mk) {
 
 
 
-function saveProjectField(group, proj, field, value) {
+function saveProjectField(group, proj, field, value, mk) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][proj]) return;
-  PROJECTS_DB[group][proj][field] = value;
-  saveProjectsDB();
+  setMonthPlanField(group, proj, mk, field, value);
 }
 
 function promptAddProject(group) {
