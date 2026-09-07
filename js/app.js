@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.35';
+const APP_VERSION = '2026.36';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -2916,6 +2916,30 @@ function populateReportSelectors() {
   }
 }
 
+// Vẽ biểu đồ cột ngang bằng SVG THUẦN (không dùng Chart.js) — vẽ ra ngay khi HTML được parse,
+// không cần chờ JS chạy hay animation nào cả. Tránh HOÀN TOÀN lỗi "trang trắng" do html2canvas
+// chụp quá sớm trước khi thư viện chart kịp vẽ xong (vấn đề đã gặp phải khi dùng Chart.js).
+function buildSvgBarChart(entries, opts) {
+  opts = opts || {};
+  const color = opts.color || '#2D6CDF';
+  const unit = opts.unit || 'h';
+  const maxLabelChars = 22;
+  if (!entries.length) return '<div style="color:#999;font-style:italic;padding:8px 0">Không có dữ liệu để vẽ biểu đồ.</div>';
+  const maxVal = Math.max(1, ...entries.map(e => e.value));
+  const rowH = 26, gap = 6, labelW = 150, chartW = 420, barMaxW = chartW - labelW - 60;
+  const totalH = entries.length * (rowH + gap);
+  const rows = entries.map((e, i) => {
+    const y = i * (rowH + gap);
+    const barW = Math.max(2, (e.value / maxVal) * barMaxW);
+    const label = e.name.length > maxLabelChars ? e.name.slice(0, maxLabelChars-1)+'…' : e.name;
+    return `
+      <text x="0" y="${y + rowH/2 + 4}" font-size="11" fill="#444" font-family="Inter,sans-serif">${label}</text>
+      <rect x="${labelW}" y="${y}" width="${barW}" height="${rowH}" rx="3" fill="${color}"/>
+      <text x="${labelW + barW + 6}" y="${y + rowH/2 + 4}" font-size="11" fill="#211F1C" font-family="'JetBrains Mono',monospace" font-weight="700">${e.value}${unit}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${chartW} ${totalH}" width="100%" style="max-width:520px;display:block;margin:6px 0 12px">${rows}</svg>`;
+}
+
 function buildReportHtml(mode) {
   const keys = Object.keys(DB).sort();
   const selMk = document.getElementById('reportMonthSel')?.value || keys[keys.length-1] || null;
@@ -3021,6 +3045,8 @@ function buildReportHtml(mode) {
       <div class="kpi"><div class="l">OT trung bình</div><div class="v">${avgOt}h</div></div>
       <div class="kpi"><div class="l">OT cao nhất</div><div class="v">${maxOt}h</div><div style="font-size:10px;color:#888">${maxNv}</div></div>
     </div>
+    <div style="font-size:12px;font-weight:700;color:#444;margin-bottom:2px">Top ${Math.min(10,top15.length)} nhân viên theo tổng OT</div>
+    ${buildSvgBarChart(top15.slice(0,10).map(t=>({name:t.name, value:t.total})), {color:'#2D6CDF'})}
     <table><thead><tr><th>#</th><th>Nhân viên</th><th>Phòng ban</th><th>Tổng OT</th><th>Trạng thái</th></tr></thead>
     <tbody>${top15.map((t,i)=>`<tr><td class="num">${i+1}</td><td>${t.name}</td><td>${t.dept||'—'}</td><td class="num">${t.total}h</td><td>${t.total>70?'<span class="badge bd">Vượt mức</span>':t.total>45?'<span class="badge bd" style="background:#FDF1DE;color:#B8790C">Vượt mức 45</span>':'<span class="badge bo">Bình thường</span>'}</td></tr>`).join('')}</tbody></table>
     <div style="font-size:10.5px;color:#999;margin-top:4px">Hiển thị top ${top15.length}/${totals.length} nhân viên theo tổng OT.</div>
@@ -3031,6 +3057,7 @@ function buildReportHtml(mode) {
     <div class="section-title">2. OT phòng ban</div>
     <div class="section-sub">${selMk ? fmtMK(selMk) : ''}</div>
     ${!deptStats.length ? '<div class="empty-note">Không có dữ liệu phòng ban cho tháng này.</div>' : `
+    ${buildSvgBarChart(deptStats.map(d=>({name:d.name, value:d.total})), {color:'#7A5FD1'})}
     <table><thead><tr><th>Phòng ban</th><th>Số NV</th><th>Tổng OT</th><th>NV vượt mức</th></tr></thead>
     <tbody>${deptStats.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.nv}</td><td class="num">${d.total}h</td><td>${d.over>0?`<span class="badge bd">${d.over}</span>`:'—'}</td></tr>`).join('')}</tbody></table>
     `}
@@ -3040,6 +3067,7 @@ function buildReportHtml(mode) {
     <div class="section-title">3. So sánh OT</div>
     <div class="section-sub">${selMk?fmtMK(selMk):''} so với ${prevMk?fmtMK(prevMk):'tháng liền trước (không có dữ liệu)'}</div>
     ${!cmpRows.length ? '<div class="empty-note">Không có dữ liệu để so sánh.</div>' : `
+    ${buildSvgBarChart(cmpRows.map(d=>({name:d.name, value:d.total})), {color:'#E8A33D'})}
     <table><thead><tr><th>Phòng ban</th><th>OT ${selMk?fmtMK(selMk):''}</th><th>OT ${prevMk?fmtMK(prevMk):'tháng trước'}</th><th>Chênh lệch</th></tr></thead>
     <tbody>${cmpRows.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.total}h</td><td class="num">${d.prev===null?'—':d.prev+'h'}</td><td class="num" style="color:${deltaColor(d.diff)};font-weight:700">${fmtDelta(d.diff)}</td></tr>`).join('')}</tbody></table>
     `}
@@ -3054,6 +3082,8 @@ function buildReportHtml(mode) {
       <div class="kpi"><div class="l">Tổng Off (toàn công ty)</div><div class="v">${coOff_q}h</div></div>
       <div class="kpi"><div class="l">WLB toàn công ty</div><div class="v" style="color:${wlbColorR(coWlb_q)}">${coWlb_q===null?'—':coWlb_q+'%'}</div></div>
     </div>
+    <div style="font-size:12px;font-weight:700;color:#444;margin-bottom:2px">WLB theo phòng ban (%)</div>
+    ${buildSvgBarChart(deptWlb_q.filter(d=>d.wlb!==null).map(d=>({name:d.name, value:d.wlb})), {color:'#2E7D32', unit:'%'})}
     <table><thead><tr><th>Phòng ban</th><th>Tổng OT</th><th>Tổng Off</th><th>WLB</th><th>Kết quả</th></tr></thead>
     <tbody>${deptWlb_q.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.ot}h</td><td class="num">${d.off}h</td><td class="num" style="color:${wlbColorR(d.wlb)};font-weight:700">${d.wlb===null?'—':d.wlb+'%'}</td><td>${wlbBadgeR(d.wlb)}</td></tr>`).join('')}</tbody></table>
     <div style="font-size:10.5px;color:#999;margin-top:6px">Ngưỡng: &gt;${WLB_THRESHOLD} = Đạt, ≤${WLB_THRESHOLD} = Không đạt. Các tháng trong quý: ${qMksArr.map(fmtMK).join(', ')}.</div>
@@ -3061,10 +3091,25 @@ function buildReportHtml(mode) {
   </div>
 
 <script>
-  // Không còn biểu đồ (đã chuyển toàn bộ báo cáo sang dạng bảng để đơn giản, đáng tin cậy hơn
-  // khi xuất PDF) — báo hiệu sẵn sàng ngay lập tức, không cần chờ animation của chart nữa.
-  ${mode === 'pdf' ? 'window.__pdfReady = true;' : ''}
-  ${mode === 'print' ? 'setTimeout(() => window.print(), 300);' : ''}
+  // QUAN TRỌNG: phải chờ font Google Fonts tải xong VÀ layout ổn định trước khi báo "sẵn sàng" —
+  // nếu báo ngay lập tức (như trước đây), html2canvas chụp lúc trang CHƯA kịp vẽ xong, ra ảnh
+  // trắng trơn (đặc biệt trang đầu, vì đó là ảnh được chụp sớm nhất). Sự cố này KHÔNG xảy ra khi
+  // báo cáo còn có chart, vì chart mất vài trăm ms để animate — vô tình che giấu vấn đề thời gian.
+  ${mode === 'pdf' ? `
+  (function() {
+    function signalReady() {
+      // Chờ thêm 1 khung hình để chắc chắn trình duyệt đã sơn (paint) xong toàn bộ trang.
+      requestAnimationFrame(() => requestAnimationFrame(() => { window.__pdfReady = true; }));
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(signalReady).catch(signalReady);
+      setTimeout(signalReady, 1500); // an toàn: nếu font mãi không tải xong, vẫn tiếp tục sau 1.5s
+    } else {
+      setTimeout(signalReady, 400);
+    }
+  })();
+  ` : ''}
+  ${mode === 'print' ? 'setTimeout(() => window.print(), 500);' : ''}
 </script>
 </body></html>`;
 
