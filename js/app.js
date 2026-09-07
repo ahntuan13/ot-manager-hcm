@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.43';
+const APP_VERSION = '2026.44';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -109,7 +109,38 @@ function enterAsRole(role) {
   sessionStorage.setItem(ROLE_KEY, role);
   document.getElementById('roleGate').style.display = 'none';
   applyRoleUI();
+  showUpdateReminderPopup();
 }
+// ── Popup nhắc "Update data" ngay sau khi đăng nhập — tránh trường hợp User/Admin quên bấm,
+// dẫn tới nhìn thấy dữ liệu cũ (thiếu tháng mới nhất) mà không hề hay biết.
+function showUpdateReminderPopup() {
+  if (!SYNC_URL) return; // chưa cấu hình Sheet thì không có gì để nhắc
+  const modal = document.getElementById('updateReminderModal');
+  if (!modal) return;
+  document.getElementById('updateReminderStep1').style.display = 'block';
+  document.getElementById('updateReminderStep2').style.display = 'none';
+  modal.style.display = 'flex';
+}
+async function doUpdateFromReminder() {
+  const btn = document.getElementById('updateReminderBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang tải...'; }
+  const originalConfirm = window.confirm;
+  window.confirm = () => true; // đã ở đây rồi tức là User đã đồng ý — khỏi hỏi lại lần 2
+  try {
+    await syncLoad();
+    document.getElementById('updateReminderStep1').style.display = 'none';
+    document.getElementById('updateReminderStep2').style.display = 'block';
+  } catch(e) {
+    toast('Lỗi Update data: ' + e.message);
+  } finally {
+    window.confirm = originalConfirm;
+    if (btn) { btn.disabled = false; btn.textContent = '📥 Update data ngay'; }
+  }
+}
+function closeUpdateReminderPopup() {
+  document.getElementById('updateReminderModal').style.display = 'none';
+}
+
 function switchRole() {
   sessionStorage.removeItem(ROLE_KEY);
   sessionStorage.removeItem('ot_manager_username');
@@ -3981,6 +4012,28 @@ function setMonthPlanField(group, proj, mk, field, value) {
 }
 
 function mergeProjectsDb(local, sheet) {
+  // ── Bước 1: xác định vị trí CUỐI CÙNG của mỗi nhân viên (thuộc dự án nào) ──
+  // LỖI CŨ đã sửa: trước đây "hợp" (union) 2 danh sách employees của cùng 1 dự án — nghĩa là nếu
+  // Admin CHUYỂN 1 NV từ dự án A sang B, nhưng Sheet chưa kịp cập nhật (vẫn còn NV đó ở A), phép
+  // hợp sẽ THÊM NV ĐÓ TRỞ LẠI A — làm thao tác chuyển bị "hoàn tác" ngầm, y hệt lỗi đã gặp phải.
+  // Giờ theo dõi vị trí theo TỪNG NHÂN VIÊN (không theo từng dự án): ưu tiên vị trí trên máy ĐANG
+  // LƯU (vì đó là ý định mới nhất/vừa chỉnh), chỉ lấy theo Sheet nếu máy này hoàn toàn không biết
+  // NV đó (tức Sheet có NV mới hơn mà máy chưa Update data để thấy).
+  function buildEmpMap(db) {
+    const map = {};
+    Object.keys(db||{}).forEach(group => {
+      Object.keys((db[group])||{}).forEach(proj => {
+        ((db[group][proj]||{}).employees||[]).forEach(code => { map[code] = group+'::'+proj; });
+      });
+    });
+    return map;
+  }
+  const localEmpMap = buildEmpMap(local), sheetEmpMap = buildEmpMap(sheet);
+  const finalEmpMap = {};
+  new Set([...Object.keys(localEmpMap), ...Object.keys(sheetEmpMap)]).forEach(code => {
+    finalEmpMap[code] = (code in localEmpMap) ? localEmpMap[code] : sheetEmpMap[code];
+  });
+
   const merged = {};
   const allGroups = new Set([...Object.keys(local||{}), ...Object.keys(sheet||{})]);
   const pickText = (a, b) => (b && b.trim()) ? b : (a || ''); // ưu tiên sheet (b) nếu có nội dung
@@ -3991,10 +4044,13 @@ function mergeProjectsDb(local, sheet) {
     const allProjs = new Set([...Object.keys(localG), ...Object.keys(sheetG)]);
     allProjs.forEach(proj => {
       const l = localG[proj], s = sheetG[proj];
-      if (l && !s) { merged[group][proj] = l; return; }
-      if (s && !l) { merged[group][proj] = s; return; }
-      // Có ở cả 2 bên — ghép nhân viên (hợp) + ghép plans theo TỪNG THÁNG, TỪNG Ô riêng biệt.
-      const employees = [...new Set([...(l.employees||[]), ...(s.employees||[])])];
+      // Danh sách NV của dự án này = những NV mà finalEmpMap chỉ định thuộc ĐÚNG dự án này —
+      // đảm bảo mỗi NV chỉ thuộc 1 dự án duy nhất sau khi ghép (không nhân đôi do union nữa).
+      const key = group+'::'+proj;
+      const employees = Object.keys(finalEmpMap).filter(code => finalEmpMap[code] === key);
+      if (l && !s) { merged[group][proj] = { ...l, employees }; return; }
+      if (s && !l) { merged[group][proj] = { ...s, employees }; return; }
+      // Có ở cả 2 bên — ghép plans theo TỪNG THÁNG, TỪNG Ô riêng biệt (employees đã tính ở trên).
       const lPlans = l.plans || {}, sPlans = s.plans || {};
       const allMks = new Set([...Object.keys(lPlans), ...Object.keys(sPlans)]);
       const plans = {};
@@ -4098,12 +4154,61 @@ function approvalBoxHtml(group, proj, mp, mk) {
     <textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Comment của ECM/HODs..." onchange="setApprovalComment('${group}','${projEsc}',this.value,'${mk}')">${comment.replace(/</g,'&lt;')}</textarea>`;
 }
 
+// ── Popup nhập PM/Lý do/Kế hoạch — thay cho 3 ô rời trước đây, gộp thành 1 nút "+" duy nhất ──
+let planEditCtx = null; // {group, proj, mk} — nhớ đang sửa dự án/tháng nào
+function openPlanEditModal(group, proj, mk) {
+  planEditCtx = { group, proj, mk };
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  const mp = getMonthPlan(group, proj, mk);
+  document.getElementById('planEditProjName').textContent = proj;
+  document.getElementById('planEditProjMeta').textContent = `Số NV: ${p ? p.employees.length : 0} · Tháng: ${mk ? fmtMK(mk) : '—'}`;
+  document.getElementById('planEditPm').value = mp.pm || '';
+  document.getElementById('planEditReason').value = mp.reason || '';
+  document.getElementById('planEditPlan').value = mp.plan || '';
+  document.getElementById('planEditModal').style.display = 'flex';
+}
+function closePlanEditModal() {
+  document.getElementById('planEditModal').style.display = 'none';
+  planEditCtx = null;
+}
+async function savePlanEditModal() {
+  if (!planEditCtx) return;
+  const { group, proj, mk } = planEditCtx;
+  setMonthPlanField(group, proj, mk, 'pm', document.getElementById('planEditPm').value);
+  setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
+  setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
+  const btn = document.getElementById('planEditSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu...'; }
+  try {
+    if (SYNC_URL) await syncSaveActionPlanOnly();
+    else renderActionPlan();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save (lưu & đồng bộ)'; }
+  }
+  closePlanEditModal();
+}
+// Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon sửa.
+function planCellHtml(group, proj, mk, mp) {
+  const hasContent = (mp.pm||mp.reason||mp.plan||'').trim();
+  const projEsc = proj.replace(/'/g,"\\'");
+  if (!hasContent) {
+    return `<button class="btn btn-primary" style="padding:6px 16px;font-size:16px;font-weight:800" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')" title="Nhập PM / Lý do / Kế hoạch">+</button>`;
+  }
+  const short = (s, n) => s && s.length > n ? s.slice(0,n)+'…' : (s||'');
+  return `<div style="cursor:pointer" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">
+    ${mp.pm ? `<div style="font-weight:600;font-size:12px">👤 ${short(mp.pm,30)}</div>` : ''}
+    ${mp.reason ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">Lý do: ${short(mp.reason,40)}</div>` : ''}
+    ${mp.plan ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">KH: ${short(mp.plan,40)}</div>` : ''}
+    <div style="font-size:10px;color:var(--accent);margin-top:3px">✏️ Sửa</div>
+  </div>`;
+}
+
 function buildActionPlanTable(group, tbodyId, mk) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
   const projNames = projectsInGroup(group).sort();
   if (!projNames.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
     return;
   }
   tbody.innerHTML = projNames.map((proj, i) => {
@@ -4123,7 +4228,6 @@ function buildActionPlanTable(group, tbodyId, mk) {
         </div>
         <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
       </td>
-      <td><input type="text" value="${(mp.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value,'${mk}')"></td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4131,8 +4235,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
-      <td>${editable('reason','Lý do...')}</td>
-      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
+      <td>${planCellHtml(group, proj, mk, mp)}</td>
       <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`;
@@ -4170,7 +4273,6 @@ function buildActionPlanTableSED(tbodyId, mk) {
   rowsHtml.push(`<tr class="${isAutoRejected ? 'row-rejected' : ''}">
     <td style="text-align:center;color:var(--text2)">1</td>
     <td><div style="font-weight:600">S-ED (tất cả)</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">Tự động lấy từ Danh sách NV OT</div></td>
-    <td><input type="text" value="${(pAuto.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${sedKey}','pm',this.value,'${mk}')"></td>
     <td style="font-size:12px;line-height:1.8;white-space:nowrap">
       OT thường: <strong>${Math.round((otNormal)*10)/10}h</strong><br>
       OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
@@ -4178,8 +4280,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
       <span style="color:${overKpiSed>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${overKpiSed}</strong> NV</span><br>
       <span style="color:${overPaySed>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${overPaySed}</strong> NV</span>
     </td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Lý do..." onchange="saveProjectField('${group}','${sedKey}','reason',this.value,'${mk}')">${(pAuto.reason||'').replace(/</g,'&lt;')}</textarea></td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Kế hoạch tháng tiếp theo..." onchange="saveProjectField('${group}','${sedKey}','plan',this.value,'${mk}')">${(pAuto.plan||'').replace(/</g,'&lt;')}</textarea></td>
+    <td>${planCellHtml(group, sedKey, mk, pAuto)}</td>
     <td>${approvalBoxHtml(group, sedKey, pAuto, mk)}</td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value,'${mk}')">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
   </tr>`);
@@ -4202,7 +4303,6 @@ function buildActionPlanTableSED(tbodyId, mk) {
         </div>
         <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
       </td>
-      <td><input type="text" value="${(mp.pm||'').replace(/"/g,'&quot;')}" placeholder="Tên PM" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px" onchange="saveProjectField('${group}','${projEsc}','pm',this.value,'${mk}')"></td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4210,8 +4310,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
-      <td>${editable('reason','Lý do...')}</td>
-      <td>${editable('plan','Kế hoạch tháng tiếp theo...')}</td>
+      <td>${planCellHtml(group, proj, mk, mp)}</td>
       <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
     </tr>`);
