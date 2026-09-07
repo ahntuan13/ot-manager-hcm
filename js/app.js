@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.46';
+const APP_VERSION = '2026.47';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4083,7 +4083,13 @@ function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
 
   const merged = {};
   const allGroups = new Set([...Object.keys(local||{}), ...Object.keys(sheet||{})]);
-  const pickText = (a, b) => (b && b.trim()) ? b : (a || ''); // ưu tiên sheet (b) nếu có nội dung
+  // LỖI NGHIÊM TRỌNG đã sửa: trước đây pickText LUÔN ưu tiên giá trị SHEET nếu sheet có sẵn nội
+  // dung — nghĩa là SỬA LẠI một ô đã có nội dung (không phải điền mới từ rỗng) sẽ LUÔN bị mất, vì
+  // merge lấy nhầm giá trị CŨ trên Sheet đè lên bản vừa sửa (áp dụng cho cả popup Lý do/Kế hoạch
+  // LẪN nút Duyệt/Từ chối/Comment). Giờ đảo ưu tiên: LOCAL (máy đang bấm Lưu) luôn thắng nếu có
+  // nội dung — vì máy đang lưu chính là người vừa chủ động sửa, ý định của họ mới nhất. Chỉ lấy
+  // theo Sheet khi LOCAL hoàn toàn trống (chưa từng nhập gì cho ô đó).
+  const pickText = (a, b) => (a && a.trim()) ? a : (b || ''); // ưu tiên local (a) nếu có nội dung
   allGroups.forEach(group => {
     merged[group] = {};
     const localG = (local && local[group]) || {};
@@ -4232,6 +4238,8 @@ async function savePlanEditModal() {
   const btn = document.getElementById('planEditSaveBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu...'; }
   try {
+    // Merge giờ ưu tiên LOCAL cho mọi ô text — sửa lại nội dung đã có sẵn sẽ giữ đúng, không còn
+    // bị mất do merge nhầm lấy giá trị cũ trên Sheet đè lên.
     if (SYNC_URL) await syncSaveActionPlanOnly();
     else renderActionPlan();
   } finally {
