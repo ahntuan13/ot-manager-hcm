@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.42';
+const APP_VERSION = '2026.43';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3460,11 +3460,15 @@ async function syncSave() {
       throw new Error(`HTTP ${res.status} — phản hồi không phải JSON. ${text.slice(0,150)}`);
     }
     if (json.ok) {
+      // Cập nhật lại PROJECTS_DB cục bộ bằng đúng bản đã ghép — Admin vừa upload OT xong cũng
+      // thấy đầy đủ mọi dự án/thay đổi mà User khác đã đóng góp trên Sheet, không chỉ dữ liệu cũ.
+      PROJECTS_DB = mergedProjects;
+      saveProjectsDB();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
       const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
-      toast('Đã tải lên Google Sheet! (OT + Đi trễ + Off Day WLB + Action Plan)');
+      toast('Đã tải lên & cập nhật đầy đủ! (OT + Đi trễ + Off Day WLB + Action Plan)');
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
     updateSyncBadge('err','Lỗi sync');
@@ -3522,11 +3526,16 @@ async function syncSaveActionPlanOnly() {
       throw new Error(`HTTP ${res.status} — phản hồi không phải JSON. ${text.slice(0,150)}`);
     }
     if (json.ok) {
+      // QUAN TRỌNG: cập nhật lại PROJECTS_DB CỤC BỘ bằng đúng bản đã ghép (mergedProjects) — nếu
+      // không, máy này vẫn chỉ thấy dữ liệu cũ của chính nó, KHÔNG thấy được dự án mới/đổi tên/
+      // sửa đổi mà người khác đã làm trên Sheet, dù vừa lưu xong. "Lưu" giờ = lưu + tải về đầy đủ.
+      PROJECTS_DB = mergedProjects;
+      saveProjectsDB();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
       const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
-      toast('Đã lưu Action Plan lên Sheet! (không ảnh hưởng dữ liệu OT)');
+      toast('Đã lưu & cập nhật đầy đủ Action Plan! (không ảnh hưởng dữ liệu OT)');
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
     updateSyncBadge('err','Lỗi sync');
