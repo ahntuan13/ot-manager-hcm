@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.36';
+const APP_VERSION = '2026.37';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4683,7 +4683,9 @@ function renderWlb() {
     if (labelEl) labelEl.textContent = selMk ? fmtMK(selMk) : '';
 
     // ── KPI tháng đang chọn ──
-    const hasOffForMonth = !!OFF_DB[selMk];
+    // Sửa lỗi: trước đây chỉ check OFF_DB (nguồn cũ), bỏ sót hoàn toàn dữ liệu từ file Excel WLB
+    // (WLB_XLS) — khiến báo sai "chưa có Off Day" dù đã upload đủ file OT List + Off-Day List.
+    const hasOffForMonth = hasOffDataForMk(selMk);
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
