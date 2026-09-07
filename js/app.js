@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.39';
+const APP_VERSION = '2026.40';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3444,7 +3444,7 @@ async function syncSave() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword() } })
+      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
     });
     let json;
     try { json = await res.json(); }
@@ -3477,8 +3477,8 @@ async function syncSaveActionPlanOnly() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
-    // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day hiện có trên Sheet (không đụng tới local DB).
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB; // fallback: nếu Sheet trống/lỗi mạng, dùng tạm local
+    // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel hiện có trên Sheet (không đụng local DB).
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS; // fallback: nếu Sheet trống/lỗi mạng, dùng tạm local
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3492,16 +3492,17 @@ async function syncSaveActionPlanOnly() {
           if (parsed.ot && Object.keys(parsed.ot).length) sheetOt = parsed.ot;
           if (parsed.late) sheetLate = parsed.late;
           if (parsed.off) sheetOff = parsed.off;
+          if (parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) sheetWlbXls = parsed.wlbXls;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
 
-    // Bước 2: GHÉP — OT/Đi trễ/Off Day lấy từ Sheet (mới nhất), Action Plan lấy từ máy này (vừa sửa).
+    // Bước 2: GHÉP — OT/Đi trễ/Off Day/WLB Excel lấy từ Sheet (mới nhất), Action Plan lấy từ máy này (vừa sửa).
     updateSyncBadge('busy','Đang lưu Action Plan...');
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword() } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: PROJECTS_DB, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3562,6 +3563,14 @@ async function syncLoad() {
       // Tương tự với mật khẩu Admin — chỉ ghi đè nếu Sheet có sẵn giá trị này (payload mới).
       if (isNewFormat && parsed.adminPw) {
         setAdminPassword(parsed.adminPw);
+      }
+      // QUAN TRỌNG — sửa lỗi: trước đây WLB_XLS (dữ liệu file Excel "OT List"+"Off-Day List")
+      // KHÔNG hề được đưa vào payload đồng bộ, nên khi User "Update data" sẽ KHÔNG BAO GIỜ nhận
+      // được WLB Excel mà Admin đã upload — dù OT/Action Plan vẫn đồng bộ đúng bình thường. Đây
+      // chính là nguyên nhân báo "Chưa có dữ liệu Excel WLB" dù Admin đã upload đầy đủ.
+      if (isNewFormat && parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) {
+        WLB_XLS = parsed.wlbXls;
+        saveWlbXls();
       }
       migrateOldFormat();
       migrateOffDBKeys();
@@ -4602,14 +4611,14 @@ function renderWlbSummary() {
 
 // Ngưỡng đổi từ 10 xuống 0.1 để KHỚP LẠI đúng với công thức mới (đã bỏ nhân ×100 ở wlbRatio) —
 // ngưỡng "10%" trước đây thực chất là tỷ lệ 0.10, nên giờ công thức không nhân 100 nữa thì ngưỡng
-// cũng phải chia lại tương ứng, để kết quả Đạt/Không đạt của MỌI phòng ban giữ nguyên như trước
-// (không bị lật ngược do đổi thang đo), chỉ có số hiển thị dễ đọc hơn hẳn (VD: 11.5 thay vì 1150).
-const WLB_THRESHOLD = 0.1; // tương đương "10%" theo công thức cũ — >0.1 = Đạt, ≤0.1 = Không đạt
-// Bỏ nhân ×100 (đã thử trước đây nhưng gây ra số quá lớn bất thường, VD: OT=5h, Off=57.5h ra
-// tới 1150% — trong khi ngưỡng chỉ 10%, chênh lệch quá xa gây khó đọc). Giờ dùng ĐÚNG tỷ lệ gốc
-// (off÷ot), giữ 2 số thập phân, gắn thêm "%" cho quen mắt — để số liệu và ngưỡng cùng 1 tầm nhìn
-// (VD: 11.50% so với ngưỡng 10% — hợp lý, dễ so sánh trực quan hơn hẳn).
-function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*100)/100 : null; }
+// ĐỔI LẠI THÀNH % THẬT (nhân ×100) — trước đó dùng tỷ lệ thô (không nhân) để số dễ đọc hơn, nhưng
+// lại gây LỆCH PHA khó hiểu: giá trị hiển thị kiểu "0.18%" so với ngưỡng ghi "10%" khiến người đọc
+// hiểu NHẦM là Không đạt (vì 0.18 << 10 theo cảm quan %), dù thực chất so sánh nội bộ vẫn đúng.
+// Nhân lại ×100 để CẢ giá trị và ngưỡng cùng nằm trên 1 thang đo % thống nhất, tránh hiểu sai kết
+// quả. Trường hợp phòng ban có OT quá thấp gây % nhảy vọt bất thường (VD: OT=5h → 1150%) đã được
+// xử lý riêng bằng cảnh báo "OT quá thấp" bên dưới (wlbDisplayWithWarn), không cần thu nhỏ thang đo.
+const WLB_THRESHOLD = 10; // % thật — >10% = Đạt, ≤10% = Không đạt
+function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; }
 function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
 function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
@@ -4793,7 +4802,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>0.1)':'⚠️ Không đạt (≤0.1)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -4924,7 +4933,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 0.1', data:cmpMks.map(()=>THRESHOLD),
+            { label:'Ngưỡng 10%', data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -5098,7 +5107,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng 0.1', data:qKeys.map(()=>THRESHOLD),
+            { label:'Ngưỡng 10%', data:qKeys.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
