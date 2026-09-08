@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.49';
+const APP_VERSION = '2026.50';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -1065,17 +1065,21 @@ function roundToHalfHourVBA(mins) {
   return Math.floor(upQuarter / 30) * 30;
 }
 
-// Tính "giờ đã làm" trong 1 ngày (đã trừ giờ nghỉ trưa 12h-13h, CÓ tính giờ đến sớm) + phần OT sau 22h (theo dõi riêng).
-// Khớp CHÍNH XÁC với macro VBA gốc công ty dùng (WT2 / MD_Get_WTR_Weekly2025_04):
+// Tính "giờ đã làm" trong 1 ngày (đã trừ giờ nghỉ trưa 12h-13h) + phần OT sau 22h (theo dõi riêng).
+// CẬP NHẬT theo yêu cầu: KHÔNG tính giờ đến sớm trước 8:00 nữa (trước đây có tính, khớp macro VBA
+// gốc, nhưng gây OT "ảo" nếu NV có thói quen đến sớm không chủ ý làm thêm giờ). Giờ vào được "khoá"
+// tối thiểu ở mốc 8:00 — đến sớm bao nhiêu cũng không cộng thêm giờ làm, chỉ tính từ 8:00 trở đi.
+// OT chỉ thực sự "lộ ra" từ phần về TRỄ sau giờ tan làm (VD: về sau 17:00 với ngày thường).
 //   · Thiếu 1 TRONG 2 (thiếu giờ vào HOẶC thiếu giờ ra) → ngày đó đóng góp 0 GIỜ LÀM — KHÔNG có giả định
-//     8:00/17:00 nào cả (macro gốc không hề làm việc này). Quota (8h/4h) của ngày đó vẫn được tính bình thường.
+//     8:00/17:00 nào cả. Quota (8h/4h) của ngày đó vẫn được tính bình thường.
 //   · Chỉ khi CÓ ĐỦ CẢ giờ vào và giờ ra mới tính giờ làm thực tế của ngày đó.
+const WORKDAY_START = 8 * 60; // 8:00 — mốc sớm nhất được tính, đến trước mốc này không cộng thêm
 function computeDayWorked(inVal, outVal, iso) {
   const inM = timeToMinutes(inVal);
   const outM = timeToMinutes(outVal);
   if (inM === null || outM === null) return { worked: 0, night: 0 }; // thiếu 1 trong 2 → 0 giờ làm, đúng theo file gốc
 
-  const inR = roundToHalfHourVBA(inM);
+  const inR = Math.max(roundToHalfHourVBA(inM), WORKDAY_START); // khoá tối thiểu 8:00 — đến sớm hơn không tính
   const outR = roundToHalfHourVBA(outM);
 
   // Giờ đã làm = (giờ ra, tối đa 12h) − giờ vào  +  giờ ra − (13h hoặc giờ vào, cái nào muộn hơn)
