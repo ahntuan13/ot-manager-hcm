@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.48';
+const APP_VERSION = '2026.49';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -4237,8 +4237,10 @@ function approvalBoxHtml(group, proj, mp, mk) {
 }
 
 // ── Popup nhập PM/Lý do/Kế hoạch — thay cho 3 ô rời trước đây, gộp thành 1 nút "+" duy nhất ──
+// Hỗ trợ 2 chế độ: sửa (mặc định) và chỉ xem (viewOnly=true) — dùng chung 1 popup, chỉ khoá input
+// + đổi nút Save thành Đóng khi ở chế độ xem, để ECM/HODs xem nhanh mà không lo bấm nhầm sửa.
 let planEditCtx = null; // {group, proj, mk} — nhớ đang sửa dự án/tháng nào
-function openPlanEditModal(group, proj, mk) {
+function openPlanEditModal(group, proj, mk, viewOnly) {
   planEditCtx = { group, proj, mk };
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   const mp = getMonthPlan(group, proj, mk);
@@ -4247,7 +4249,23 @@ function openPlanEditModal(group, proj, mk) {
   document.getElementById('planEditPm').value = mp.pm || '';
   document.getElementById('planEditReason').value = mp.reason || '';
   document.getElementById('planEditPlan').value = mp.plan || '';
+  ['planEditPm','planEditReason','planEditPlan'].forEach(id => document.getElementById(id).disabled = !!viewOnly);
+  const saveBtn = document.getElementById('planEditSaveBtn');
+  const cancelBtn = document.getElementById('planEditCancelBtn');
+  if (viewOnly) {
+    saveBtn.style.display = 'none';
+    cancelBtn.textContent = 'Đóng';
+    cancelBtn.style.flex = '1';
+  } else {
+    saveBtn.style.display = '';
+    cancelBtn.textContent = 'Huỷ';
+    cancelBtn.style.flex = '1';
+  }
   document.getElementById('planEditModal').style.display = 'flex';
+}
+// Mở popup ở chế độ CHỈ XEM — dùng cho nút "👁️ Xem" cạnh "✏️ Sửa".
+function openPlanViewModal(group, proj, mk) {
+  openPlanEditModal(group, proj, mk, true);
 }
 function closePlanEditModal() {
   document.getElementById('planEditModal').style.display = 'none';
@@ -4271,7 +4289,7 @@ async function savePlanEditModal() {
   }
   closePlanEditModal();
 }
-// Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon sửa.
+// Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon Xem/Sửa.
 function planCellHtml(group, proj, mk, mp) {
   const hasContent = (mp.pm||mp.reason||mp.plan||'').trim();
   const projEsc = proj.replace(/'/g,"\\'");
@@ -4285,7 +4303,10 @@ function planCellHtml(group, proj, mk, mp) {
     ${mp.pm ? `<div style="font-weight:600;font-size:12.5px">👤 ${short(mp.pm,30)}</div>` : ''}
     ${mp.reason ? `<div style="font-size:11.5px;color:var(--text2)">Lý do: ${short(mp.reason,40)}</div>` : ''}
     ${mp.plan ? `<div style="font-size:11.5px;color:var(--text2)">KH: ${short(mp.plan,40)}</div>` : ''}
-    <button class="btn" style="padding:5px 14px;font-size:12px;font-weight:600;margin-top:4px;align-self:flex-start" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">✏️ Sửa</button>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn" style="padding:5px 12px;font-size:12px;font-weight:600" onclick="openPlanViewModal('${group}','${projEsc}','${mk}')" title="Xem đầy đủ, không sửa">👁️ Xem</button>
+      <button class="btn" style="padding:5px 12px;font-size:12px;font-weight:600" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">✏️ Sửa</button>
+    </div>
   </div>`;
 }
 
