@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.47';
+const APP_VERSION = '2026.48';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3502,6 +3502,10 @@ async function syncSave() {
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
+      // Đã đồng bộ thành công lên Sheet — các bucket vừa sửa giờ đã có mặt trên Sheet rồi, xoá
+      // đánh dấu dirty để lần đồng bộ SAU quay lại dùng logic ưu tiên nội dung an toàn hơn.
+      DIRTY_PLAN_KEYS.clear();
+      saveDirtyPlanKeys();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3575,6 +3579,10 @@ async function syncSaveActionPlanOnly() {
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
+      // Đã đồng bộ thành công lên Sheet — các bucket vừa sửa giờ đã có mặt trên Sheet rồi, xoá
+      // đánh dấu dirty để lần đồng bộ SAU quay lại dùng logic ưu tiên nội dung an toàn hơn.
+      DIRTY_PLAN_KEYS.clear();
+      saveDirtyPlanKeys();
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -4024,6 +4032,17 @@ function renameProject(group, oldName, newName) {
 // 1 giá trị chung xuyên suốt — đúng yêu cầu "qua tháng mới thì tạo lại mới, tháng cũ vẫn lưu để
 // truy vết". Danh sách nhân viên (employees) vẫn dùng chung, không tách theo tháng.
 function blankMonthPlan() { return { pm:'', plan:'', reason:'', approvedBy:'', note:'' }; }
+// ── Theo dõi "ô vừa sửa" (dirty) — SỬA LỖI: nếu chỉ dựa vào "có nội dung hay không" để quyết định
+// ưu tiên local/sheet khi ghép, sẽ KHÔNG XỬ LÝ ĐÚNG trường hợp XOÁ TRẮNG một ô đã có nội dung (vì
+// local rỗng bị hiểu nhầm là "chưa từng nhập gì" nên lại lấy về giá trị cũ trên Sheet). Giờ ghi
+// nhớ CHÍNH XÁC bucket (group::proj::mk) nào vừa được sửa trong phiên này — bucket đó khi ghép sẽ
+// lấy TOÀN BỘ theo local (kể cả khi để trống), các bucket KHÁC không đụng tới vẫn ưu tiên bên nào
+// có nội dung như cũ để tránh đè mất đóng góp của người khác.
+let DIRTY_PLAN_KEYS = new Set();
+const DIRTY_PLAN_KEYS_STORAGE = 'ot_manager_dirty_plan_keys_v1';
+function loadDirtyPlanKeys() { try { const raw = localStorage.getItem(DIRTY_PLAN_KEYS_STORAGE); if (raw) DIRTY_PLAN_KEYS = new Set(JSON.parse(raw)); } catch(e) {} }
+function saveDirtyPlanKeys() { try { localStorage.setItem(DIRTY_PLAN_KEYS_STORAGE, JSON.stringify([...DIRTY_PLAN_KEYS])); } catch(e) {} }
+function markPlanDirty(group, proj, mk) { DIRTY_PLAN_KEYS.add(group+'::'+proj+'::'+mk); saveDirtyPlanKeys(); }
 // Lấy đúng bucket của 1 tháng — tự động MIGRATE dữ liệu kiểu cũ (pm/plan/... nằm thẳng trên
 // project, từ trước khi có tính năng theo tháng) vào bucket của THÁNG ĐANG XEM đầu tiên được mở,
 // để không mất dữ liệu cũ đã nhập trước đây.
@@ -4047,6 +4066,7 @@ function setMonthPlanField(group, proj, mk, field, value) {
   if (!mk) return;
   const plan = getMonthPlan(group, proj, mk); // đảm bảo bucket đã tồn tại (và đã migrate nếu cần)
   plan[field] = value;
+  markPlanDirty(group, proj, mk);
   saveProjectsDB();
 }
 
@@ -4083,13 +4103,14 @@ function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
 
   const merged = {};
   const allGroups = new Set([...Object.keys(local||{}), ...Object.keys(sheet||{})]);
-  // LỖI NGHIÊM TRỌNG đã sửa: trước đây pickText LUÔN ưu tiên giá trị SHEET nếu sheet có sẵn nội
-  // dung — nghĩa là SỬA LẠI một ô đã có nội dung (không phải điền mới từ rỗng) sẽ LUÔN bị mất, vì
-  // merge lấy nhầm giá trị CŨ trên Sheet đè lên bản vừa sửa (áp dụng cho cả popup Lý do/Kế hoạch
-  // LẪN nút Duyệt/Từ chối/Comment). Giờ đảo ưu tiên: LOCAL (máy đang bấm Lưu) luôn thắng nếu có
-  // nội dung — vì máy đang lưu chính là người vừa chủ động sửa, ý định của họ mới nhất. Chỉ lấy
-  // theo Sheet khi LOCAL hoàn toàn trống (chưa từng nhập gì cho ô đó).
-  const pickText = (a, b) => (a && a.trim()) ? a : (b || ''); // ưu tiên local (a) nếu có nội dung
+  // LỖI NGHIÊM TRỌNG đã sửa (2 lần): lần 1 — pickText LUÔN ưu tiên SHEET nếu sheet có nội dung,
+  // khiến SỬA LẠI một ô đã có nội dung sẽ luôn bị mất. Lần 2 (mới phát hiện) — đảo ưu tiên sang
+  // "local thắng nếu có nội dung" lại làm hỏng trường hợp XOÁ TRẮNG một ô (để rỗng), vì local rỗng
+  // bị hiểu nhầm là "chưa từng nhập" nên lại lấy nhầm giá trị cũ trên Sheet. Giờ dùng ĐÚNG danh
+  // sách "bucket vừa sửa" (DIRTY_PLAN_KEYS, ghi lại ngay lúc gõ/bấm Duyệt) — bucket nào vừa sửa
+  // thì lấy TOÀN BỘ theo local (kể cả rỗng, vì đó chính xác là điều người dùng vừa làm), bucket
+  // nào KHÔNG đụng tới thì vẫn ưu tiên bên có nội dung để tránh đè mất đóng góp của người khác.
+  const pickText = (a, b) => (a && a.trim()) ? a : (b || ''); // fallback cho bucket KHÔNG dirty
   allGroups.forEach(group => {
     merged[group] = {};
     const localG = (local && local[group]) || {};
@@ -4113,7 +4134,10 @@ function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
       const plans = {};
       allMks.forEach(mk => {
         const lp = lPlans[mk] || {}, sp = sPlans[mk] || {};
-        plans[mk] = {
+        const isDirty = DIRTY_PLAN_KEYS.has(key+'::'+mk);
+        plans[mk] = isDirty
+          ? { pm: lp.pm||'', plan: lp.plan||'', reason: lp.reason||'', approvedBy: lp.approvedBy||'', note: lp.note||'' }
+          : {
           pm: pickText(lp.pm, sp.pm),
           plan: pickText(lp.plan, sp.plan),
           reason: pickText(lp.reason, sp.reason),
@@ -4384,6 +4408,7 @@ function setApprovalStatus(group, proj, status, mk) {
   const mp = getMonthPlan(group, proj, mk); if (!mp) return;
   const comment = (mp.approvedBy||'').includes('|') ? mp.approvedBy.slice(mp.approvedBy.indexOf('|')+1) : (mp.approvedBy||'');
   mp.approvedBy = `${status}|${comment}`;
+  markPlanDirty(group, proj, mk);
   saveProjectsDB();
   renderActionPlan();
   toast(status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối');
@@ -4392,6 +4417,7 @@ function setApprovalComment(group, proj, comment, mk) {
   const mp = getMonthPlan(group, proj, mk); if (!mp) return;
   const status = (mp.approvedBy||'').startsWith('APPROVED|') ? 'APPROVED' : (mp.approvedBy||'').startsWith('REJECTED|') ? 'REJECTED' : '';
   mp.approvedBy = status ? `${status}|${comment}` : comment;
+  markPlanDirty(group, proj, mk);
   saveProjectsDB();
 }
 // Xem danh sách NV theo 1 mảng staff code cụ thể (dùng cho hàng "S-ED (tất cả)" tự động,
@@ -6049,6 +6075,7 @@ function init() {
     loadWlbXls();
     loadProjectsDB();
     loadProjectsTombstones();
+    loadDirtyPlanKeys();
     loadUsersDB();
     rebuildLateUI();
     renderWlbSummary();
