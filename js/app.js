@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.51';
+const APP_VERSION = '2026.52';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -2091,9 +2091,17 @@ function renderDashTable(totals, periods) {
     const projInfo = t.staffCode ? findEmployeeProject(t.staffCode) : null;
     const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
     const deptDisplay = projInfo ? `${projInfo.group}/${projName}` : t.dept;
+    // Tích hợp Chi tiết OT theo ngày NGAY TẠI ĐÂY — bấm tên NV để mở/đóng, thay vì phải xem 1 danh
+    // sách tách riêng ở dưới trang. Dùng đúng tháng đang xem của trang hiện tại (Danh sách NV OT
+    // dùng empMK, Dashboard dùng activeMK) — tự nhận diện qua trang nào đang hiển thị.
+    const detailMk = document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK;
+    const rowKey = (t.staffCode || t.name).replace(/[^a-zA-Z0-9]/g,'_');
+    const nameEsc = t.name.replace(/'/g,"\\'");
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;${over?'color:#C0392B;font-weight:700':'color:var(--text2)'}">${t.staffCode||'—'}</td>
-      <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">${t.name}${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}</td>
+      <td style="${over?'font-weight:700;color:#C0392B':'font-weight:500'}">
+        <span style="cursor:pointer;text-decoration:underline dotted" title="Bấm để xem chi tiết OT theo ngày" onclick="toggleEmpOtDetailRow('${rowKey}','${detailMk}','${nameEsc}')">${t.name}</span>${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}
+      </td>
       <td style="color:var(--text2)" title="${deptDisplay}">${deptDisplay}</td>
       <td style="color:var(--text2)">${normal}h</td>
       <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
@@ -2102,7 +2110,8 @@ function renderDashTable(totals, periods) {
           <div class="pb"><div class="pf" style="width:${Math.min(100,pctKpi)}%;background:${fcKpi}"></div></div></td>
       <td><div style="font-size:10px;color:var(--text2)">${pctPay}%</div>
           <div class="pb"><div class="pf" style="width:${Math.min(100,pctPay)}%;background:${fcPay}"></div></div></td>
-      <td>${stBadge(t.total)}</td></tr>`;
+      <td>${stBadge(t.total)}</td></tr>
+    <tr id="empOtDetailRow_${rowKey}" style="display:none"><td colspan="9" style="background:var(--bg2);padding:12px 16px" id="empOtDetailContent_${rowKey}"></td></tr>`;
   }).join('') || `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy kết quả. <span style="color:var(--text3)">/ No results found.</span></td></tr>`;
 }
 
@@ -2149,66 +2158,54 @@ function renderEmployeePeriodChips() {
 // ── Chi tiết OT sau 17h theo từng ngày (dùng lại e.days/e.quotaDays đã có sẵn, không cần dữ liệu
 // mới) — cho MỖI nhân viên: liệt kê từng ngày có OT (worked > quota), gộp theo tuần (dùng đúng
 // khung tuần buildPeriods() đang dùng khắp app), và tổng cả tháng.
-function computeDailyOtBreakdown(mk) {
-  if (!mk || !DB[mk]) return [];
+function computeEmployeeDailyOt(mk, name) {
+  if (!mk || !DB[mk] || !DB[mk].employees[name]) return null;
   const periods = buildPeriods(mk);
   const weekRanges = periods.map((p, i) => ({ label: p.label, range: getWeekOnlyRange(periods, i) }));
-  return DB[mk].names.map(name => {
-    const e = DB[mk].employees[name];
-    const days = e.days || {};
-    const quotaDays = e.quotaDays || {};
-    const dailyOt = [];
-    Object.keys(days).sort().forEach(iso => {
-      const worked = days[iso] || 0;
-      const quota = quotaDays[iso] || 0;
-      const ot = Math.round(Math.max(0, worked - quota) * 10) / 10;
-      if (ot > 0) dailyOt.push({ iso, worked: Math.round(worked*10)/10, quota, ot });
-    });
-    const totalOt = Math.round(dailyOt.reduce((s,d)=>s+d.ot,0)*10)/10;
-    const weeklyOt = weekRanges.map(w => {
-      if (!w.range) return null;
-      const sIso = isoDate(w.range.start), eIso = isoDate(w.range.end);
-      const sum = dailyOt.filter(d => d.iso >= sIso && d.iso <= eIso).reduce((s,d)=>s+d.ot,0);
-      return { label: w.label, ot: Math.round(sum*10)/10 };
-    }).filter(w => w && w.ot > 0);
-    return { name, staffCode: e.staffCode||'', dept: e.dept||'', dailyOt, totalOt, weeklyOt };
-  }).filter(emp => emp.totalOt > 0).sort((a,b) => b.totalOt - a.totalOt);
+  const e = DB[mk].employees[name];
+  const days = e.days || {};
+  const quotaDays = e.quotaDays || {};
+  const dailyOt = [];
+  Object.keys(days).sort().forEach(iso => {
+    const worked = days[iso] || 0;
+    const quota = quotaDays[iso] || 0;
+    const ot = Math.round(Math.max(0, worked - quota) * 10) / 10;
+    if (ot > 0) dailyOt.push({ iso, worked: Math.round(worked*10)/10, quota, ot });
+  });
+  const totalOt = Math.round(dailyOt.reduce((s,d)=>s+d.ot,0)*10)/10;
+  const weeklyOt = weekRanges.map(w => {
+    if (!w.range) return null;
+    const sIso = isoDate(w.range.start), eIso = isoDate(w.range.end);
+    const sum = dailyOt.filter(d => d.iso >= sIso && d.iso <= eIso).reduce((s,d)=>s+d.ot,0);
+    return { label: w.label, ot: Math.round(sum*10)/10 };
+  }).filter(w => w && w.ot > 0);
+  return { name, staffCode: e.staffCode||'', dept: e.dept||'', dailyOt, totalOt, weeklyOt };
 }
 const DOW_VI = ['CN','T2','T3','T4','T5','T6','T7'];
-function toggleDailyOtRow(idx) {
-  const box = document.getElementById('dailyOtRow_'+idx);
-  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-function renderDailyOtDetail() {
-  const box = document.getElementById('dailyOtDetailBox');
-  if (!box) return;
-  const list = computeDailyOtBreakdown(empMK);
-  if (!list.length) {
-    box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:13px">Không có nhân viên nào phát sinh OT trong tháng này.</div>';
-    return;
+// Tích hợp thẳng vào bảng Danh sách NV OT: bấm tên NV → mở 1 hàng ngay bên dưới hiện chi tiết,
+// thay vì phải xem 1 danh sách tách riêng ở dưới trang (đơn giản hơn, đúng yêu cầu).
+function toggleEmpOtDetailRow(rowKey, mk, name) {
+  const tr = document.getElementById('empOtDetailRow_'+rowKey);
+  if (!tr) return;
+  const isHidden = tr.style.display === 'none';
+  tr.style.display = isHidden ? 'table-row' : 'none';
+  if (isHidden) {
+    const content = document.getElementById('empOtDetailContent_'+rowKey);
+    const emp = computeEmployeeDailyOt(mk, name);
+    if (!emp || !emp.dailyOt.length) {
+      content.innerHTML = '<div style="padding:10px 4px;color:var(--text2);font-size:12.5px">Không có OT phát sinh trong tháng này.</div>';
+      return;
+    }
+    content.innerHTML = `
+      ${emp.weeklyOt.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${emp.weeklyOt.map(w => `<span style="font-size:11px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">${w.label}: ${w.ot}h</span>`).join('')}
+      </div>` : ''}
+      <table style="font-size:12px"><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ làm</th><th>Quota</th><th>OT ngày đó</th></tr></thead>
+      <tbody>${emp.dailyOt.map(d => {
+        const dow = DOW_VI[new Date(d.iso+'T00:00:00').getDay()];
+        return `<tr><td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${dow}</td><td class="num">${d.worked}h</td><td class="num">${d.quota}h</td><td class="num" style="color:#C0392B;font-weight:700">${d.ot}h</td></tr>`;
+      }).join('')}</tbody></table>`;
   }
-  box.innerHTML = list.map((emp, idx) => `
-    <div style="border:1px solid var(--border2);border-radius:10px;margin-bottom:8px;overflow:hidden">
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--bg2)" onclick="toggleDailyOtRow(${idx})">
-        <div style="flex:1">
-          <span style="font-weight:600;font-size:13px">${emp.name}</span>
-          <span style="font-size:11px;color:var(--text3);margin-left:6px">${emp.staffCode} · ${emp.dept}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text2)">${emp.dailyOt.length} ngày có OT</div>
-        <div style="font-weight:700;color:#C0392B;font-size:14px">${emp.totalOt}h</div>
-        <span style="color:var(--text3)">▾</span>
-      </div>
-      <div id="dailyOtRow_${idx}" style="display:none;padding:12px 14px;border-top:1px solid var(--border2)">
-        ${emp.weeklyOt.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          ${emp.weeklyOt.map(w => `<span style="font-size:11px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">${w.label}: ${w.ot}h</span>`).join('')}
-        </div>` : ''}
-        <table style="font-size:12px"><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ làm</th><th>Quota</th><th>OT ngày đó</th></tr></thead>
-        <tbody>${emp.dailyOt.map(d => {
-          const dow = DOW_VI[new Date(d.iso+'T00:00:00').getDay()];
-          return `<tr><td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${dow}</td><td class="num">${d.worked}h</td><td class="num">${d.quota}h</td><td class="num" style="color:#C0392B;font-weight:700">${d.ot}h</td></tr>`;
-        }).join('')}</tbody></table>
-      </div>
-    </div>`).join('');
 }
 
 function renderEmployeeList() {
@@ -2218,7 +2215,6 @@ function renderEmployeeList() {
   document.getElementById('empTabWeek')?.classList.toggle('active', empTab==='week');
   document.getElementById('empTabMonth')?.classList.toggle('active', empTab==='month');
   if (empTab === 'week') renderEmployeePeriodChips();
-  renderDailyOtDetail();
 
   const banner = document.getElementById('empProjectFilterBanner');
   if (banner) {
