@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.53';
+const APP_VERSION = '2026.55';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -186,6 +186,46 @@ Chart.defaults.plugins.tooltip.displayColors = false;
 // resize() ngắt animation) sẽ hiện thành hình méo/vỡ dạng miếng bánh dở dang thay vì hình tròn đủ.
 // Tắt animation loại bỏ hẳn khả năng này, đồng thời giúp chuyển trang/tab cảm giác nhanh hơn.
 Chart.defaults.animation = false;
+
+// ── Plugin số liệu trên biểu đồ (áp dụng CHUNG cho toàn bộ Chart.js trong app) ──
+// Vẽ trực tiếp giá trị lên trên mỗi cột/điểm — không cần rê chuột vào mới thấy số (tooltip), nhìn
+// trực quan hơn hẳn. Tự bỏ qua nếu có QUÁ NHIỀU cột/điểm (>25) để tránh chữ chồng chéo rối mắt,
+// và bỏ qua hẳn với biểu đồ tròn/donut (loại này không hợp để vẽ số kiểu này).
+Chart.register({
+  id: 'valueLabelsPlugin',
+  afterDatasetsDraw(chart) {
+    if (chart.config.type === 'pie' || chart.config.type === 'doughnut') return;
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, dsIndex) => {
+      const meta = chart.getDatasetMeta(dsIndex);
+      if (meta.hidden || !meta.data || meta.data.length > 25) return;
+      // Bỏ qua dataset kiểu "đường ngưỡng" (borderDash) — chỉ là đường tham chiếu, không cần in số.
+      if (dataset.borderDash) return;
+      ctx.save();
+      ctx.font = '600 10px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = dataset.borderColor || dataset.backgroundColor || '#5A5348';
+      meta.data.forEach((el, i) => {
+        const raw = dataset.data[i];
+        if (raw === null || raw === undefined) return;
+        const value = typeof raw === 'object' ? raw.y : raw; // hỗ trợ cả dữ liệu dạng {x,y}
+        if (value === null || value === undefined || value === 0) return;
+        const pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+        const isBar = chart.config.type === 'bar';
+        const isHorizontal = isBar && chart.options.indexAxis === 'y';
+        const label = Number.isInteger(value) ? String(value) : value.toFixed(1);
+        if (isHorizontal) {
+          ctx.textAlign = 'left';
+          ctx.fillText(label, pos.x + 6, pos.y + 3);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.fillText(label, pos.x, pos.y - 6);
+        }
+      });
+      ctx.restore();
+    });
+  }
+});
 
 // ============================================================
 //  CONFIG & STATE
