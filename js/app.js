@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.55';
+const APP_VERSION = '2026.56';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -123,7 +123,7 @@ function showUpdateReminderPopup() {
 }
 async function doUpdateFromReminder() {
   const btn = document.getElementById('updateReminderBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Đang tải...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang tải... / Loading...'; }
   const originalConfirm = window.confirm;
   window.confirm = () => true; // đã ở đây rồi tức là User đã đồng ý — khỏi hỏi lại lần 2
   try {
@@ -196,6 +196,12 @@ Chart.register({
   afterDatasetsDraw(chart) {
     if (chart.config.type === 'pie' || chart.config.type === 'doughnut') return;
     const { ctx } = chart;
+    // SỬA lỗi chữ chồng chữ: biểu đồ Line có NHIỀU đường so sánh cùng lúc (VD: So sánh WLB giữa
+    // các tháng — từng phòng ban, mỗi phòng 1 đường) khiến số của đường này đè lên số đường kia,
+    // vì các đường thường nằm gần nhau. Với biểu đồ Line có > 1 đường dữ liệu thật (không tính
+    // đường ngưỡng borderDash), BỎ hẳn số — giữ lại tooltip khi rê chuột là đủ, tránh rối mắt.
+    const realDatasetCount = chart.data.datasets.filter(d => !d.borderDash).length;
+    if (chart.config.type === 'line' && realDatasetCount > 1) return;
     chart.data.datasets.forEach((dataset, dsIndex) => {
       const meta = chart.getDatasetMeta(dsIndex);
       if (meta.hidden || !meta.data || meta.data.length > 25) return;
@@ -1489,7 +1495,7 @@ function clearAll() {
   if (!confirm('Xóa TOÀN BỘ dữ liệu OT? Không thể khôi phục!')) return;
   DB = {}; activeMK = null;
   saveDB(); rebuildUI(); renderSavedMonths(); renderWlbSummary();
-  document.getElementById('upLog').textContent = 'Đã xóa toàn bộ dữ liệu.';
+  document.getElementById('upLog').textContent = 'Đã xóa toàn bộ dữ liệu. / All data cleared.';
   toast('Đã xóa toàn bộ dữ liệu OT');
 }
 
@@ -1569,17 +1575,18 @@ function renderDash() {
 
   const isWeek = dashTab === 'week';
   const overKpiWeek = totals.filter(t => t.total > 45).length;
+  const EN = s => `<i style="font-weight:400;opacity:.7"> / ${s}</i>`;
   document.getElementById('dashMetrics').innerHTML = isWeek ? `
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
-    <div class="mc ${overKpiWeek>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">NV OT trong tuần &gt; 45h</div><div class="mv">${overKpiWeek}</div><div class="ms">vượt giới hạn KPI</div></div>
-    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
-    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>` : `
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi</div></div>
-    <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h</div><div class="mv">${over}</div><div class="ms">cần xem lại</div></div>
-    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h</div></div>
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
-    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên${EN('Employees')}</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi${EN('tracked')}</div></div>
+    <div class="mc ${overKpiWeek>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">NV OT trong tuần &gt; 45h${EN('NV OT &gt; 45h this week')}</div><div class="mv">${overKpiWeek}</div><div class="ms">vượt giới hạn KPI${EN('over KPI limit')}</div></div>
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần${EN('Night OT this week')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h${EN(`NV · total ${nightTotalSum}h`)}</div></div>
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần${EN('Avg OT this week')}</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần${EN('Highest OT this week')}</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>` : `
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên${EN('Employees')}</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi${EN('tracked')}</div></div>
+    <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h${EN('Over 70h')}</div><div class="mv">${over}</div><div class="ms">cần xem lại${EN('needs review')}</div></div>
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h${EN('Night OT')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h${EN(`NV · total ${nightTotalSum}h`)}</div></div>
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình${EN('Average OT')}</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất${EN('Highest')}</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
 
   // Greeting header
   const now = new Date();
@@ -1591,9 +1598,9 @@ function renderDash() {
   document.getElementById('greetDate').textContent =
     `📅 ${weekdayNames[now.getDay()]}, ${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
 
-  document.getElementById('barChartTitle').textContent = dashTab === 'month'
-    ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}`
-    : `📊 Top 5 NV có OT cao nhất — ${periodLabel}`;
+  document.getElementById('barChartTitle').innerHTML = dashTab === 'month'
+    ? `📊 Tổng OT cả tháng — ${fmtMK(activeMK)}${EN(`Total OT this month — ${fmtMK(activeMK)}`)}`
+    : `📊 Top 5 NV có OT cao nhất — ${periodLabel}${EN(`Top 5 highest OT — ${periodLabel}`)}`;
   const barLegendEl = document.getElementById('dashBarLegend');
   if (barLegendEl) barLegendEl.style.display = dashTab === 'month' ? 'flex' : 'none';
 
@@ -1829,7 +1836,7 @@ function renderDashWarnList(totals) {
   if (!el) return;
   const isWeek = dashTab === 'week';
   const titleEl = document.getElementById('dashWarnListTitle');
-  if (titleEl) titleEl.textContent = isWeek ? 'Top 5 NV OT cao nhất tuần' : 'Vượt mức (>70h)';
+  if (titleEl) titleEl.innerHTML = isWeek ? 'Top 5 NV OT cao nhất tuần<i style="font-weight:400;font-size:10.5px;color:var(--text3)"> / Top 5 highest OT this week</i>' : 'Vượt mức (>70h)<i style="font-weight:400;font-size:10.5px;color:var(--text3)"> / Over limit (>70h)</i>';
   const flagged = isWeek
     ? [...totals].filter(t => t.total > 0).sort((a,b) => b.total - a.total).slice(0, 5)
     : totals.filter(t => t.total > 70).sort((a,b) => b.total - a.total);
@@ -3412,7 +3419,7 @@ function renderSyncPage() {
   document.getElementById('autoSyncChk').checked = AUTO_SYNC;
   const info = document.getElementById('syncInfo');
   if (!SYNC_URL) {
-    info.textContent = 'Chưa cấu hình URL. Dán URL Web App (Apps Script) rồi bấm Lưu URL.';
+    info.textContent = 'Chưa cấu hình URL. Dán URL Web App (Apps Script) rồi bấm Lưu URL. / URL not configured. Paste the Web App (Apps Script) URL then click Save URL.';
   } else {
     info.innerHTML = `Đang kết nối tới: <code style="font-size:11px">${SYNC_URL.slice(0,60)}...</code>` +
       (lastSyncedAt ? `<br>Lần đồng bộ gần nhất: ${lastSyncedAt}` : '');
@@ -4363,11 +4370,11 @@ function openPlanEditModal(group, proj, mk, viewOnly) {
   const cancelBtn = document.getElementById('planEditCancelBtn');
   if (viewOnly) {
     saveBtn.style.display = 'none';
-    cancelBtn.textContent = 'Đóng';
+    cancelBtn.textContent = 'Đóng / Close';
     cancelBtn.style.flex = '1';
   } else {
     saveBtn.style.display = '';
-    cancelBtn.textContent = 'Huỷ';
+    cancelBtn.textContent = 'Huỷ / Cancel';
     cancelBtn.style.flex = '1';
   }
   document.getElementById('planEditModal').style.display = 'flex';
@@ -4387,7 +4394,7 @@ async function savePlanEditModal() {
   setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
   setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
   const btn = document.getElementById('planEditSaveBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu... / Saving...'; }
   try {
     // Merge giờ ưu tiên LOCAL cho mọi ô text — sửa lại nội dung đã có sẵn sẽ giữ đúng, không còn
     // bị mất do merge nhầm lấy giá trị cũ trên Sheet đè lên.
@@ -4867,7 +4874,7 @@ async function handleWlbMonthlyExcel(inp) {
   inp.value = '';
 
   if (!otRows && !offRows) {
-    document.getElementById('wlbXlsLog').textContent = '❌ Không tìm thấy sheet "OT List" hoặc "Off-Day List" hợp lệ trong file.';
+    document.getElementById('wlbXlsLog').textContent = '❌ Không tìm thấy sheet "OT List" hoặc "Off-Day List" hợp lệ trong file. / Valid "OT List" or "Off-Day List" sheet not found in this file.';
     toast('Không đọc được file — cần đúng 2 sheet "OT List" và "Off-Day List"');
     return;
   }
@@ -5200,7 +5207,7 @@ function renderWlb() {
     const prevMk = sel.value;
     const withOff = allMks.filter(mk => hasOffDataForMk(mk));
     const withBoth = withOff.filter(mk => DB[mk]);
-    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${hasOffDataForMk(mk)?'':' ⚠️ (chưa có Off Day)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu —</option>';
+    sel.innerHTML = allMks.map(mk=>`<option value="${mk}">${fmtMK(mk)}${hasOffDataForMk(mk)?'':' ⚠️ (chưa có Off Day / no Off Day yet)'}</option>`).join('') || '<option value="">— Chưa có dữ liệu / No data —</option>';
     if (prevMk && allMks.includes(prevMk)) {
       sel.value = prevMk;
     } else {
@@ -5326,11 +5333,11 @@ function renderWlb() {
       const emptyElP = document.getElementById('cWlbProjMonthEmpty');
       if (emptyElP) {
         if (!allEcProjects.length) {
-          emptyElP.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
+          emptyElP.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án). / No projects in HCM-EC group yet (go to Action Plan to create/assign).';
         } else if (!wlbXlsMonthsWithData().includes(monthNumP)) {
-          emptyElP.textContent = `Chưa có dữ liệu Excel WLB cho ${fmtMK(selMk)} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'}`;
+          emptyElP.textContent = `Chưa có dữ liệu Excel WLB cho ${fmtMK(selMk)} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'} / No WLB Excel data for ${fmtMK(selMk)} yet.`;
         } else {
-          emptyElP.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho tháng này.';
+          emptyElP.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho tháng này. / Not enough project data to calculate WLB for this month.';
         }
       }
       renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjMonth',
@@ -5510,11 +5517,11 @@ function renderWlb() {
       if (emptyElQ) {
         const hasAnyMonth = monthNumsQ.some(m => wlbXlsMonthsWithData().includes(m));
         if (!allEcProjectsQ.length) {
-          emptyElQ.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án).';
+          emptyElQ.textContent = 'Chưa có dự án nào trong nhóm HCM-EC (vào Action Plan để tạo/gán dự án). / No projects in HCM-EC group yet (go to Action Plan to create/assign).';
         } else if (!hasAnyMonth) {
-          emptyElQ.textContent = `Chưa có dữ liệu Excel WLB cho quý ${qLabel[selQk]||''} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ các tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ các tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'}`;
+          emptyElQ.textContent = `Chưa có dữ liệu Excel WLB cho quý ${qLabel[selQk]||''} — ${isAdmin() ? 'vào Cài đặt upload lại file Excel WLB có đủ các tháng này, rồi bấm Đồng bộ.' : 'nhờ Admin upload file Excel WLB có đủ các tháng này và bấm Đồng bộ lên Sheet, sau đó bấm Update data lại.'} / No WLB Excel data for this quarter yet.`;
         } else {
-          emptyElQ.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho quý này.';
+          emptyElQ.textContent = 'Chưa có dữ liệu dự án đủ để tính WLB cho quý này. / Not enough project data to calculate WLB for this quarter.';
         }
       }
       renderGenericProjectBarChart(WLB_CH, killWlbChart, 'cWlbProjQtr',
