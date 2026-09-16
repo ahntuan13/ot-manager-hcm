@@ -45,8 +45,8 @@
       <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:16px">🔑 Đăng nhập Admin</div>
       <input id="adminPwInput" type="password" placeholder="Mật khẩu Admin" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')attemptAdminLogin()">
       <div id="adminPwError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px;text-align:left">Sai mật khẩu Admin.</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptAdminLogin()">Vào với quyền Admin</button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại</button>
+      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptAdminLogin()">Vào với quyền Admin<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Enter as Admin</span></button>
+      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Back</span></button>
     </div>
 
   </div>
@@ -64,7 +64,7 @@
       <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px">Nhớ cập nhật dữ liệu mới nhất</div>
       <div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:18px">Bấm nút bên dưới để tải dữ liệu mới nhất từ Sheet — tránh trường hợp đang xem dữ liệu cũ mà không hay biết.</div>
       <button id="updateReminderBtn" class="btn btn-primary" style="width:100%;padding:11px;font-size:13.5px;margin-bottom:8px" onclick="doUpdateFromReminder()">📥 Update data ngay</button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12px" onclick="closeUpdateReminderPopup()">Để sau</button>
+      <button class="btn" style="width:100%;padding:8px;font-size:12px" onclick="closeUpdateReminderPopup()">Để sau<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Later</span></button>
     </div>
     <div id="updateReminderStep2" style="display:none">
       <div style="width:48px;height:48px;margin:0 auto 14px;background:var(--green-bg);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--green)">
@@ -178,6 +178,7 @@
 <header class="top-header">
   <div class="th-title-block">
     <div class="greet-sub" id="greetSub" style="font-size:13px">Đang tải dữ liệu...</div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Chỉ lưu hành trong nội bộ <span style="opacity:.7">/ For internal circulation only</span></div>
   </div>
   <div class="th-right">
     <div class="th-greet">
@@ -256,7 +257,7 @@
   <!-- ROW 1: Main chart (left ~63%) + Warning list (right ~37%) -->
   <div class="dash-row1">
     <div class="dash-chart-main card ac-top ac-blue">
-      <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên</div>
+      <div class="card-title" id="barChartTitle">Tổng OT luỹ kế — từng nhân viên<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Cumulative OT — by Employee</i></div>
       <div class="legend" id="dashBarLegend">
         <span><span class="ldot" style="background:#7A9468"></span>Bình thường ≤70h</span>
         <span><span class="ldot" style="background:#C0392B"></span>Vượt 70h</span>
@@ -282,14 +283,14 @@
 
   <!-- Biểu đồ cột ngang: Nhân viên vượt mức (>70h) — chỉ hiện ở tab Theo tháng -->
   <div class="card ac-top ac-red" id="dashOverBarCard" style="display:none">
-    <div class="card-title">🔴 Nhân viên vượt mức (&gt;70h) — dạng cột</div>
+    <div class="card-title">🔴 Nhân viên vượt mức (&gt;70h) — dạng cột<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employees Over Limit (&gt;70h) — Bar Chart</i></div>
     <div id="dashOverBarEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Không có NV vượt mức trong kỳ này 🎉</div>
     <div style="position:relative;width:100%;height:340px"><canvas id="cDashOverBar" role="img" aria-label="Nhân viên vượt mức">Vượt mức.</canvas></div>
   </div>
 
   <!-- Biểu đồ: OT theo dự án (chỉ tính NV thuộc HCM-EC đã gán dự án) -->
   <div class="card ac-top ac-blue" id="dashProjectBarCard" style="display:none">
-    <div class="card-title">🏗️ OT theo dự án</div>
+    <div class="card-title">🏗️ OT theo dự án<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Project</i></div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Tổng OT của từng dự án (HCM-EC) trong kỳ đang xem — bấm cột để xem chi tiết ở Action Plan.</div>
     <div id="dashProjectBarEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án.</div>
     <div style="position:relative;width:100%;height:340px"><canvas id="cDashProjectBar" role="img" aria-label="OT theo dự án">OT theo dự án.</canvas></div>
@@ -311,12 +312,12 @@
       </div>
     </div>
     <div class="card ac-top ac-green">
-      <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng</div>
+      <div class="card-title">Xu hướng Tổng OT theo phòng ban — từng tuần trong tháng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Dept OT Trend — Weekly Within Month</i></div>
       <div class="legend" id="dashDeptLineLeg"></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cDashDeptLine" role="img" aria-label="Xu hướng OT theo phòng ban">Xu hướng phòng ban.</canvas></div>
     </div>
     <div class="card ac-top ac-blue">
-      <div class="card-title">Tần suất OT sau 22h (Night OT) — theo nhân viên</div>
+      <div class="card-title">Tần suất OT sau 22h (Night OT) — theo nhân viên<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Night OT Frequency — by Employee</i></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Số ngày mỗi NV có làm việc sau 22:00 trong kỳ đang chọn — giúp biết ai thường xuyên OT khuya.</div>
       <div id="nightOtEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Không có NV nào phát sinh OT sau 22h trong kỳ này 🎉</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cNightOtFreq" role="img" aria-label="Tần suất OT sau 22h">OT sau 22h.</canvas></div>
@@ -356,7 +357,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="empTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employee Details</i> <span id="empTableTitle" style="color:var(--text2);font-weight:400"></span></div>
     <div class="action-row">
       <select id="stFilter" onchange="renderEmployeeList()">
         <option value="all">Tất cả trạng thái</option>
@@ -394,17 +395,17 @@
   <div class="metrics" id="deptMetrics"></div>
   <div class="grid2" id="deptChartsGrid">
     <div class="card">
-      <div class="card-title" id="deptAvgTitle">Tổng OT luỹ kế theo phòng ban</div>
+      <div class="card-title" id="deptAvgTitle">Tổng OT luỹ kế theo phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Cumulative OT by Department</i></div>
       <div class="legend" id="deptLegend"></div>
       <div style="position:relative;width:100%;height:260px"><canvas id="cDeptAvg" role="img" aria-label="Tổng OT phòng ban">Phòng ban.</canvas></div>
     </div>
     <div class="card" id="deptOverCard">
-      <div class="card-title">% nhân viên vượt 70h theo phòng ban</div>
+      <div class="card-title">% nhân viên vượt 70h theo phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / % Employees Over 70h by Department</i></div>
       <div style="position:relative;height:260px"><canvas id="cDeptOver" role="img" aria-label="Tỷ lệ vượt giới hạn">Vượt mức.</canvas></div>
     </div>
   </div>
   <div class="card" id="deptProjCard" style="display:none">
-    <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="deptProjChartLabel" style="font-weight:400;color:var(--text2)"></span></div>
+    <div class="card-title">🏗️ OT theo dự án (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Project (HCM-EC)</i> <span id="deptProjChartLabel" style="font-weight:400;color:var(--text2)"></span></div>
     <div id="cDeptProjEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho kỳ này.</div>
     <div style="position:relative;width:100%;height:280px"><canvas id="cDeptProj" role="img">OT theo dự án.</canvas></div>
   </div>
@@ -437,13 +438,13 @@
   <div id="cmp-week">
     <!-- Chart 1: Grouped bar — OT từng tuần theo phòng ban (KHÔNG luỹ kế, phát sinh riêng từng tuần) -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Tổng OT từng tuần theo phòng ban (không luỹ kế) — so sánh ngang nhau</div>
+      <div class="card-title" style="margin-bottom:8px">Tổng OT từng tuần theo phòng ban (không luỹ kế) — so sánh ngang nhau<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Weekly OT by Department (Non-cumulative) — Compared</i></div>
       <div class="legend" id="periodDeptLeg"></div>
       <div style="position:relative;width:100%;height:380px"><canvas id="cPeriodDept" role="img" aria-label="So sánh phòng ban từng tuần">So sánh tuần.</canvas></div>
     </div>
     <!-- Chart 2: Bar — Tổng OT toàn công ty, phát sinh riêng từng tuần -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Tổng OT toàn công ty — từng tuần (không luỹ kế)</div>
+      <div class="card-title" style="margin-bottom:8px">Tổng OT toàn công ty — từng tuần (không luỹ kế)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Company-wide OT — Weekly (Non-cumulative)</i></div>
       <div class="legend">
         <span><span style="width:18px;height:18px;background:#2D6CDF;display:inline-block;vertical-align:middle;border-radius:3px"></span>&nbsp;Tổng OT trong tuần (h)</span>
       </div>
@@ -451,13 +452,13 @@
     </div>
     <!-- Chart mới: OT theo dự án (HCM-EC) — theo tuần -->
     <div class="card ac-top ac-purple">
-      <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="cmpProjWeekLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">🏗️ OT theo dự án (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Project (HCM-EC)</i> <span id="cmpProjWeekLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div id="cCmpProjWeekEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho tuần này.</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjWeek" role="img">OT theo dự án tuần.</canvas></div>
     </div>
     <!-- Table -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết theo tuần × phòng ban</div>
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết theo tuần × phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Detail Table — Week × Department</i></div>
       <div class="tbl-wrap">
         <table><thead id="periodTHead"></thead><tbody id="periodTBody"></tbody></table>
       </div>
@@ -467,36 +468,36 @@
   <!-- SUB-TAB: MONTHLY -->
   <div id="cmp-month" style="display:none">
     <div class="card">
-      <div class="card-title">Tổng OT toàn công ty theo tháng</div>
+      <div class="card-title">Tổng OT toàn công ty theo tháng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Company-wide OT by Month</i></div>
       <div class="legend">
         <span><span style="width:18px;height:2px;background:#2D6CDF;display:inline-block;vertical-align:middle"></span>&nbsp;Tổng OT công ty (h)</span>
       </div>
       <div style="position:relative;width:100%;height:220px"><canvas id="cCmpTrend" role="img" aria-label="Xu hướng OT">Xu hướng.</canvas></div>
     </div>
     <div class="card">
-      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">Tổng OT từng phòng ban (dự án) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Department (Project)</i> <span id="cmpProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Giờ OT từng phòng ban theo <strong>tháng đang chọn</strong> ở dropdown phía trên (cột ngang).</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjPie" role="img" aria-label="Tổng OT theo phòng ban">Theo phòng ban.</canvas></div>
     </div>
     <div class="card ac-top ac-purple">
-      <div class="card-title">🏗️ OT theo TỪNG DỰ ÁN (HCM-EC) — <span id="cmpProjMonthLabel2" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">🏗️ OT theo TỪNG DỰ ÁN (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Each Project (HCM-EC)</i> <span id="cmpProjMonthLabel2" style="font-weight:400;color:var(--text2)"></span></div>
       <div id="cCmpProjMonthEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho tháng này.</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjMonth" role="img">OT theo dự án tháng.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
-        <div class="card-title">Tổng OT theo phòng ban × tháng</div>
+        <div class="card-title">Tổng OT theo phòng ban × tháng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Department × Month</i></div>
         <div class="legend" id="cmpDeptLeg"></div>
         <div style="position:relative;width:100%;height:220px"><canvas id="cCmpDept" role="img" aria-label="So sánh phòng ban">So sánh.</canvas></div>
       </div>
       <div class="card">
-        <div class="card-title">Nhân viên hay vượt mức nhất</div>
+        <div class="card-title">Nhân viên hay vượt mức nhất<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employees Most Often Over Limit</i></div>
         <div id="cRiskEmpty" style="display:none;align-items:center;justify-content:center;height:220px;color:var(--text2);font-size:13px;text-align:center;padding:0 16px">Không có NV nào vượt 70h trong các tháng đang theo dõi 🎉</div>
         <div id="cRiskWrap" style="position:relative;height:220px"><canvas id="cRisk" role="img" aria-label="Nhân viên rủi ro">Rủi ro.</canvas></div>
       </div>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo tháng × phòng ban</div>
+      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo tháng × phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Summary Table — Month × Department</i></div>
       <div class="tbl-wrap">
         <table><thead id="cmpTHead"></thead><tbody id="cmpTBody"></tbody></table>
       </div>
@@ -506,31 +507,31 @@
   <!-- SUB-TAB: QUARTERLY -->
   <div id="cmp-quarter" style="display:none">
     <div class="card">
-      <div class="card-title">Tổng OT toàn công ty theo Quý</div>
+      <div class="card-title">Tổng OT toàn công ty theo Quý<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Company-wide OT by Quarter</i></div>
       <div class="legend">
         <span><span style="width:18px;height:2px;background:#2D6CDF;display:inline-block;vertical-align:middle"></span>&nbsp;Tổng OT công ty (h)</span>
       </div>
       <div style="position:relative;width:100%;height:220px"><canvas id="cQtrTrend" role="img" aria-label="Xu hướng OT theo quý">Xu hướng quý.</canvas></div>
     </div>
     <div class="card ac-top ac-purple">
-      <div class="card-title">🏗️ OT theo dự án (HCM-EC) — <span id="cmpProjQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">🏗️ OT theo dự án (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Project (HCM-EC)</i> <span id="cmpProjQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div id="cCmpProjQtrEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án cho quý này.</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cCmpProjQtr" role="img">OT theo dự án quý.</canvas></div>
     </div>
     <div class="grid2">
       <div class="card">
-        <div class="card-title">Tổng OT theo phòng ban × Quý</div>
+        <div class="card-title">Tổng OT theo phòng ban × Quý<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Department × Quarter</i></div>
         <div class="legend" id="cmpQtrDeptLeg"></div>
         <div style="position:relative;width:100%;height:220px"><canvas id="cQtrDept" role="img" aria-label="So sánh phòng ban theo quý">So sánh quý.</canvas></div>
       </div>
       <div class="card">
-        <div class="card-title">Nhân viên hay vượt mức nhất (theo quý)</div>
+        <div class="card-title">Nhân viên hay vượt mức nhất (theo quý)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employees Most Often Over Limit (Quarterly)</i></div>
         <div id="cQtrRiskEmpty" style="display:none;align-items:center;justify-content:center;height:220px;color:var(--text2);font-size:13px">Không có NV nào vượt 70h trong các tháng đang theo dõi 🎉</div>
         <div style="position:relative;height:220px"><canvas id="cQtrRisk" role="img" aria-label="Nhân viên rủi ro theo quý">Rủi ro quý.</canvas></div>
       </div>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban</div>
+      <div class="card-title" style="margin-bottom:8px">Bảng tổng hợp theo Quý × phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Summary Table — Quarter × Department</i></div>
       <div class="tbl-wrap">
         <table><thead id="cmpQtrTHead"></thead><tbody id="cmpQtrTBody"></tbody></table>
       </div>
@@ -566,7 +567,7 @@
     <div class="metrics" id="lateWeekMetrics"></div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateWeekTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employee Details</i> <span id="lateWeekTableTitle" style="color:var(--text2);font-weight:400"></span></div>
       <div class="late-color-legend">
         <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
         <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
@@ -595,7 +596,7 @@
   <div class="metrics" id="lateMetrics"></div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo tháng</div>
+    <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo tháng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / % Late Arrival by Department — Monthly</i></div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ <strong>5–29 phút</strong> (không tính lượt ≥30p cần xin phép) ÷ Tổng số NV trong phòng ban × 100%, tính trong tháng đang chọn.</div>
     <div class="tbl-wrap">
       <table style="font-size:12.5px"><thead id="lateRateTHead"></thead><tbody id="lateRateTBody"></tbody></table>
@@ -603,7 +604,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Tổng số phút đi trễ &amp; Số lần đi trễ — theo phòng ban (2 mốc)</div>
+    <div class="card-title">Tổng số phút đi trễ &amp; Số lần đi trễ — theo phòng ban (2 mốc)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Total Late Minutes &amp; Count — by Department (2 tiers)</i></div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Cột = tổng số phút đi trễ (trục trái) · Đường = số lần đi trễ (trục phải)</div>
     <div class="legend">
       <span><span class="ldot" style="background:#2D6CDF"></span>Phút — Mốc 1 (&lt;15p)</span>
@@ -615,7 +616,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" id="lateBarTitle">Nhân viên đi trễ nhiều nhất</div>
+    <div class="card-title" id="lateBarTitle">Nhân viên đi trễ nhiều nhất<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employees with Most Late Arrivals</i></div>
     <div class="legend">
       <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
       <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
@@ -624,13 +625,13 @@
   </div>
 
   <div class="card">
-    <div class="card-title">So sánh xu hướng theo Tháng — từng phòng ban</div>
+    <div class="card-title">So sánh xu hướng theo Tháng — từng phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Monthly Trend Comparison — by Department</i></div>
     <div class="legend" id="lateTrendLeg"></div>
     <div style="position:relative;width:100%;height:320px"><canvas id="cLateTrend" role="img" aria-label="Xu hướng đi trễ theo tháng">Xu hướng tháng.</canvas></div>
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+    <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employee Details</i> <span id="lateTableTitle" style="color:var(--text2);font-weight:400"></span></div>
     <div class="late-color-legend">
       <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
       <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
@@ -644,7 +645,7 @@
   <!-- SUB-TAB: QUARTERLY -->
   <div id="late-quarter" style="display:none">
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo quý</div>
+      <div class="card-title" style="margin-bottom:8px">Tỷ lệ % phòng ban đi trễ — theo quý<i style="font-weight:400;font-size:11px;color:var(--text3)"> / % Late Arrival by Department — Quarterly</i></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">% = Số NV có đi trễ <strong>5–29 phút</strong> (ít nhất 1 lần trong quý, không tính lượt ≥30p cần xin phép) ÷ Tổng số NV trong phòng ban × 100%.</div>
       <div class="tbl-wrap">
         <table style="font-size:12.5px"><thead id="lateQtrRateTHead"></thead><tbody id="lateQtrRateTBody"></tbody></table>
@@ -652,7 +653,7 @@
     </div>
     <div class="grid2">
       <div class="card">
-        <div class="card-title">Số lần đi trễ toàn công ty × Quý (2 mốc)</div>
+        <div class="card-title">Số lần đi trễ toàn công ty × Quý (2 mốc)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Company-wide Late Count × Quarter (2 tiers)</i></div>
         <div class="legend">
           <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
           <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
@@ -660,7 +661,7 @@
         <div style="position:relative;width:100%;height:320px"><canvas id="cLateQtrCount" role="img" aria-label="Số lần đi trễ theo quý">Số lần quý.</canvas></div>
       </div>
       <div class="card">
-        <div class="card-title">Tổng phút đi trễ toàn công ty × Quý (2 mốc)</div>
+        <div class="card-title">Tổng phút đi trễ toàn công ty × Quý (2 mốc)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Company-wide Late Minutes × Quarter (2 tiers)</i></div>
         <div class="legend">
           <span><span class="ldot" style="background:#2D6CDF"></span>Mốc 1: &lt;15p</span>
           <span><span class="ldot" style="background:#C0392B"></span>Mốc 2: ≥30p (cần xin phép)</span>
@@ -669,11 +670,11 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-title">Nhân viên cần xin phép nhiều nhất (≥30p) — theo quý</div>
+      <div class="card-title">Nhân viên cần xin phép nhiều nhất (≥30p) — theo quý<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employees Needing Approval Most (≥30min) — Quarterly</i></div>
       <div style="position:relative;height:220px"><canvas id="cLateQtrRisk" role="img" aria-label="Nhân viên cần xin phép theo quý">Rủi ro quý.</canvas></div>
     </div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên — <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
+      <div class="card-title" style="margin-bottom:8px">Chi tiết nhân viên —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Employee Details</i> <span id="lateQtrTableTitle" style="color:var(--text2);font-weight:400"></span></div>
       <div class="late-color-legend">
         <span><span class="lc-dot" style="background:#E8890C"></span>Trễ 5–29 phút</span>
         <span><span class="lc-dot" style="background:#C0392B"></span>Trễ ≥30 phút — cần xin phép</span>
@@ -714,14 +715,14 @@
 
     <!-- Biểu đồ Tổng OT từng phòng ban (dự án) — tách riêng khỏi WLB để xem nhanh phân bổ giờ OT -->
     <div class="card ac-top ac-amber">
-      <div class="card-title">Tổng OT từng phòng ban (dự án) — <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">Tổng OT từng phòng ban (dự án) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / OT by Department (Project)</i> <span id="wlbProjMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Giờ OT từng phòng ban trong tháng đang chọn (cột ngang).</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjPie" role="img" aria-label="Tổng OT theo phòng ban">OT theo phòng ban.</canvas></div>
     </div>
 
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
     <div class="card ac-top ac-blue">
-      <div class="card-title">WLB từng phòng ban — <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">WLB từng phòng ban —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Department</i> <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
       <div id="cWlbMonthEmpty" style="display:none;align-items:center;justify-content:center;height:280px;color:var(--text2);font-size:13px;text-align:center;padding:0 24px;line-height:1.5">Chưa có dữ liệu Off Day cho tháng này — vào <button type="button" onclick="goPage('settings')" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;padding:0;text-decoration:underline">Cài đặt → Upload Off Day</button> để xem biểu đồ WLB.</div>
       <div id="cWlbMonthWrap" style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
@@ -729,7 +730,7 @@
 
     <!-- Biểu đồ mới: WLB từng dự án (HCM-EC) — tháng đang chọn -->
     <div class="card ac-top ac-purple">
-      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) — <span id="wlbProjMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Project (HCM-EC)</i> <span id="wlbProjMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT, tính riêng cho từng dự án.</div>
       <div id="cWlbProjMonthEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án đủ để tính WLB cho tháng này.</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjMonth" role="img">WLB theo dự án.</canvas></div>
@@ -737,14 +738,14 @@
 
     <!-- Biểu đồ 2: So sánh WLB các tháng (line chart) — từng phòng ban -->
     <div class="card ac-top ac-green">
-      <div class="card-title">So sánh WLB giữa các tháng — từng phòng ban</div>
+      <div class="card-title">So sánh WLB giữa các tháng — từng phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Comparison by Month — by Department</i></div>
       <div class="legend" id="wlbMonthCmpLeg"></div>
       <div id="cWlbMonthCmpEmpty" style="display:none;align-items:center;justify-content:center;height:280px;color:var(--text2);font-size:13px">Chưa có tháng nào đủ dữ liệu Off Day để so sánh</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbMonthCmp" role="img">So sánh WLB tháng.</canvas></div>
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo tháng × phòng ban</div>
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo tháng × phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Detail Table — Month × Department</i></div>
       <div class="tbl-wrap">
         <table><thead id="wlbMonthTHead"></thead><tbody id="wlbMonthTBody"></tbody></table>
       </div>
@@ -752,7 +753,7 @@
 
     <!-- Bảng WLB theo từng nhân viên -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Detail Table — by Employee</i> <span id="wlbEmpMonthLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div class="action-row" style="margin-bottom:10px">
         <select id="wlbEmpMonthDept" onchange="refreshWlbEmpTableMonth()">
           <option value="__all__">Tất cả phòng ban</option>
@@ -775,14 +776,14 @@
 
     <!-- Biểu đồ 1: WLB quý đang chọn — từng phòng ban -->
     <div class="card ac-top ac-amber">
-      <div class="card-title">WLB từng phòng ban — <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">WLB từng phòng ban —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Department</i> <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
     </div>
 
     <!-- Biểu đồ mới: WLB từng dự án (HCM-EC) — quý đang chọn -->
     <div class="card ac-top ac-purple">
-      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) — <span id="wlbProjQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title">🏗️ WLB từng dự án (HCM-EC) —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Project (HCM-EC)</i> <span id="wlbProjQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT, tính riêng cho từng dự án.</div>
       <div id="cWlbProjQtrEmpty" style="display:none;text-align:center;padding:24px;color:var(--text2);font-size:13px">Chưa có dữ liệu dự án đủ để tính WLB cho quý này.</div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbProjQtr" role="img">WLB theo dự án quý.</canvas></div>
@@ -790,13 +791,13 @@
 
     <!-- Biểu đồ 2: So sánh WLB giữa các quý (line chart) -->
     <div class="card ac-top ac-red">
-      <div class="card-title">So sánh WLB giữa các quý — từng phòng ban</div>
+      <div class="card-title">So sánh WLB giữa các quý — từng phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Comparison by Quarter — by Department</i></div>
       <div class="legend" id="wlbQtrCmpLeg"></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQtrCmp" role="img">So sánh WLB quý.</canvas></div>
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo quý × phòng ban</div>
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo quý × phòng ban<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Detail Table — Quarter × Department</i></div>
       <div class="tbl-wrap">
         <table><thead id="wlbQtrTHead"></thead><tbody id="wlbQtrTBody"></tbody></table>
       </div>
@@ -804,7 +805,7 @@
 
     <!-- Bảng WLB theo từng nhân viên -->
     <div class="card">
-      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên <span id="wlbEmpQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
+      <div class="card-title" style="margin-bottom:8px">Bảng chi tiết WLB — theo từng nhân viên<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Detail Table — by Employee</i> <span id="wlbEmpQtrLabel" style="font-weight:400;color:var(--text2)"></span></div>
       <div class="action-row" style="margin-bottom:10px">
         <select id="wlbEmpQtrDept" onchange="refreshWlbEmpTableQtr()">
           <option value="__all__">Tất cả phòng ban</option>
@@ -837,7 +838,7 @@
     <textarea id="planEditPlan" rows="3" placeholder="Kế hoạch tháng tiếp theo..." style="width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:18px;resize:vertical;font-family:inherit"></textarea>
 
     <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1;padding:10px;font-size:13px" id="planEditCancelBtn" onclick="closePlanEditModal()">Huỷ</button>
+      <button class="btn" style="flex:1;padding:10px;font-size:13px" id="planEditCancelBtn" onclick="closePlanEditModal()">Huỷ<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Cancel</span></button>
       <button class="btn btn-primary" style="flex:2;padding:10px;font-size:13px" id="planEditSaveBtn" onclick="savePlanEditModal()">💾 Save (lưu &amp; đồng bộ)</button>
     </div>
   </div>
@@ -867,15 +868,15 @@
       Nút này chỉ lưu riêng phần Action Plan, <strong>không đụng đến dữ liệu OT/Đi trễ/Off Day</strong> — an toàn để bấm bất cứ lúc nào, không lo ghi đè nhầm.
     </div>
     <div class="action-row" style="margin-top:12px;align-items:center">
-      <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)</button>
-      <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)</button>
-      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSaveActionPlanOnly()">💾 Lưu &amp; Đồng bộ lên Sheet</button>
+      <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Add Project</span></button>
+      <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Add Project</span></button>
+      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSaveActionPlanOnly()">💾 Lưu &amp; Đồng bộ lên Sheet<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Save &amp; Sync</span></button>
     </div>
     <div id="actionPlanSyncNote" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right"></div>
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Phần 1: HCM-EC</div>
+    <div class="card-title" style="margin-bottom:8px">Phần 1: HCM-EC<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Part 1: HCM-EC</i></div>
     <div class="tbl-wrap">
       <table id="actionPlanTableEC">
         <thead>
@@ -893,7 +894,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Phần 2: S-ED</div>
+    <div class="card-title" style="margin-bottom:8px">Phần 2: S-ED<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Part 2: S-ED</i></div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Danh sách NV lấy chung từ Danh sách NV OT (phòng ban S-ED) — không tách theo dự án riêng.</div>
     <div class="tbl-wrap">
       <table id="actionPlanTableED">
@@ -920,19 +921,19 @@
   </div>
 
   <div class="card ac-top ac-red">
-    <div class="card-title">🔑 Mật khẩu Admin</div>
+    <div class="card-title">🔑 Mật khẩu Admin<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Admin Password</i></div>
     <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px">
       Mật khẩu để vào chế độ Admin (toàn quyền, có thể xoá dữ liệu). <strong>Đổi ngay</strong> khỏi mật khẩu mặc định lần đầu để đảm bảo an toàn hơn.<br>
       Sau khi đổi, nhớ bấm <strong>"💾 Lưu &amp; Đồng bộ lên Sheet"</strong> để dùng được ở máy khác.
     </div>
-    <button class="btn btn-danger" onclick="changeAdminPassword()">Đổi mật khẩu Admin</button>
+    <button class="btn btn-danger" onclick="changeAdminPassword()">Đổi mật khẩu Admin<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Change Password</span></button>
   </div>
 
   <div class="card">
-    <div class="card-title">Cấu hình kết nối</div>
+    <div class="card-title">Cấu hình kết nối<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Connection Settings</i></div>
     <div class="action-row" style="margin-bottom:12px">
       <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" style="flex:1;min-width:280px">
-      <button class="btn btn-primary" onclick="saveSyncUrl()">Lưu URL</button>
+      <button class="btn btn-primary" onclick="saveSyncUrl()">Lưu URL<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Save URL</span></button>
     </div>
     <div id="syncInfo" style="font-size:12px;color:var(--text2);margin-bottom:14px"></div>
     <div class="action-row" style="gap:10px">
@@ -951,7 +952,7 @@
     </div>
   </div>
   <div class="card">
-    <div class="card-title">📧 Gửi thông báo cho Quản lý</div>
+    <div class="card-title">📧 Gửi thông báo cho Quản lý<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Send Notification to Managers</i></div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
       Sau khi Update data tuần mới (Tải lên Sheet), bấm nút bên dưới để gửi email thông báo tới các Anh/Chị quản lý — nội dung tự điền theo tuần dữ liệu mới nhất.
     </div>
@@ -979,7 +980,7 @@
     </div>
   </div>
   <div class="card">
-    <div class="card-title">Hướng dẫn quy trình hàng tuần</div>
+    <div class="card-title">Hướng dẫn quy trình hàng tuần<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Weekly Process Guide</i></div>
     <div style="font-size:12px;color:var(--text2);line-height:1.9">
       1. Mỗi tuần, upload file Excel chấm công ở mục <strong style="color:var(--text)">Upload dữ liệu</strong> bên dưới<br>
       2. Bấm <strong style="color:var(--text)">Tải lên Sheet</strong> ở đây để đồng bộ cho mọi người cùng xem<br>
@@ -990,7 +991,7 @@
 
   <!-- Upload dữ liệu (gộp từ trang Upload cũ) -->
   <div class="card settings-subcard">
-    <div class="card-title">Upload dữ liệu</div>
+    <div class="card-title">Upload dữ liệu<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Upload Data</i></div>
     <div class="info-box">
       <strong>Hỗ trợ 2 định dạng file:</strong><br>
       1) File chấm công In/Out (như file gốc) — app tự tính OT theo công thức: <strong>MAX(0, Tổng giờ đã làm cả kỳ − Tổng giờ tiêu chuẩn cả kỳ)</strong> (8h/ngày thường, 4h/thứ 7, 0h/CN). Xem chi tiết ở mục "Công thức tính".<br>
@@ -1051,7 +1052,7 @@
 <!-- ====== REPORT (Xuất báo cáo) ====== -->
 <div class="pg" id="pg-report">
   <div class="card">
-    <div class="card-title" style="margin-bottom:10px">📄 Chọn kỳ báo cáo</div>
+    <div class="card-title" style="margin-bottom:10px">📄 Chọn kỳ báo cáo<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Select Report Period</i></div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">
       Báo cáo gồm 4 mục: <strong>Tổng quan OT</strong>, <strong>OT phòng ban</strong>, <strong>So sánh OT</strong> (theo đúng <strong>tháng</strong> chọn bên dưới) và <strong>WLB</strong> (theo đúng <strong>quý</strong> chọn bên dưới).
     </div>
@@ -1071,13 +1072,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="13" y2="11"/></svg>
       <h3>Xuất PDF</h3>
       <p>Báo cáo 4 mục theo tháng/quý đã chọn ở trên, sẵn sàng để in hoặc chia sẻ qua email.</p>
-      <button class="btn btn-primary" onclick="exportPdfReport()" style="width:100%;justify-content:center">Xuất PDF</button>
+      <button class="btn btn-primary" onclick="exportPdfReport()" style="width:100%;justify-content:center">Xuất PDF<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Export PDF</span></button>
     </div>
     <div class="report-card">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
       <h3>Báo cáo HTML</h3>
       <p>Cùng nội dung báo cáo trên, mở trực tiếp trên trình duyệt, dễ chia sẻ link nội bộ.</p>
-      <button class="btn btn-primary" onclick="exportHtmlReport()" style="width:100%;justify-content:center">Xuất HTML</button>
+      <button class="btn btn-primary" onclick="exportHtmlReport()" style="width:100%;justify-content:center">Xuất HTML<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Export HTML</span></button>
     </div>
   </div>
 </div>
@@ -1146,7 +1147,7 @@
   </div>
 
   <div class="card" style="margin-bottom:16px">
-    <div class="card-title" style="margin-bottom:10px">🟠 Cách tính đi trễ</div>
+    <div class="card-title" style="margin-bottom:10px">🟠 Cách tính đi trễ<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Late Arrival Formula</i></div>
     <div style="font-size:13px;line-height:1.7;color:var(--text)">
       <p><strong>Mỗi ngày (có 5 phút ân hạn):</strong></p>
       <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
@@ -1171,7 +1172,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:10px">🟢 Cách tính WLB (Work-Life Balance)</div>
+    <div class="card-title" style="margin-bottom:10px">🟢 Cách tính WLB (Work-Life Balance)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB Formula (Work-Life Balance)</i></div>
     <div style="font-size:13px;line-height:1.7;color:var(--text)">
       <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0">
         WLB = (Ngày nghỉ (off) tích luỹ ÷ Giờ OT tích luỹ) × 100%
