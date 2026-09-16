@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.52';
+const APP_VERSION = '2026.53';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -940,11 +940,14 @@ function getAllDepts() {
 // getAllDepts() gốc chỉ lấy từ OT (dùng cho Dashboard/OT phòng ban để khớp đúng dữ liệu OT thuần) —
 // nhưng ở WLB nếu chỉ dùng danh sách đó, phòng ban nào chỉ xuất hiện trong file Off Day
 // (tên hơi khác, hoặc NV đó chưa có OT tháng này) sẽ bị rớt khỏi bảng dù có dữ liệu.
+// YÊU CẦU: WLB giờ chỉ tính cho 2 phòng HCM-EC (gồm các dự án) và S-ED — không hiển thị/tính cho
+// các phòng khác (S-AD, S-AZ, S-PD, S-PU, S-QC) nữa dù có dữ liệu Off Day/OT của các phòng đó.
+const WLB_ALLOWED_DEPTS = ['HCM-EC', 'S-ED'];
 function getAllDeptsForWlb() {
   const s = new Set(getAllDepts());
   Object.values(OFF_DB).forEach(m => Object.keys(m.depts || {}).forEach(d => { if (d) s.add(d); }));
   wlbXlsAllDepts().forEach(d => s.add(d));
-  return [...s].sort();
+  return [...s].filter(d => WLB_ALLOWED_DEPTS.includes(d)).sort();
 }
 
 // Get totals for employees in month `mk`, cumulative up to period index `pIdx` (default: last/latest period).
@@ -3082,8 +3085,8 @@ function buildReportHtml(mode) {
   // ═══ MỤC 4: WLB THEO QUÝ (cho quý selQk) ═══
   const qMksArr = selQk ? monthsInQuarterKey(selQk).filter(mk => DB[mk] || OFF_DB[mk] || Object.keys(WLB_XLS.employees||{}).length) : [];
   const wlbAllDepts = [...new Set(qMksArr.flatMap(mk => Object.keys(DB[mk]?.depts||{})))].sort();
-  const coOT_q = Math.round(qMksArr.reduce((s,mk)=>s+getTotalOT(mk,'__all__'),0)*10)/10;
-  const coOff_q = Math.round(qMksArr.reduce((s,mk)=>s+getOffDays(mk,'__all__'),0)*10)/10;
+  const coOT_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOT(mk),0)*10)/10;
+  const coOff_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOff(mk),0)*10)/10;
   const coWlb_q = wlbRatio(coOff_q, coOT_q);
   const deptWlb_q = wlbAllDepts.map(d => {
     const ot = Math.round(qMksArr.reduce((s,mk)=>s+getTotalOT(mk,d),0)*10)/10;
@@ -4915,6 +4918,11 @@ function hasOffDataForMk(mk) {
 
 // Lấy tổng số ngày Off cho 1 tháng, 1 phòng ban.
 // Hỗ trợ cả 2 format: offTotal (monthly summary) và days[] (daily format cũ).
+// "Toàn công ty" cho riêng mục WLB = tổng CHỈ 2 phòng HCM-EC + S-ED (không phải '__all__' — vì WLB
+// giờ không tính cho các phòng khác nữa, nên "công ty" ở đây nghĩa là tổng của đúng 2 phòng này).
+function getWlbCompanyOT(mk) { return WLB_ALLOWED_DEPTS.reduce((s,d) => s + getTotalOT(mk, d), 0); }
+function getWlbCompanyOff(mk) { return WLB_ALLOWED_DEPTS.reduce((s,d) => s + getOffDays(mk, d), 0); }
+
 function getOffDays(mk, deptFilter) {
   // Ưu tiên dữ liệu từ file Excel WLB (OT List + Off-Day List) nếu đã upload — vì đây là
   // nguồn ĐÚNG THÁNG DƯƠNG LỊCH khớp chính xác với OT cùng file, tránh lệch ngày so với
@@ -5133,11 +5141,14 @@ function renderWlb() {
   const lineOpts = () => ({
     responsive:true, maintainAspectRatio:false, layout:{padding:{top:6,right:12}},
     plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-      tooltip:{callbacks:{label:c=>c.raw!==null?` ${c.dataset.label}: ${c.raw}`:` ${c.dataset.label}: —`}} },
+      tooltip:{callbacks:{label:c=>c.raw!==null?` ${c.dataset.label}: ${c.raw}%`:` ${c.dataset.label}: —`}} },
     scales:{
       x:{grid:{display:false}, ticks:{font:{size:10}}},
-      y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-         title:{display:true, text:'WLB (off÷OT)', font:{size:10}}, min:0, suggestedMax:Math.max(12,THRESHOLD*1.5)} }
+      // SỬA: nhãn trục cũ "(off÷OT)" không rõ là % khiến dễ hiểu nhầm sang so sánh giờ. Đồng thời
+      // bỏ suggestedMax cố định quá thấp (15) — WLB% thực tế thường vượt 50-100%+, giới hạn thấp
+      // khiến đường biểu đồ bị cắt/dồn lên đỉnh trông rối mắt. Để Chart.js tự co giãn theo dữ liệu.
+      y:{grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}, callback:v=>v+'%'},
+         title:{display:true, text:'WLB (%)', font:{size:10}}, min:0} }
   });
 
   if (wlbTab === 'month') {
@@ -5325,10 +5336,12 @@ function renderWlb() {
     document.getElementById('wlbMonthTHead').innerHTML =
       `<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const rows = [];
-    const mksWithOff = allMks.filter(mk => hasOffDataForMk(mk));
+    // Đảo ngược thứ tự — tháng mới nhất (vừa update) nằm TRÊN CÙNG, theo đúng yêu cầu
+    // (VD: Tháng 8 → Tháng 7 → Tháng 6...) thay vì cũ nhất lên đầu như trước.
+    const mksWithOff = allMks.filter(mk => hasOffDataForMk(mk)).reverse();
     mksWithOff.forEach(mk => {
       // Dòng tổng công ty
-      const coOT = Math.round(getTotalOT(mk,'__all__')); const coOff = Math.round(getOffDays(mk,'__all__'));
+      const coOT = Math.round(getWlbCompanyOT(mk)); const coOff = Math.round(getWlbCompanyOff(mk));
       if (coOT || coOff) {
         const v = wlbRatio(coOff, coOT);
         rows.push(`<tr style="background:var(--bg2)">
@@ -5502,8 +5515,8 @@ function renderWlb() {
       const mks = qMks(qk).filter(mk => hasOffDataForMk(mk));
       if (!mks.length) return; // quý này chưa có tháng nào đủ dữ liệu Off Day
       // Dòng tổng công ty
-      const coOT = Math.round(mks.reduce((s,mk)=>s+getTotalOT(mk,'__all__'),0));
-      const coOff= Math.round(mks.reduce((s,mk)=>s+getOffDays(mk,'__all__'),0));
+      const coOT = Math.round(mks.reduce((s,mk)=>s+getWlbCompanyOT(mk),0));
+      const coOff= Math.round(mks.reduce((s,mk)=>s+getWlbCompanyOff(mk),0));
       if (coOT || coOff) {
         const v = wlbRatio(coOff, coOT);
         qRows.push(`<tr style="background:var(--bg2)">
