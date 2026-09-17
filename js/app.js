@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.56';
+const APP_VERSION = '2026.57';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -191,24 +191,31 @@ Chart.defaults.animation = false;
 // Vẽ trực tiếp giá trị lên trên mỗi cột/điểm — không cần rê chuột vào mới thấy số (tooltip), nhìn
 // trực quan hơn hẳn. Tự bỏ qua nếu có QUÁ NHIỀU cột/điểm (>25) để tránh chữ chồng chéo rối mắt,
 // và bỏ qua hẳn với biểu đồ tròn/donut (loại này không hợp để vẽ số kiểu này).
+// SỬA lỗi chữ chồng chữ (đã gặp ở nhiều biểu đồ nhóm cột/nhiều đường): thay vì TẮT HẲN số khi có
+// nhiều dataset (cách cũ, khiến biểu đồ "So sánh WLB giữa các tháng" đang chỉ còn 2 phòng ban sau
+// khi giới hạn WLB cũng bị tắt oan) — giờ SO LE vị trí số theo TỪNG dataset cùng loại (line so với
+// line, bar so với bar), và tự giảm cỡ chữ khi có nhiều dataset — giảm chồng chéo mà vẫn giữ được
+// số hiển thị ở những biểu đồ ít dataset (2-3 phòng ban) như yêu cầu.
 Chart.register({
   id: 'valueLabelsPlugin',
   afterDatasetsDraw(chart) {
     if (chart.config.type === 'pie' || chart.config.type === 'doughnut') return;
     const { ctx } = chart;
-    // SỬA lỗi chữ chồng chữ: biểu đồ Line có NHIỀU đường so sánh cùng lúc (VD: So sánh WLB giữa
-    // các tháng — từng phòng ban, mỗi phòng 1 đường) khiến số của đường này đè lên số đường kia,
-    // vì các đường thường nằm gần nhau. Với biểu đồ Line có > 1 đường dữ liệu thật (không tính
-    // đường ngưỡng borderDash), BỎ hẳn số — giữ lại tooltip khi rê chuột là đủ, tránh rối mắt.
-    const realDatasetCount = chart.data.datasets.filter(d => !d.borderDash).length;
-    if (chart.config.type === 'line' && realDatasetCount > 1) return;
+    const realDatasets = chart.data.datasets.map((d,i)=>({d,i})).filter(({d}) => !d.borderDash);
+    const lineIdx = realDatasets.filter(({d}) => (d.type||chart.config.type)==='line');
+    const barIdx  = realDatasets.filter(({d}) => (d.type||chart.config.type)==='bar');
+    const fontSize = realDatasets.length > 3 ? 9 : 10;
     chart.data.datasets.forEach((dataset, dsIndex) => {
       const meta = chart.getDatasetMeta(dsIndex);
       if (meta.hidden || !meta.data || meta.data.length > 25) return;
       // Bỏ qua dataset kiểu "đường ngưỡng" (borderDash) — chỉ là đường tham chiếu, không cần in số.
       if (dataset.borderDash) return;
+      const dsType = dataset.type || chart.config.type;
+      const groupIdx = dsType === 'line' ? lineIdx : barIdx;
+      const posInGroup = groupIdx.findIndex(x => x.i === dsIndex);
+      const yOffset = 6 + Math.max(0, posInGroup) * (fontSize + 3); // so le theo thứ tự trong nhóm cùng loại
       ctx.save();
-      ctx.font = '600 10px Inter, sans-serif';
+      ctx.font = `600 ${fontSize}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillStyle = dataset.borderColor || dataset.backgroundColor || '#5A5348';
       meta.data.forEach((el, i) => {
@@ -217,7 +224,7 @@ Chart.register({
         const value = typeof raw === 'object' ? raw.y : raw; // hỗ trợ cả dữ liệu dạng {x,y}
         if (value === null || value === undefined || value === 0) return;
         const pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
-        const isBar = chart.config.type === 'bar';
+        const isBar = dsType === 'bar';
         const isHorizontal = isBar && chart.options.indexAxis === 'y';
         const label = Number.isInteger(value) ? String(value) : value.toFixed(1);
         if (isHorizontal) {
@@ -225,7 +232,7 @@ Chart.register({
           ctx.fillText(label, pos.x + 6, pos.y + 3);
         } else {
           ctx.textAlign = 'center';
-          ctx.fillText(label, pos.x, pos.y - 6);
+          ctx.fillText(label, pos.x, pos.y - yOffset);
         }
       });
       ctx.restore();
@@ -3143,8 +3150,12 @@ function buildReportHtml(mode) {
 
   const fmtDelta = (d) => d===null ? '—' : (d>0?'+':'')+d+'h';
   const deltaColor = (d) => d===null ? 'var(--text3)' : d>0 ? '#C0392B' : d<0 ? '#7A9468' : 'var(--text2)';
-  const wlbColorR = (v) => v===null ? '#999' : v>WLB_THRESHOLD ? '#2E7D32' : '#C0392B';
-  const wlbBadgeR = (v) => v===null ? '—' : v>WLB_THRESHOLD ? '✅ Đạt' : '⚠️ Không đạt';
+  // Ngưỡng WLB đúng theo quý đang chọn (dùng tháng CUỐI của quý làm mốc — khớp cách tính ở trang
+  // WLB chính) — tránh trường hợp báo cáo xuất cho quý CŨ (trước tháng 9/2026) vẫn hiện sai ngưỡng
+  // mới 15% thay vì ngưỡng 10% đúng cho giai đoạn đó.
+  const reportWlbThreshold = qMksArr.length ? getWlbThreshold(qMksArr[qMksArr.length-1]) : WLB_THRESHOLD;
+  const wlbColorR = (v) => v===null ? '#999' : v>reportWlbThreshold ? '#2E7D32' : '#C0392B';
+  const wlbBadgeR = (v) => v===null ? '—' : v>reportWlbThreshold ? '✅ Đạt' : '⚠️ Không đạt';
 
   const html = `<!DOCTYPE html>
 <html lang="vi"><head><meta charset="UTF-8">
@@ -3233,7 +3244,7 @@ function buildReportHtml(mode) {
     ${buildSvgBarChart(deptWlb_q.filter(d=>d.wlb!==null).map(d=>({name:d.name, value:d.wlb})), {color:'#2E7D32', unit:'%'})}
     <table><thead><tr><th>Phòng ban</th><th>Tổng OT</th><th>Tổng Off</th><th>WLB</th><th>Kết quả</th></tr></thead>
     <tbody>${deptWlb_q.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.ot}h</td><td class="num">${d.off}h</td><td class="num" style="color:${wlbColorR(d.wlb)};font-weight:700">${d.wlb===null?'—':d.wlb+'%'}</td><td>${wlbBadgeR(d.wlb)}</td></tr>`).join('')}</tbody></table>
-    <div style="font-size:10.5px;color:#999;margin-top:6px">Ngưỡng: &gt;${WLB_THRESHOLD} = Đạt, ≤${WLB_THRESHOLD} = Không đạt. Các tháng trong quý: ${qMksArr.map(fmtMK).join(', ')}.</div>
+    <div style="font-size:10.5px;color:#999;margin-top:6px">Ngưỡng: &gt;${reportWlbThreshold} = Đạt, ≤${reportWlbThreshold} = Không đạt. Các tháng trong quý: ${qMksArr.map(fmtMK).join(', ')}.</div>
     `}
   </div>
 
@@ -5048,10 +5059,19 @@ function renderWlbSummary() {
 // Nhân lại ×100 để CẢ giá trị và ngưỡng cùng nằm trên 1 thang đo % thống nhất, tránh hiểu sai kết
 // quả. Trường hợp phòng ban có OT quá thấp gây % nhảy vọt bất thường (VD: OT=5h → 1150%) đã được
 // xử lý riêng bằng cảnh báo "OT quá thấp" bên dưới (wlbDisplayWithWarn), không cần thu nhỏ thang đo.
-const WLB_THRESHOLD = 10; // % thật — >10% = Đạt, ≤10% = Không đạt
+// NGƯỠNG THAY ĐỔI THEO THỜI GIAN: từ tháng 9/2026 trở đi (và Quý 4) áp dụng ngưỡng MỚI 15% —
+// các tháng TRƯỚC đó (đến hết tháng 8/2026) vẫn giữ ngưỡng CŨ 10%, để không làm thay đổi ngược
+// kết quả Đạt/Không đạt đã đánh giá cho các tháng trước đây. Công thức tính % (wlbRatio) giữ
+// nguyên không đổi — chỉ đổi mốc so sánh.
+const WLB_THRESHOLD_CHANGE_MK = '2026-09'; // từ tháng này (bao gồm) trở đi dùng ngưỡng mới
+function getWlbThreshold(mk) {
+  if (!mk) return 15; // không rõ tháng nào (VD: hiển thị chung) → mặc định dùng ngưỡng mới nhất
+  return mk >= WLB_THRESHOLD_CHANGE_MK ? 15 : 10;
+}
+const WLB_THRESHOLD = 15; // % thật, ÁP DỤNG CHO THÁNG HIỆN TẠI TRỞ ĐI — dùng getWlbThreshold(mk) ở nơi cần biết đúng theo từng tháng/quý cụ thể
 function wlbRatio(off, ot) { return ot ? Math.round((off/ot)*1000)/10 : null; }
-function wlbColor(v) { return v===null?'var(--text3)':v>WLB_THRESHOLD?'var(--green)':'var(--red)'; }
-function wlbBadge(v) { return v===null?'<span style="color:var(--text3)">—</span>':v>WLB_THRESHOLD?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
+function wlbColor(v, mk) { const th = getWlbThreshold(mk); return v===null?'var(--text3)':v>th?'var(--green)':'var(--red)'; }
+function wlbBadge(v, mk) { const th = getWlbThreshold(mk); return v===null?'<span style="color:var(--text3)">—</span>':v>th?'<span class="badge bo">✅ Đạt</span>':'<span class="badge bd">⚠️ Không đạt</span>'; }
 function wlbDisplay(v) { return (v===null||v===undefined) ? '—' : v+'%'; }
 // Ngưỡng OT tối thiểu để WLB% được coi là "đại diện" — dưới mức này, mẫu số (OT) quá nhỏ khiến
 // tỷ lệ dễ lệch cao bất thường (VD: OT=5h, Off=57.5h → 11.5, vẫn hợp lý hơn hẳn cách tính cũ
@@ -5129,7 +5149,7 @@ function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
   return rows;
 }
 
-function renderEmployeeWlbTable(theadId, tbodyId, rows) {
+function renderEmployeeWlbTable(theadId, tbodyId, rows, refMk) {
   document.getElementById(theadId).innerHTML =
     `<tr><th>Staff Code</th><th>Nhân viên</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
   document.getElementById(tbodyId).innerHTML = rows.map(r => `<tr>
@@ -5138,8 +5158,8 @@ function renderEmployeeWlbTable(theadId, tbodyId, rows) {
     <td style="color:var(--text2)">${r.dept||'—'}</td>
     <td style="font-family:var(--font-mono)">${r.ot}h</td>
     <td style="font-family:var(--font-mono)">${r.off}</td>
-    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.ot===0?'N/A':wlbDisplay(r.wlb)}</td>
-    <td>${r.ot===0 ? '<span style="color:var(--text3);font-size:11.5px" title="NV không phát sinh OT trong kỳ này — không có cơ sở để đánh giá WLB">— (không có OT)</span>' : wlbBadge(r.wlb)}</td></tr>`).join('') ||
+    <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb, refMk)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.ot===0?'N/A':wlbDisplay(r.wlb)}</td>
+    <td>${r.ot===0 ? '<span style="color:var(--text3);font-size:11.5px" title="NV không phát sinh OT trong kỳ này — không có cơ sở để đánh giá WLB">— (không có OT)</span>' : wlbBadge(r.wlb, refMk)}</td></tr>`).join('') ||
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không tìm thấy nhân viên phù hợp.</td></tr>';
 }
 
@@ -5150,7 +5170,7 @@ function refreshWlbEmpTableMonth() {
   if (!selMk) return;
   const df = document.getElementById('wlbEmpMonthDept')?.value || '__all__';
   const q = document.getElementById('wlbEmpMonthSearch')?.value || '';
-  renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', buildEmployeeWlbRows([selMk], df, q));
+  renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', buildEmployeeWlbRows([selMk], df, q), selMk);
 }
 function refreshWlbEmpTableQtr() {
   const selQk = document.getElementById('wlbQtrSel')?.value;
@@ -5161,7 +5181,7 @@ function refreshWlbEmpTableQtr() {
   const mks = allMks.filter(mk => quarterKeyOf(mk) === selQk);
   const df = document.getElementById('wlbEmpQtrDept')?.value || '__all__';
   const q = document.getElementById('wlbEmpQtrSearch')?.value || '';
-  renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', buildEmployeeWlbRows(mks, df, q));
+  renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', buildEmployeeWlbRows(mks, df, q), mks[mks.length-1]);
 }
 
 function renderWlb() {
@@ -5169,7 +5189,7 @@ function renderWlb() {
   const otKeys  = Object.keys(DB).sort();
   const allMks  = [...new Set([...offKeys,...otKeys,...wlbXlsMks()])].sort();
   const allDepts = getAllDeptsForWlb();
-  const THRESHOLD = WLB_THRESHOLD;
+  const THRESHOLD = WLB_THRESHOLD; // dùng cho đường tham chiếu trên biểu đồ (đơn giản hoá — biểu đồ trải nhiều tháng nên dùng 1 mốc chung là ngưỡng mới nhất); bảng chi tiết/KPI dùng đúng ngưỡng theo từng tháng qua getWlbThreshold()
   const EMPTY = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Upload file OT và Off Day để bắt đầu.</td></tr>';
 
   // Shared bar chart options (1 tháng/quý đang chọn)
@@ -5226,7 +5246,7 @@ function renderWlb() {
     const totalOff = selMk ? Math.round(getOffDays(selMk,'__all__')) : 0;
     const totalOT  = selMk ? Math.round(getTotalOT(selMk,'__all__')) : 0;
     const ratio = wlbRatio(totalOff, totalOT);
-    const ok = ratio !== null && ratio > THRESHOLD;
+    const ok = ratio !== null && ratio > getWlbThreshold(selMk);
     const otherOffHint = withOff.length
       ? ` · Có Off Day ở: ${withOff.map(fmtMK).join(', ')}`
       : '';
@@ -5236,7 +5256,7 @@ function renderWlb() {
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?'✅ Đạt (>10%)':'⚠️ Không đạt (≤10%)'}</div></div>`;
+      <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?`✅ Đạt (>${getWlbThreshold(selMk)}%)`:`⚠️ Không đạt (≤${getWlbThreshold(selMk)}%)`}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
     const projLbl = document.getElementById('wlbProjMonthLabel');
@@ -5396,8 +5416,8 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, coOT)}</td>
-          <td>${wlbBadge(v)}</td></tr>`);
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mk)}">${wlbDisplayWithWarn(v, coOT)}</td>
+          <td>${wlbBadge(v,mk)}</td></tr>`);
       }
       // Dòng từng phòng ban
       allDepts.forEach(d => {
@@ -5411,8 +5431,8 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, ot)}</td>
-          <td>${wlbBadge(v)}</td></tr>`);
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mk)}">${wlbDisplayWithWarn(v, ot)}</td>
+          <td>${wlbBadge(v,mk)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNum = parseInt(mk.split('-')[1], 10);
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
@@ -5437,7 +5457,7 @@ function renderWlb() {
     const empLabelM = document.getElementById('wlbEmpMonthLabel');
     if (empLabelM) empLabelM.textContent = selMk ? `— ${fmtMK(selMk)}` : '';
     const empRowsM = selMk ? buildEmployeeWlbRows([selMk], empDeptSelM?.value, document.getElementById('wlbEmpMonthSearch')?.value) : [];
-    renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', empRowsM);
+    renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', empRowsM, selMk);
 
   } else {
     // ── TAB QUARTER — WLB tính theo Quý kiểu CHỒNG LẤP 3 tháng liên tiếp (KHÔNG phải quý lịch
@@ -5571,8 +5591,8 @@ function renderWlb() {
           <td style="font-weight:600">🏢 Toàn công ty</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, coOT)}</td>
-          <td>${wlbBadge(v)}</td></tr>`);
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mks[mks.length-1])}">${wlbDisplayWithWarn(v, coOT)}</td>
+          <td>${wlbBadge(v,mks[mks.length-1])}</td></tr>`);
       }
       // Dòng từng phòng ban
       allDepts.forEach(d => {
@@ -5587,8 +5607,8 @@ function renderWlb() {
           <td>${d}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${ot}h</td>
           <td style="font-family:var(--font-mono)">${off}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v)}">${wlbDisplayWithWarn(v, ot)}</td>
-          <td>${wlbBadge(v)}</td></tr>`);
+          <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mks[mks.length-1])}">${wlbDisplayWithWarn(v, ot)}</td>
+          <td>${wlbBadge(v,mks[mks.length-1])}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
@@ -5612,7 +5632,8 @@ function renderWlb() {
     const empLabelQ = document.getElementById('wlbEmpQtrLabel');
     if (empLabelQ) empLabelQ.textContent = selQk ? `— ${qLabel[selQk]}` : '';
     const empRowsQ = selQk ? buildEmployeeWlbRows(qMks(selQk), empDeptSelQ?.value, document.getElementById('wlbEmpQtrSearch')?.value) : [];
-    renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', empRowsQ);
+    const qMksArrQ = selQk ? qMks(selQk) : [];
+    renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', empRowsQ, qMksArrQ[qMksArrQ.length-1]);
   }
 }
 
