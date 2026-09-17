@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.57';
+const APP_VERSION = '2026.58';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -201,6 +201,12 @@ Chart.register({
   afterDatasetsDraw(chart) {
     if (chart.config.type === 'pie' || chart.config.type === 'doughnut') return;
     const { ctx } = chart;
+    // Nếu chart đã CHỦ ĐỘNG bật barValueLabelsPlugin (on:true) thì plugin đó đã tự vẽ số cho các
+    // dataset dạng CỘT rồi (theo đúng style/vị trí đã test kỹ trước đây) — valueLabelsPlugin ở đây chỉ
+    // nên vẽ thêm cho dataset dạng ĐƯỜNG (line) trong cùng chart đó (barValueLabelsPlugin không vẽ line),
+    // tránh 2 lớp số chồng lên nhau trên cùng 1 cột.
+    const bvl = chart.options.plugins && chart.options.plugins.barValueLabels;
+    const skipBars = !!(bvl && bvl.on === true);
     const realDatasets = chart.data.datasets.map((d,i)=>({d,i})).filter(({d}) => !d.borderDash);
     const lineIdx = realDatasets.filter(({d}) => (d.type||chart.config.type)==='line');
     const barIdx  = realDatasets.filter(({d}) => (d.type||chart.config.type)==='bar');
@@ -211,6 +217,7 @@ Chart.register({
       // Bỏ qua dataset kiểu "đường ngưỡng" (borderDash) — chỉ là đường tham chiếu, không cần in số.
       if (dataset.borderDash) return;
       const dsType = dataset.type || chart.config.type;
+      if (skipBars && dsType === 'bar') return; // đã có barValueLabelsPlugin lo phần cột của chart này
       const groupIdx = dsType === 'line' ? lineIdx : barIdx;
       const posInGroup = groupIdx.findIndex(x => x.i === dsIndex);
       const yOffset = 6 + Math.max(0, posInGroup) * (fontSize + 3); // so le theo thứ tự trong nhóm cùng loại
@@ -251,7 +258,11 @@ const barValueLabelsPlugin = {
   id: 'barValueLabels',
   afterDatasetsDraw(chart) {
     const opts = chart.options.plugins && chart.options.plugins.barValueLabels;
-    if (!opts) return;
+    // QUAN TRỌNG: Chart.js tự động điền options.plugins.barValueLabels = {} cho MỌI chart ngay khi plugin
+    // này được Chart.register() global — kể cả chart không hề khai báo dùng nó. Nếu chỉ check "!opts" thì
+    // luôn là false (vì {} là truthy) → plugin này sẽ vẽ số đè lên TẤT CẢ cột ở TẤT CẢ biểu đồ, chồng lên
+    // số của valueLabelsPlugin. Bắt buộc phải có cờ on:true tường minh mới cho vẽ.
+    if (!opts || opts.on !== true) return;
     const { ctx } = chart;
     const suffix = opts.suffix || '';
     const showZero = !!opts.showZero;
@@ -312,7 +323,8 @@ const deptGroupBandsPlugin = {
   id: 'deptGroupBands',
   beforeDatasetsDraw(chart) {
     const opts = chart.options.plugins && chart.options.plugins.deptGroupBands;
-    if (!opts) return;
+    // Cùng vấn đề với barValueLabelsPlugin: Chart.js tự điền {} cho mọi chart, nên bắt buộc cờ on:true.
+    if (!opts || opts.on !== true) return;
     const x = chart.scales.x;
     const { ctx, chartArea, data } = chart;
     if (!x || !chartArea || !data.labels?.length) return;
@@ -333,7 +345,7 @@ const deptGroupBandsPlugin = {
   },
   afterDatasetsDraw(chart) {
     const opts = chart.options.plugins && chart.options.plugins.deptGroupBands;
-    if (!opts) return;
+    if (!opts || opts.on !== true) return;
     const x = chart.scales.x;
     const { ctx, chartArea, data } = chart;
     if (!x || !chartArea || !data.labels?.length) return;
@@ -361,7 +373,9 @@ const pieLeaderLabelsPlugin = {
   id: 'pieLeaderLabels',
   afterDraw(chart) {
     const opts = chart.options.plugins && chart.options.plugins.pieLeaderLabels;
-    if (!opts) return;
+    // Cùng vấn đề: Chart.js tự điền {} cho mọi chart. Dùng formatLabel (luôn được truyền khi thật sự bật
+    // tính năng này) làm điều kiện, thay vì chỉ check "!opts".
+    if (!opts || typeof opts.formatLabel !== 'function') return;
     const meta = chart.getDatasetMeta(0);
     if (!meta || !meta.data.length) return;
     const dataset = chart.data.datasets[0];
@@ -1670,7 +1684,7 @@ function renderDashLimitPctChart(totals, periodLabel) {
       ] },
     options: { responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ top:22, right:8, bottom:4, left:4 } },
-      plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+      plugins:{ legend:{display:false}, barValueLabels:{on:true, suffix:'h' },
         tooltip:{ callbacks:{ label:c=>{
           const h = c.raw;
           const note = h>70 ? ' — vượt mức Chi trả (70h)' : ' — vượt mức KPI (45h)';
@@ -1718,7 +1732,7 @@ function renderDashOverBarChart(totals) {
       datasets: [{ data: over.map(t => t.total), backgroundColor: '#C0392B', borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
-      plugins: { legend: { display: false }, barValueLabels: { suffix: 'h' },
+      plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: 'h' },
         tooltip: { callbacks: { label: c => ` ${c.raw}h · ${over[c.dataIndex]?.name}` } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
@@ -1773,7 +1787,7 @@ function renderDashProjectBarChart(totals) {
       datasets: [{ data: entries.map(e => e.total), backgroundColor: '#2D6CDF', borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
-      plugins: { legend: { display: false }, barValueLabels: { suffix: 'h' },
+      plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: 'h' },
         tooltip: { callbacks: { label: c => ` ${c.raw}h` } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
@@ -1826,7 +1840,7 @@ function renderNightOtFreqChart(deptFilter, periodIdx) {
            datasets:[{ data: rows.map(r=>r.count), backgroundColor:'#6B4FA0', borderWidth:0, borderRadius:4, label:'Số ngày OT sau 22h' }] },
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:36, top:4, bottom:4, left:4 } },
-      plugins:{ legend:{display:false}, barValueLabels:{suffix:' ngày'},
+      plugins:{ legend:{display:false}, barValueLabels:{on:true,suffix:' ngày'},
         tooltip:{ callbacks:{ label:c => ` ${rows[c.dataIndex].count} ngày · tổng ${rows[c.dataIndex].hours}h` } } },
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:11}, stepSize:1},
@@ -1948,7 +1962,7 @@ function renderBarChart(totals, showAll = false) {
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:c=>` ${c.raw}h · ${displayList[c.dataIndex]?.name}`}},
-        barValueLabels:{ suffix:'h' }
+        barValueLabels:{on:true, suffix:'h' }
       },
       scales:{
         x:{grid:{display:false}, ticks:{font:{size:11},autoSkip:false,maxRotation:20}},
@@ -2102,7 +2116,7 @@ function renderTrendPeriodChart(deptFilter, periodIdx) {
            datasets:[{data, backgroundColor:cols, borderWidth:0, borderRadius:4, label:'OT (h)'}]},
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:44, top:10, bottom:4, left:4 } },
-      plugins:{legend:{display:false}, barValueLabels:{suffix:'h'},
+      plugins:{legend:{display:false}, barValueLabels:{on:true,suffix:'h'},
         tooltip:{callbacks:{label:c=>` ${c.raw}h`}}},
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:11}},
@@ -2357,7 +2371,7 @@ function renderDept() {
     data:{ labels: deptStats.map(d=>d.name),
            datasets:[{data:deptStats.map(d=>d.total), backgroundColor:deptStats.map(d=>d.color), borderWidth:0, borderRadius:5, label:'Tổng giờ OT'}]},
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:10,left:6,bottom:6}},
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw}h tổng luỹ kế`}}, barValueLabels:{suffix:'h'}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw}h tổng luỹ kế`}}, barValueLabels:{on:true,suffix:'h'}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, suggestedMax: Math.ceil(deptAvgMax*1.18)}}}});
 
@@ -2385,7 +2399,7 @@ function renderDept() {
       options:{
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
         layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
-        plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => ` ${c.raw}% nhân viên vượt 70h`}}, barValueLabels:{ suffix:'%' }},
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => ` ${c.raw}% nhân viên vượt 70h`}}, barValueLabels:{on:true, suffix:'%' }},
         scales:{
           x:{ grid:{color:'rgba(128,128,128,0.1)'}, ticks:{font:{size:10}}, max:100 },
           y:{ grid:{display:false}, ticks:{font:{size:11}} }
@@ -2543,8 +2557,8 @@ function renderCompareWeek() {
         }
       },
       plugins:{
-        deptGroupBands:{},
-        barValueLabels:{ showZero:true, fontSize:9, suffix:'' },
+        deptGroupBands:{on:true,},
+        barValueLabels:{on:true, showZero:true, fontSize:9, suffix:'' },
         legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10,
           generateLabels: chart => periods.map((p,i)=>({
             text: weekLabels[i], fillStyle: WEEK_COLORS[i%WEEK_COLORS.length],
@@ -2586,7 +2600,7 @@ function renderCompareWeek() {
       responsive:true, maintainAspectRatio:false,
       plugins:{
         legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10}},
-        barValueLabels:{ suffix:'' },
+        barValueLabels:{on:true, suffix:'' },
         tooltip:{callbacks:{
           title: items => periods[items[0].dataIndex]?.label || '',
           label:c=>` ${c.dataset.label}: ${c.raw}h`
@@ -2694,7 +2708,7 @@ function renderCompareMonth() {
     }] },
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
-      plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+      plugins:{ legend:{display:false}, barValueLabels:{on:true, suffix:'h' },
         tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
@@ -2757,7 +2771,7 @@ function renderCompareMonth() {
         backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
         layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
-        plugins:{legend:{display:false}, barValueLabels:{},
+        plugins:{legend:{display:false}, barValueLabels:{on:true,},
           tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
         scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
                    min:0, max: Math.ceil(riskMax * 1.25)},
@@ -2908,7 +2922,7 @@ function renderCompareQuarter() {
         backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Tháng vượt'}]},
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
         layout:{ padding:{ right:34, top:4, bottom:4, left:4 } },
-        plugins:{legend:{display:false}, barValueLabels:{},
+        plugins:{legend:{display:false}, barValueLabels:{on:true,},
           tooltip:{callbacks:{label:c=>` ${c.raw} tháng vượt 70h`}}},
         scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
                    suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count)) * 1.25)},
@@ -4758,7 +4772,7 @@ function renderGenericProjectBarChart(store, killFn, chartId, canvasEl, emptyEl,
       datasets: [{ data: entries.map(e => e.value), backgroundColor: color || '#2D6CDF', borderWidth: 0, borderRadius: 3 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
-      plugins: { legend: { display: false }, barValueLabels: { suffix: unitSuffix || '' },
+      plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: unitSuffix || '' },
         tooltip: { callbacks: { label: c => ` ${c.raw}${unitSuffix||''}` } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
@@ -5196,7 +5210,7 @@ function renderWlb() {
   const barOpts = (yTitle) => ({
     responsive:true, maintainAspectRatio:false, layout:{padding:{top:24,right:12}},
     plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:8}},
-      barValueLabels:{},
+      barValueLabels:{on:true,},
       tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}} },
     scales:{
       x:{grid:{display:false}, ticks:{font:{size:10}}},
@@ -5277,7 +5291,7 @@ function renderWlb() {
         }] },
         options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
           layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
-          plugins:{ legend:{display:false}, barValueLabels:{ suffix:'h' },
+          plugins:{ legend:{display:false}, barValueLabels:{on:true, suffix:'h' },
             tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
           scales:{
             x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
@@ -6122,7 +6136,7 @@ function renderLateQuarter() {
       ] },
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:14,left:6,bottom:6}},
       plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10}},
-        barValueLabels:{},
+        barValueLabels:{on:true,},
         tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw} lần` } } },
       scales:{ x:{ grid:{display:false}, ticks:{ font:{size:10} } },
                y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10}, stepSize:1 },
@@ -6150,7 +6164,7 @@ function renderLateQuarter() {
       ] },
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:14,left:6,bottom:6}},
       plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10}},
-        barValueLabels:{},
+        barValueLabels:{on:true,},
         tooltip:{ callbacks:{ label:c=>` ${c.dataset.label}: ${c.raw} phút` } } },
       scales:{ x:{ grid:{display:false}, ticks:{ font:{size:10} } },
                y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{ font:{size:10} },
@@ -6176,7 +6190,7 @@ function renderLateQuarter() {
     data:{ labels:risk.map(x=>x.name), datasets:[{data:risk.map(x=>x.count),
       backgroundColor:'#C0392B', borderWidth:0, borderRadius:3, label:'Lượt ≥30p'}]},
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{top:6,right:38,left:6,bottom:6}},
-      plugins:{legend:{display:false}, barValueLabels:{},
+      plugins:{legend:{display:false}, barValueLabels:{on:true,},
         tooltip:{callbacks:{label:c=>` ${c.raw} lượt ≥30p (cần xin phép)`}}},
       scales:{x:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10},stepSize:1},
                  suggestedMax: Math.ceil(Math.max(1, ...risk.map(x=>x.count))*1.2)},
