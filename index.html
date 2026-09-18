@@ -239,8 +239,8 @@
         <option value="__all__">Tất cả phòng ban</option>
       </select>
       <div class="tab-pill">
-        <button id="dashTabWeek"  class="wbtn active" onclick="setDashTab('week')"  style="font-size:12px;padding:5px 14px">Theo tuần</button>
-        <button id="dashTabMonth" class="wbtn"        onclick="setDashTab('month')" style="font-size:12px;padding:5px 14px">Theo tháng</button>
+        <button id="dashTabWeek"  class="wbtn active" onclick="setDashTab('week')"  style="font-size:12px;padding:5px 14px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
+        <button id="dashTabMonth" class="wbtn"        onclick="setDashTab('month')" style="font-size:12px;padding:5px 14px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
       </div>
     </div>
   </div>
@@ -345,8 +345,8 @@
         <option value="__all__">Tất cả phòng ban</option>
       </select>
       <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
-        <button id="empTabWeek"  class="wbtn" onclick="setEmpTab('week')"  style="font-size:12px;padding:5px 12px">Theo tuần</button>
-        <button id="empTabMonth" class="wbtn active" onclick="setEmpTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng</button>
+        <button id="empTabWeek"  class="wbtn" onclick="setEmpTab('week')"  style="font-size:12px;padding:5px 12px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
+        <button id="empTabMonth" class="wbtn active" onclick="setEmpTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
       </div>
     </div>
   </div>
@@ -367,7 +367,7 @@
       </select>
       <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
     </div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:6px">💡 Bấm vào tên nhân viên để xem chi tiết OT theo từng ngày trong tháng.</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:6px">💡 Bấm vào tên nhân viên để xem chi tiết OT theo từng ngày trong tháng. <i style="opacity:.75">/ Click an employee's name to see their daily OT breakdown for the month.</i></div>
     <div class="tbl-wrap">
       <table><thead id="dtHead"></thead><tbody id="dtBody"></tbody></table>
     </div>
@@ -377,19 +377,19 @@
 <!-- ====== PHÒNG BAN ====== -->
 <div class="pg" id="pg-dept">
   <div class="dept-bar">
-    <label>Phòng ban:</label>
-    <select id="deptSel" onchange="renderDept()"><option value="__all__">Tất cả</option></select>
-    <label>Tháng:</label>
+    <label>Phòng ban: <i style="font-weight:400;opacity:.65;font-size:11px">Dept</i></label>
+    <select id="deptSel" onchange="renderDept()"><option value="__all__">Tất cả / All</option></select>
+    <label>Tháng: <i style="font-weight:400;opacity:.65;font-size:11px">Month</i></label>
     <select id="deptMonthSel" onchange="renderDept()"></select>
     <!-- sub-tab: week vs month -->
     <div style="margin-left:auto;display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
-      <button id="deptTabWeek" class="wbtn active" onclick="setDeptTab('week')" style="font-size:12px;padding:5px 12px">Theo tuần</button>
-      <button id="deptTabMonth" class="wbtn" onclick="setDeptTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng</button>
+      <button id="deptTabWeek" class="wbtn active" onclick="setDeptTab('week')" style="font-size:12px;padding:5px 12px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
+      <button id="deptTabMonth" class="wbtn" onclick="setDeptTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
     </div>
   </div>
   <!-- Week view: show period selector -->
   <div id="deptWeekBar" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-    <label style="font-size:12px;color:var(--text2)">Tuần:</label>
+    <label style="font-size:12px;color:var(--text2)">Tuần: <i style="opacity:.7">Week</i></label>
     <div id="deptPeriodBtns" style="display:flex;gap:5px;flex-wrap:wrap"></div>
   </div>
   <div class="metrics" id="deptMetrics"></div>
@@ -605,7 +605,7 @@
 
   <div class="card">
     <div class="card-title">Tổng số phút đi trễ &amp; Số lần đi trễ — theo phòng ban (2 mốc)<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Total Late Minutes &amp; Count — by Department (2 tiers)</i></div>
-    <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Cột = tổng số phút đi trễ (trục trái) · Đường = số lần đi trễ (trục phải)</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">Cột = tổng số phút đi trễ (trục trái) · Đường = số lần đi trễ (trục phải) <i style="opacity:.75">/ Bar = total late minutes (left axis) · Line = number of late occurrences (right axis)</i></div>
     <div class="legend">
       <span><span class="ldot" style="background:#2D6CDF"></span>Phút — Mốc 1 (&lt;15p)</span>
       <span><span class="ldot" style="background:#C0392B"></span>Phút — Mốc 2 (≥30p, cần xin phép)</span>
@@ -828,13 +828,13 @@
     <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px" id="planEditProjName">Tên dự án</div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:16px" id="planEditProjMeta">Số NV: — · Tháng: —</div>
 
-    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Tên PM / Quản lý</label>
+    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Tên PM / Quản lý <i style="font-weight:400;opacity:.65">/ PM Name</i></label>
     <input id="planEditPm" type="text" placeholder="Tên PM..." style="width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:14px">
 
-    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Lý do</label>
+    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Lý do <i style="font-weight:400;opacity:.65">/ Reason</i></label>
     <textarea id="planEditReason" rows="3" placeholder="Lý do..." style="width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:14px;resize:vertical;font-family:inherit"></textarea>
 
-    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Kế hoạch tháng tiếp theo</label>
+    <label style="font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">Kế hoạch tháng tiếp theo <i style="font-weight:400;opacity:.65">/ Plan for next month</i></label>
     <textarea id="planEditPlan" rows="3" placeholder="Kế hoạch tháng tiếp theo..." style="width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:18px;resize:vertical;font-family:inherit"></textarea>
 
     <div style="display:flex;gap:8px">
@@ -957,7 +957,7 @@
       Sau khi Update data tuần mới (Tải lên Sheet), bấm nút bên dưới để gửi email thông báo tới các Anh/Chị quản lý — nội dung tự điền theo tuần dữ liệu mới nhất.
     </div>
     <div style="margin-bottom:10px">
-      <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:5px">Email người nhận (cách nhau bằng dấu phẩy)</label>
+      <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:5px">Email người nhận (cách nhau bằng dấu phẩy) <i style="opacity:.7">/ Recipient emails (comma-separated)</i></label>
       <textarea id="notifyRecipients" rows="2" placeholder="vd: anh.a@taikisha-vn.com, chi.b@taikisha-vn.com" style="width:100%;font-size:12.5px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius);font-family:inherit;resize:vertical" oninput="saveNotifyRecipients()"></textarea>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;font-size:11.5px">
@@ -1058,11 +1058,11 @@
     </div>
     <div class="action-row">
       <div>
-        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Tháng (cho Tổng quan/Phòng ban/So sánh)</label>
+        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Tháng (cho Tổng quan/Phòng ban/So sánh) <i style="opacity:.7">/ Month (for Overview/Dept/Compare)</i></label>
         <select id="reportMonthSel" style="min-width:170px"></select>
       </div>
       <div>
-        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Quý (cho WLB)</label>
+        <label style="font-size:11.5px;color:var(--text2);display:block;margin-bottom:4px">Quý (cho WLB) <i style="opacity:.7">/ Quarter (for WLB)</i></label>
         <select id="reportQuarterSel" style="min-width:220px"></select>
       </div>
     </div>
