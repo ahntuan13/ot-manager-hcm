@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.58';
+const APP_VERSION = '2026.59';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -211,28 +211,27 @@ Chart.register({
     const lineIdx = realDatasets.filter(({d}) => (d.type||chart.config.type)==='line');
     const barIdx  = realDatasets.filter(({d}) => (d.type||chart.config.type)==='bar');
     const fontSize = realDatasets.length > 3 ? 9 : 10;
+
+    // ── Phần CỘT: giữ nguyên cách cũ (mỗi cột 1 vị trí cố định, so le theo thứ tự dataset) ──
     chart.data.datasets.forEach((dataset, dsIndex) => {
+      const dsType = dataset.type || chart.config.type;
+      if (dsType !== 'bar') return;
+      if (skipBars) return; // đã có barValueLabelsPlugin lo phần cột của chart này
       const meta = chart.getDatasetMeta(dsIndex);
       if (meta.hidden || !meta.data || meta.data.length > 25) return;
-      // Bỏ qua dataset kiểu "đường ngưỡng" (borderDash) — chỉ là đường tham chiếu, không cần in số.
       if (dataset.borderDash) return;
-      const dsType = dataset.type || chart.config.type;
-      if (skipBars && dsType === 'bar') return; // đã có barValueLabelsPlugin lo phần cột của chart này
-      const groupIdx = dsType === 'line' ? lineIdx : barIdx;
-      const posInGroup = groupIdx.findIndex(x => x.i === dsIndex);
-      const yOffset = 6 + Math.max(0, posInGroup) * (fontSize + 3); // so le theo thứ tự trong nhóm cùng loại
+      const posInGroup = barIdx.findIndex(x => x.i === dsIndex);
+      const yOffset = 6 + Math.max(0, posInGroup) * (fontSize + 3);
       ctx.save();
       ctx.font = `600 ${fontSize}px Inter, sans-serif`;
-      ctx.textAlign = 'center';
       ctx.fillStyle = dataset.borderColor || dataset.backgroundColor || '#5A5348';
       meta.data.forEach((el, i) => {
         const raw = dataset.data[i];
         if (raw === null || raw === undefined) return;
-        const value = typeof raw === 'object' ? raw.y : raw; // hỗ trợ cả dữ liệu dạng {x,y}
+        const value = typeof raw === 'object' ? raw.y : raw;
         if (value === null || value === undefined || value === 0) return;
         const pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
-        const isBar = dsType === 'bar';
-        const isHorizontal = isBar && chart.options.indexAxis === 'y';
+        const isHorizontal = chart.options.indexAxis === 'y';
         const label = Number.isInteger(value) ? String(value) : value.toFixed(1);
         if (isHorizontal) {
           ctx.textAlign = 'left';
@@ -244,6 +243,49 @@ Chart.register({
       });
       ctx.restore();
     });
+
+    // ── Phần ĐƯỜNG: xử lý riêng theo TỪNG MỐC (index i) — sắp label theo vị trí pixel Y
+    // THỰC TẾ (trên xuống dưới) rồi đẩy giãn ra khi 2 đường có giá trị gần nhau, thay vì so le
+    // cứng theo thứ tự dataset như trước (cách cũ không biết đường nào đang ở gần đường nào tại
+    // từng mốc cụ thể → vẫn chồng chữ khi nhiều phòng ban có số liệu sát nhau, ví dụ chart "Xu
+    // hướng OT theo tuần" khi nhiều phòng ban nhỏ dồn cục gần đáy).
+    if (lineIdx.length) {
+      const nPoints = chart.data.labels?.length || 0;
+      const minGap = fontSize + 4;
+      for (let i = 0; i < nPoints; i++) {
+        const entries = [];
+        lineIdx.forEach(({ d: dataset, i: dsIndex }) => {
+          const meta = chart.getDatasetMeta(dsIndex);
+          if (meta.hidden || !meta.data || meta.data.length > 25 || i >= meta.data.length) return;
+          const raw = dataset.data[i];
+          if (raw === null || raw === undefined) return;
+          const value = typeof raw === 'object' ? raw.y : raw;
+          if (value === null || value === undefined || value === 0) return;
+          const el = meta.data[i];
+          if (!el) return;
+          const pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+          entries.push({ pos, value, color: dataset.borderColor || dataset.backgroundColor || '#5A5348' });
+        });
+        if (!entries.length) continue;
+        entries.sort((a, b) => a.pos.y - b.pos.y); // trên xuống dưới theo pixel thực tế
+        let prevDrawY = null;
+        entries.forEach(entry => {
+          let drawY = entry.pos.y - 6;
+          if (prevDrawY !== null && drawY < prevDrawY + minGap) drawY = prevDrawY + minGap;
+          prevDrawY = drawY;
+          entry.drawY = drawY;
+        });
+        ctx.save();
+        ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        entries.forEach(entry => {
+          const label = Number.isInteger(entry.value) ? String(entry.value) : entry.value.toFixed(1);
+          ctx.fillStyle = entry.color;
+          ctx.fillText(label, entry.pos.x, entry.drawY);
+        });
+        ctx.restore();
+      }
+    }
   }
 });
 
@@ -1068,7 +1110,7 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
 
 function updateSelects() {
   const depts = getAllDepts();
-  const opts = '<option value="__all__">Tất cả phòng ban</option>' +
+  const opts = '<option value="__all__">Tất cả phòng ban / All depts</option>' +
     depts.map(d => `<option value="${d}">${d}</option>`).join('');
   document.getElementById('deptFilterDash').innerHTML = opts;
   document.getElementById('deptSel').innerHTML = opts;
@@ -1894,26 +1936,42 @@ function renderDashDeptLineChart() {
 
   CH['cDashDeptLine'] = new Chart(document.getElementById('cDashDeptLine'), {
     type:'line',
-    data:{ labels: shortLabels, datasets: allDepts.map((d,i) => ({
-      label: d,
-      data: weeklyByDept[i],
-      borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
-      tension:.35, borderWidth:2.5, pointRadius:5, pointHoverRadius:7, spanGaps:true
-    })) },
+    data:{ labels: shortLabels, datasets: allDepts.map((d,i) => {
+      const isBig = d === 'HCM-EC';
+      return {
+        label: d,
+        data: weeklyByDept[i],
+        borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
+        tension:.35, borderWidth: isBig?2.5:2, pointRadius: isBig?5:4, pointHoverRadius:7, spanGaps:true,
+        yAxisID: isBig ? 'yBig' : 'ySmall'
+      };
+    }) },
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{display:false},
         tooltip:{ callbacks:{
           title: items => periods[items[0].dataIndex]?.label || '',
           label:c=>` ${c.dataset.label}: ${c.raw}h (tuần này)`
         } } },
-      scales:{ x:{ grid:{display:false}, ticks:{font:{size:11}} },
-               y:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}},
-                   title:{display:true, text:'Tổng OT phát sinh trong tuần (h)', font:{size:10},
-                     // Canvas KHÔNG hiểu cú pháp CSS "var(--xxx)" — phải resolve ra màu thật (hex) trước khi
-                     // truyền vào Chart.js, nếu không plugin vẽ text/tiêu đề trục sẽ âm thầm lỗi (không throw,
-                     // chỉ không vẽ được) — đây từng là nguyên nhân y hệt gây lỗi viền đen ở biểu đồ tròn trước đó.
-                     color: getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280'
-                   } } } }
+      // Tách 2 trục: HCM-EC (số rất lớn, hàng nghìn h) dùng trục trái riêng; các phòng ban còn lại
+      // (số nhỏ hơn nhiều — hàng chục/trăm h) dùng trục phải riêng với thang PHÓNG TO theo đúng dữ
+      // liệu của nhóm này — tránh bị HCM-EC kéo giãn thang chung khiến các đường nhỏ dồn cục ở đáy,
+      // nhìn không rõ và số bị chồng lên nhau.
+      scales: (() => {
+        const bigMax = Math.max(10, ...weeklyByDept.filter((_,i)=>allDepts[i]==='HCM-EC').flat(), 0) * 1.15;
+        const smallVals = weeklyByDept.filter((_,i)=>allDepts[i]!=='HCM-EC').flat();
+        const smallMax = Math.max(10, ...smallVals, 0) * 1.2;
+        return {
+          x:{ grid:{display:false}, ticks:{font:{size:11}} },
+          yBig:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, position:'left', min:0, max: bigMax,
+                 title:{display:true, text:'HCM-EC (h)', font:{size:10},
+                   color: DEPT_COLORS[allDepts.indexOf('HCM-EC')%DEPT_COLORS.length] || '#2D6CDF' } },
+          ySmall:{ type:'logarithmic', grid:{display:false}, position:'right', min:1, max: Math.ceil(smallMax),
+                 ticks:{font:{size:10}, callback:v=>[1,5,10,25,50,100,250,500,1000,2500].includes(v)?v:null},
+                 title:{display:true, text:'Các phòng ban khác (h) / Other depts (h)', font:{size:10},
+                   color: getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280' } }
+        };
+      })()
+    }
   });
 }
 
@@ -2409,7 +2467,7 @@ function renderDept() {
   }
 
   const showDept = dSel === '__all__' ? null : dSel;
-  document.getElementById('deptTableTitle').textContent = `${showDept || 'Tất cả phòng ban'} — ${periodLabel}`;
+  document.getElementById('deptTableTitle').textContent = `${showDept || 'Tất cả phòng ban / All depts'} — ${periodLabel}`;
   // Bảng phòng ban: hiển thị tổng hợp theo phòng ban (không list từng NV), kèm nút Chi tiết
   document.getElementById('deptTHead').innerHTML =
     `<tr><th>Phòng ban</th><th>Số NV</th><th>Tổng OT (h)</th><th>Vượt 70h</th><th></th></tr>`;
@@ -2617,7 +2675,7 @@ function renderCompareWeek() {
   // Table — cùng số liệu với 2 chart
   const weekBoxId = 'cmpProjBox_week';
   document.getElementById('periodTHead').innerHTML =
-    `<tr><th>Tuần</th>${allDepts.map(d=>`<th>${d}${d==='HCM-EC'?projectExpandButtonHtml(weekBoxId):''}</th>`).join('')}<th>Tổng công ty</th></tr>`;
+    `<tr><th>Tuần<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Week</i></th>${allDepts.map(d=>`<th>${d}${d==='HCM-EC'?projectExpandButtonHtml(weekBoxId):''}</th>`).join('')}<th>Tổng công ty</th></tr>`;
   const periodRowsHtml = periods.map((p,pi) => {
     const deptCells = deptWeekMatrix[pi].map(val =>
       `<td style="font-family:var(--font-mono)">${val}h</td>`
@@ -2718,29 +2776,39 @@ function renderCompareMonth() {
   });
 
   // Line theo phòng ban: dùng 0 thay null để tránh Chart.js vẽ trống khi spanGaps + layout 0px
-  const deptSeriesMax = [];
   const deptDatasets = allDepts.map((d,i) => {
+    const isBig = d === 'HCM-EC';
     const data = keys.map(mk => {
       const nvs  = DB[mk].depts?.[d] || [];
       const tots = nvs.map(n => (DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0));
-      const v = tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*10)/10 : 0;
-      deptSeriesMax.push(v);
-      return v;
+      return tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*10)/10 : 0;
     });
     return {
       label: d, data,
       borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
-      tension:.35, borderWidth:2, pointRadius:4, spanGaps:true
+      tension:.35, borderWidth: isBig?2.5:2, pointRadius: isBig?5:4, spanGaps:true,
+      yAxisID: isBig ? 'yBig' : 'ySmall'
     };
   });
+  // Tách trục: HCM-EC (số rất lớn) dùng trục trái riêng, các phòng ban còn lại dùng trục phải
+  // riêng với thang phóng to theo đúng dữ liệu của nhóm này (xem giải thích ở cDashDeptLine).
+  const bigVals = deptDatasets.filter(d=>d.yAxisID==='yBig').flatMap(d=>d.data);
+  const smallVals = deptDatasets.filter(d=>d.yAxisID==='ySmall').flatMap(d=>d.data);
   safeMakeChart(CH, killChart, 'cCmpDept', document.getElementById('cCmpDept'), {
     type:'line',
     data:{ labels: monthLabels, datasets: deptDatasets },
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
-              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, min:0,
-                 max: Math.max(10, ...deptSeriesMax, 0) * 1.15}}}
+              yBig:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, position:'left', min:0,
+                 max: Math.max(10, ...bigVals, 0) * 1.15,
+                 title:{display:true, text:'HCM-EC (h)', font:{size:10},
+                   color: DEPT_COLORS[allDepts.indexOf('HCM-EC')%DEPT_COLORS.length] || '#2D6CDF'}},
+              ySmall:{type:'logarithmic', grid:{display:false}, position:'right', min:1,
+                 max: Math.ceil(Math.max(10, ...smallVals, 0) * 1.2),
+                 ticks:{font:{size:10}, callback:v=>[1,5,10,25,50,100,250,500,1000,2500].includes(v)?v:null},
+                 title:{display:true, text:'Phòng ban khác (h) / Other depts (h)', font:{size:10},
+                   color: getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280'}}}}
   });
 
   const allNVs = [...new Set(keys.flatMap(mk=>DB[mk].names))];
@@ -2780,7 +2848,7 @@ function renderCompareMonth() {
   }
 
   document.getElementById('cmpTHead').innerHTML =
-    '<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng NV</th><th>Vượt 70h</th><th>Bình thường</th><th>Tổng OT</th></tr>';
+    '<tr><th>Tháng<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Month</i></th><th>Phòng ban</th><th>Tổng NV</th><th>Vượt 70h</th><th>Bình thường</th><th>Tổng OT</th></tr>';
   const cmpRows = [];
   keys.forEach(mk => {
     const allD = Object.keys(DB[mk].depts||{}).sort();
@@ -2878,9 +2946,9 @@ function renderCompareQuarter() {
     allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
 
   killChart('cQtrDept');
-  CH['cQtrDept'] = new Chart(document.getElementById('cQtrDept'), {
-    type:'line',
-    data:{ labels: qKeys.map(fmtQK), datasets: allDepts.map((d,i) => ({
+  const qtrDeptDatasets = allDepts.map((d,i) => {
+    const isBig = d === 'HCM-EC';
+    return {
       label: d,
       data: qKeys.map(qk => {
         const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
@@ -2892,11 +2960,28 @@ function renderCompareQuarter() {
         return monthlyTotals.length ? Math.round(monthlyTotals.reduce((a,b)=>a+b,0)*10)/10 : null;
       }),
       borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
-      tension:.35, borderWidth:2, pointRadius:4, spanGaps:true }))},
+      tension:.35, borderWidth: isBig?2.5:2, pointRadius: isBig?5:4, spanGaps:true,
+      yAxisID: isBig ? 'yBig' : 'ySmall'
+    };
+  });
+  // Tách trục HCM-EC / phòng ban khác — cùng lý do như cDashDeptLine và cCmpDept ở trên.
+  const qtrBigVals = qtrDeptDatasets.filter(d=>d.yAxisID==='yBig').flatMap(d=>d.data.filter(v=>v!==null));
+  const qtrSmallVals = qtrDeptDatasets.filter(d=>d.yAxisID==='ySmall').flatMap(d=>d.data.filter(v=>v!==null));
+  CH['cQtrDept'] = new Chart(document.getElementById('cQtrDept'), {
+    type:'line',
+    data:{ labels: qKeys.map(fmtQK), datasets: qtrDeptDatasets },
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
-              y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}}}}});
+              yBig:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, position:'left', min:0,
+                 max: Math.max(10, ...qtrBigVals, 0) * 1.15,
+                 title:{display:true, text:'HCM-EC (h)', font:{size:10},
+                   color: DEPT_COLORS[allDepts.indexOf('HCM-EC')%DEPT_COLORS.length] || '#2D6CDF'}},
+              ySmall:{type:'logarithmic', grid:{display:false}, position:'right', min:1,
+                 max: Math.ceil(Math.max(10, ...qtrSmallVals, 0) * 1.2),
+                 ticks:{font:{size:10}, callback:v=>[1,5,10,25,50,100,250,500,1000,2500].includes(v)?v:null},
+                 title:{display:true, text:'Phòng ban khác (h) / Other depts (h)', font:{size:10},
+                   color: getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280'}}}}});
 
   // Nhân viên hay vượt mức nhất theo quý (số tháng vượt 70h trong quý đó, gộp các quý)
   const allNVs = [...new Set(keys.flatMap(mk => DB[mk].names))];
@@ -5401,7 +5486,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:4, spanGaps:true
             })),
-            { label:'Ngưỡng 10%', data:cmpMks.map(()=>THRESHOLD),
+            { label:`Ngưỡng ${THRESHOLD}%`, data:cmpMks.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -5415,7 +5500,7 @@ function renderWlb() {
     // Chỉ hiển thị các tháng ĐÃ CÓ ĐỦ dữ liệu Off Day upload (bỏ qua tháng chỉ có OT mà chưa
     // có Off Day, tránh hiện dòng "0 ngày nghỉ / 0 WLB / Đạt" gây hiểu lầm là đã đạt chuẩn).
     document.getElementById('wlbMonthTHead').innerHTML =
-      `<tr><th>Tháng</th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
+      `<tr><th>Tháng<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Month</i></th><th>Phòng ban</th><th>Tổng OT (h)</th><th>Off Day (ngày)</th><th>WLB = off÷OT</th><th>Kết quả</th></tr>`;
     const rows = [];
     // Đảo ngược thứ tự — tháng mới nhất (vừa update) nằm TRÊN CÙNG, theo đúng yêu cầu
     // (VD: Tháng 8 → Tháng 7 → Tháng 6...) thay vì cũ nhất lên đầu như trước.
@@ -5465,7 +5550,7 @@ function renderWlb() {
     const empDeptSelM = document.getElementById('wlbEmpMonthDept');
     if (empDeptSelM) {
       const prevD = empDeptSelM.value;
-      empDeptSelM.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' + allDepts.map(d=>`<option value="${d}">${d}</option>`).join('');
+      empDeptSelM.innerHTML = '<option value="__all__">Tất cả phòng ban / All depts</option>' + allDepts.map(d=>`<option value="${d}">${d}</option>`).join('');
       if ([...empDeptSelM.options].some(o=>o.value===prevD)) empDeptSelM.value = prevD;
     }
     const empLabelM = document.getElementById('wlbEmpMonthLabel');
@@ -5577,7 +5662,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng 10%', data:qKeys.map(()=>THRESHOLD),
+            { label:`Ngưỡng ${THRESHOLD}%`, data:qKeys.map(()=>THRESHOLD),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -5640,7 +5725,7 @@ function renderWlb() {
     const empDeptSelQ = document.getElementById('wlbEmpQtrDept');
     if (empDeptSelQ) {
       const prevD = empDeptSelQ.value;
-      empDeptSelQ.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' + allDepts.map(d=>`<option value="${d}">${d}</option>`).join('');
+      empDeptSelQ.innerHTML = '<option value="__all__">Tất cả phòng ban / All depts</option>' + allDepts.map(d=>`<option value="${d}">${d}</option>`).join('');
       if ([...empDeptSelQ.options].some(o=>o.value===prevD)) empDeptSelQ.value = prevD;
     }
     const empLabelQ = document.getElementById('wlbEmpQtrLabel');
@@ -5904,10 +5989,10 @@ function rebuildLateUI() {
 function updateLateSelects() {
   const keys = Object.keys(LATE_DB).sort();
   const sel = document.getElementById('lateDeptFilter');
-  sel.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' +
+  sel.innerHTML = '<option value="__all__">Tất cả phòng ban / All depts</option>' +
     LATE_DEPT_LIST.map(d=>`<option value="${d}">${d}</option>`).join('');
   const wSel = document.getElementById('lateWeekDeptFilter');
-  if (wSel) wSel.innerHTML = '<option value="__all__">Tất cả phòng ban</option>' +
+  if (wSel) wSel.innerHTML = '<option value="__all__">Tất cả phòng ban / All depts</option>' +
     LATE_DEPT_LIST.map(d=>`<option value="${d}">${d}</option>`).join('');
   const mSel = document.getElementById('lateMonthSel');
   if (!keys.length) { mSel.innerHTML = '<option>Chưa có dữ liệu</option>'; return; }
@@ -5954,11 +6039,11 @@ function renderLate() {
   const maxName = sortedByMin.length ? nvLabel(sortedByMin[0]) : '—';
 
   document.getElementById('lateMetrics').innerHTML = `
-    <div class="mc"><div class="ml">Nhân viên có đi trễ</div><div class="mv">${lateCnt}</div><div class="ms">/ ${cnt} NV · ${fmtMK(activeLateMK)}</div></div>
-    <div class="mc"><div class="ml">Mốc 1: &lt;15p</div><div class="mv">${t1CountTotal}</div><div class="ms">lượt · ${t1MinTotal} phút</div></div>
-    <div class="mc red"><div class="ml">Mốc 2: ≥30p</div><div class="mv">${t2CountTotal}</div><div class="ms">lượt · ${t2MinTotal} phút · cần xin phép</div></div>
-    <div class="mc"><div class="ml">Tổng số lần</div><div class="mv">${totalOccurrences}</div><div class="ms">${totalMinAll} phút tổng</div></div>
-    <div class="mc"><div class="ml">TB phút trễ</div><div class="mv">${avgMin}</div><div class="ms">mỗi NV / tháng</div></div>
+    <div class="mc"><div class="ml">Nhân viên có đi trễ<i style="font-weight:400;font-size:9.5px;color:var(--text3)"> / Employees late</i></div><div class="mv">${lateCnt}</div><div class="ms">/ ${cnt} NV · ${fmtMK(activeLateMK)}</div></div>
+    <div class="mc"><div class="ml">Mốc 1: &lt;15p<i style="font-weight:400;font-size:9.5px;color:var(--text3)"> / Tier 1: &lt;15 min</i></div><div class="mv">${t1CountTotal}</div><div class="ms">lượt · ${t1MinTotal} phút</div></div>
+    <div class="mc red"><div class="ml">Mốc 2: ≥30p<i style="font-weight:400;font-size:9.5px;color:var(--text3)"> / Tier 2: ≥30 min</i></div><div class="mv">${t2CountTotal}</div><div class="ms">lượt · ${t2MinTotal} phút · cần xin phép</div></div>
+    <div class="mc"><div class="ml">Tổng số lần<i style="font-weight:400;font-size:9.5px;color:var(--text3)"> / Total occurrences</i></div><div class="mv">${totalOccurrences}</div><div class="ms">${totalMinAll} phút tổng</div></div>
+    <div class="mc"><div class="ml">TB phút trễ<i style="font-weight:400;font-size:9.5px;color:var(--text3)"> / Avg late mins</i></div><div class="mv">${avgMin}</div><div class="ms">mỗi NV / tháng</div></div>
     <div class="mc ${max>120?'red':'amber'}"><div class="ml">Cao nhất</div><div class="mv">${max}</div><div class="ms">${maxName} (phút)</div></div>`;
 
   // ── Bảng tỷ lệ % phòng ban đi trễ — theo tháng ──
@@ -5998,14 +6083,14 @@ function renderLate() {
   CHL['cLateDeptCombo'] = new Chart(document.getElementById('cLateDeptCombo'), {
     data:{ labels: deptStatsCombo.map(d=>d.name),
       datasets:[
-        { type:'bar', label:'Phút — Mốc 1 (<15p)', data:deptStatsCombo.map(d=>d.t1Min),
+        { type:'bar', label:'Phút — Mốc 1 (<15p) / Late mins – Tier 1', data:deptStatsCombo.map(d=>d.t1Min),
           backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, yAxisID:'yMin', order:2 },
-        { type:'bar', label:'Phút — Mốc 2 (≥30p)', data:deptStatsCombo.map(d=>d.t2Min),
+        { type:'bar', label:'Phút — Mốc 2 (≥30p) / Late mins – Tier 2', data:deptStatsCombo.map(d=>d.t2Min),
           backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, yAxisID:'yMin', order:2 },
-        { type:'line', label:'Số lần — Mốc 1 (<15p)', data:deptStatsCombo.map(d=>d.t1Count),
+        { type:'line', label:'Số lần — Mốc 1 (<15p) / Late count – Tier 1', data:deptStatsCombo.map(d=>d.t1Count),
           borderColor:'#17A2B8', backgroundColor:'#17A2B8', borderWidth:2.5, pointRadius:5, pointHoverRadius:6,
           tension:.25, yAxisID:'yCount', order:1 },
-        { type:'line', label:'Số lần — Mốc 2 (≥30p)', data:deptStatsCombo.map(d=>d.t2Count),
+        { type:'line', label:'Số lần — Mốc 2 (≥30p) / Late count – Tier 2', data:deptStatsCombo.map(d=>d.t2Count),
           borderColor:'#E8890C', backgroundColor:'#E8890C', borderWidth:2.5, pointRadius:5, pointHoverRadius:6,
           tension:.25, yAxisID:'yCount', order:1 }
       ] },
@@ -6033,8 +6118,8 @@ function renderLate() {
       type:'bar',
       data:{ labels: topLate.map(t=>nvLabel(t)),
              datasets:[
-               { data:topLate.map(t=>t.t1Count), backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:4, label:'Mốc 1: <15p (lượt)', stack:'s' },
-               { data:topLate.map(t=>t.t2Count), backgroundColor:'#C0392B', borderWidth:0, borderRadius:4, label:'Mốc 2: ≥30p (lượt)', stack:'s' }
+               { data:topLate.map(t=>t.t1Count), backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:4, label:'Mốc 1: <15p (lượt) / Tier 1 (count)', stack:'s' },
+               { data:topLate.map(t=>t.t2Count), backgroundColor:'#C0392B', borderWidth:0, borderRadius:4, label:'Mốc 2: ≥30p (lượt) / Tier 2 (count)', stack:'s' }
              ] },
       options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:8,right:24,left:6,bottom:6}},
         plugins:{ legend:{display:false},
@@ -6129,9 +6214,9 @@ function renderLateQuarter() {
     type:'bar',
     data:{ labels: qKeys.map(fmtQK),
       datasets:[
-        { label:'Mốc 1: <15p (tổng các PB)', backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5,
+        { label:'Mốc 1: <15p (tổng các PB) / Tier 1 (all depts)', backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5,
           data: qKeys.map((_,qi)=> qtrCountByDeptTier.reduce((s,d)=>s+d.t1[qi],0)) },
-        { label:'Mốc 2: ≥30p (tổng các PB)', backgroundColor:'#C0392B', borderWidth:0, borderRadius:5,
+        { label:'Mốc 2: ≥30p (tổng các PB) / Tier 2 (all depts)', backgroundColor:'#C0392B', borderWidth:0, borderRadius:5,
           data: qKeys.map((_,qi)=> qtrCountByDeptTier.reduce((s,d)=>s+d.t2[qi],0)) }
       ] },
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:14,left:6,bottom:6}},
@@ -6159,8 +6244,8 @@ function renderLateQuarter() {
     type:'bar',
     data:{ labels: qKeys.map(fmtQK),
       datasets:[
-        { label:'Mốc 1: <15p', backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, data: qtrMinByTier.t1 },
-        { label:'Mốc 2: ≥30p', backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, data: qtrMinByTier.t2 }
+        { label:'Mốc 1: <15p / Tier 1', backgroundColor:'#2D6CDF', borderWidth:0, borderRadius:5, data: qtrMinByTier.t1 },
+        { label:'Mốc 2: ≥30p / Tier 2', backgroundColor:'#C0392B', borderWidth:0, borderRadius:5, data: qtrMinByTier.t2 }
       ] },
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:14,left:6,bottom:6}},
       plugins:{ legend:{display:true, position:'top', labels:{font:{size:11},boxWidth:12,padding:10}},
@@ -6198,8 +6283,8 @@ function renderLateQuarter() {
 
   // Bảng tổng hợp Quý × phòng ban
   document.getElementById('lateQtrTHead').innerHTML =
-    '<tr><th>Quý</th><th>Phòng ban</th><th>Mốc 1: &lt;15p (lượt)</th><th>Mốc 1: &lt;15p (phút)</th>' +
-    '<th>Mốc 2: ≥30p (lượt)</th><th>Mốc 2: ≥30p (phút)</th><th>Tổng lượt</th><th>Tổng phút</th></tr>';
+    '<tr><th>Quý<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Quarter</i></th><th>Phòng ban<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Dept</i></th><th>Mốc 1: &lt;15p (lượt)</th><th>Mốc 1: &lt;15p (phút)</th>' +
+    '<th>Mốc 2: ≥30p (lượt)</th><th>Mốc 2: ≥30p (phút)</th><th>Tổng lượt<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Total count</i></th><th>Tổng phút<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Total mins</i></th></tr>';
   const qRows = [];
   qKeys.forEach(qk => {
     const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
