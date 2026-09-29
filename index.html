@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OT Manager HCM — Theo dõi tăng ca</title>
+<title>HCM - OT Monitoring — Theo dõi tăng ca</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
       <div style="width:52px;height:52px;margin:0 auto 16px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       </div>
-      <div style="font-size:17px;font-weight:800;color:var(--text)">OT Manager HCM</div>
+      <div style="font-size:17px;font-weight:800;color:var(--text)">HCM - OT Monitoring</div>
       <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:24px">Chọn vai trò để tiếp tục</div>
       <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="enterAsRole('user')">
         👤 Đăng nhập <span style="font-weight:400;opacity:.85">— xem &amp; thao tác thường</span>
@@ -93,7 +93,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     </div>
     <div>
-      <h1>OT Manager HCM <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
+      <h1>HCM - OT Monitoring <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
       <p title="Dữ liệu được tính theo chu kỳ lương hàng tháng, từ ngày 16 của tháng hiện tại đến ngày 15 của tháng kế tiếp.">Chu kỳ 16→15 · OT 45h/tháng</p>
       <p id="roleBadge" style="font-size:10px;font-weight:700;margin-top:3px;color:#EAF2FC">👤 User</p>
     </div>
@@ -108,11 +108,11 @@
     </button>
 
     <span class="sb-section-label">Quản lý <i>/ Manage</i></span>
-    <button class="nt" data-page="dept" onclick="goPage('dept')">
+    <button class="nt nt-highlight" data-page="dept" onclick="goPage('dept')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
       <span class="nt-label"><span class="nt-vi">OT phòng ban</span><span class="nt-en">By Department</span></span>
     </button>
-    <button class="nt" data-page="employees" onclick="goPage('employees')">
+    <button class="nt nt-highlight" data-page="employees" onclick="goPage('employees')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
       <span class="nt-label"><span class="nt-vi">Danh sách NV OT</span><span class="nt-en">Employee List</span></span>
     </button>
@@ -128,7 +128,7 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 010 20"/><path d="M12 2a14.5 14.5 0 000 20"/></svg>
       <span class="nt-label"><span class="nt-vi">WLB</span><span class="nt-en">Work-Life Balance</span></span>
     </button>
-    <button class="nt" data-page="action" onclick="goPage('action')">
+    <button class="nt nt-highlight" data-page="action" onclick="goPage('action')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       <span class="nt-label"><span class="nt-vi">Action Plan</span><span class="nt-en">OT Action Plan</span></span>
     </button>
@@ -164,6 +164,8 @@
       <span id="syncStatusText">Chưa kết nối</span>
     </span>
   </div>
+
+  <div style="text-align:center;font-size:10px;color:#7FA0C4;padding:8px 12px 4px">🔧 Developed by Ahn Tuan (chỉ dùng trong nội bộ)</div>
 
 </aside>
 

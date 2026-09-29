@@ -330,6 +330,12 @@
   .nt.active svg { opacity: 1; color: var(--accent); }
   .nt.active .nt-en { opacity: .8; }
 
+  /* Nav nổi bật hơn: OT phòng ban / Danh sách NV OT / Action Plan — chỉ đổi màu chữ+icon lúc
+     KHÔNG active (trạng thái active/hover đã đủ rõ sẵn, giữ nguyên không đổi). */
+  .nt.nt-highlight:not(.active) { color: #FFCB47; }
+  .nt.nt-highlight:not(.active) svg { color: #FFCB47; opacity: 1; }
+  .nt.nt-highlight:not(.active) .nt-en { opacity: .85; }
+
   /* SIDEBAR — ACTIONS */
   .sb-actions {
     padding: 10px 8px;
