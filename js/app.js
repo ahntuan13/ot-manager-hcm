@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.59';
+const APP_VERSION = '2026.60';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -1462,7 +1462,7 @@ async function handleFile(inp) {
     activeMK = mArr[mArr.length-1];
     activePeriod = (DB[activeMK].snapshots||[]).length - 1;
   }
-  saveDB(); rebuildUI();
+  saveDB(false); rebuildUI();
   // WLB dùng dữ liệu OT để tính → cập nhật luôn khi upload OT mới
   if (document.getElementById('pg-wlb')?.classList.contains('show')) renderWlb();
   else renderWlbSummary();
@@ -1482,6 +1482,7 @@ async function handleFile(inp) {
   if (failResults.length) summaryParts.push(`Lỗi: ${failResults.map(r=>r.fileName).join(', ')}`);
   document.getElementById('upLog').textContent = summaryParts.join(' · ');
   toast(failResults.length ? `Upload xong, ${failResults.length} file lỗi` : 'Upload thành công!');
+  if (mArr.length) offerPublish(`${totalCnt} dòng OT (${mArr.length} tháng)`, false);
 }
 
 function loadDemo() {
@@ -3654,6 +3655,61 @@ async function sendNotifyAuto() {
   }
 }
 
+// ── Tiện ích đồng bộ (v2026.60) ──
+// Đếm nhanh nội dung từng phần dữ liệu để so sánh Máy ↔ Sheet và báo cho người dùng biết rõ.
+function syncCounts(o) {
+  o = o || {};
+  const ot = o.ot || {}, late = o.late || {}, off = o.off || {}, wlb = (o.wlbXls && o.wlbXls.employees) || {};
+  const empOt = Object.values(ot).reduce((n, m) => n + ((m && m.names) ? m.names.length : 0), 0);
+  return {
+    otMonths: Object.keys(ot).length, otEmp: empOt,
+    lateMonths: Object.keys(late).length,
+    offMonths: Object.keys(off).length,
+    wlbEmp: Object.keys(wlb).length,
+    projects: Object.keys(o.projects || {}).length
+  };
+}
+function fmtSyncCounts(c) {
+  return `OT ${c.otMonths} tháng/${c.otEmp} dòng NV · Đi trễ ${c.lateMonths} tháng · Off Day ${c.offMonths} tháng · WLB Excel ${c.wlbEmp} NV · Action Plan ${c.projects} bucket`;
+}
+async function fetchSheetParsed() {
+  const r = await fetch(SYNC_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'load' }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'load failed');
+  const p = JSON.parse(j.data || '{}');
+  return (p && typeof p === 'object') ? p : {};
+}
+// Sau khi đăng lên: tải lại từ Sheet và đối chiếu số lượng — phát hiện ngay nếu Sheet cắt/thiếu dữ liệu.
+async function verifyPublish(sent) {
+  try {
+    const back = await fetchSheetParsed();
+    const a = syncCounts(sent), b = syncCounts(back);
+    const diffs = [];
+    if (b.otMonths < a.otMonths || b.otEmp < a.otEmp) diffs.push(`OT (gửi ${a.otMonths} tháng/${a.otEmp} dòng, Sheet có ${b.otMonths}/${b.otEmp})`);
+    if (b.lateMonths < a.lateMonths) diffs.push(`Đi trễ (gửi ${a.lateMonths}, Sheet có ${b.lateMonths})`);
+    if (b.offMonths < a.offMonths) diffs.push(`Off Day (gửi ${a.offMonths}, Sheet có ${b.offMonths})`);
+    if (b.wlbEmp < a.wlbEmp) diffs.push(`WLB Excel (gửi ${a.wlbEmp} NV, Sheet có ${b.wlbEmp})`);
+    if (diffs.length) {
+      alert('⚠️ Đã đăng lên nhưng Sheet KHÔNG lưu đủ dữ liệu:\n- ' + diffs.join('\n- ') + '\n\nCó thể do giới hạn dung lượng của Google Sheet/Apps Script (1 ô tối đa 50.000 ký tự). Hãy báo người quản trị Apps Script.');
+      return false;
+    }
+    return b;
+  } catch(e) { console.warn('verifyPublish skipped:', e); return null; }
+}
+// Sau mỗi lần Admin upload file: nếu bật Tự động đồng bộ thì đăng luôn, nếu không thì hỏi 1 chạm.
+let _publishPending = false;
+async function offerPublish(what, alreadyAuto) {
+  if (!SYNC_URL) return;
+  if (alreadyAuto && AUTO_SYNC) return;       // saveDB() đã tự gọi syncSave rồi
+  if (_publishPending) return;
+  _publishPending = true;
+  try {
+    if (AUTO_SYNC) { await syncSave(); return; }
+    if (confirm(`Đã đọc xong ${what}.\n\nDữ liệu mới chỉ nằm trên máy này. Đăng lên Sheet ngay để User bấm "Update data" là thấy đủ?`)) await syncSave();
+    else toast('Chưa đăng lên Sheet — User sẽ chưa thấy dữ liệu mới. Vào Cài đặt → "Tải lên Sheet" khi sẵn sàng.');
+  } finally { _publishPending = false; }
+}
+
 async function syncSave() {
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang kiểm tra Sheet...');
@@ -3666,6 +3722,7 @@ async function syncSave() {
     let sheetKeys = [];
     let sheetProjects = null;
     let sheetTombstones = null;
+    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0 };
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3678,8 +3735,28 @@ async function syncSave() {
         sheetKeys = Object.keys(sheetOt || {}).sort();
         if (sheetParsed && sheetParsed.projects) sheetProjects = sheetParsed.projects;
         if (sheetParsed && sheetParsed.projectsTombstone) sheetTombstones = sheetParsed.projectsTombstone;
+        sheetOther.lateKeys = Object.keys((sheetParsed && sheetParsed.late) || {});
+        sheetOther.offKeys = Object.keys((sheetParsed && sheetParsed.off) || {});
+        sheetOther.wlbEmp = Object.keys(((sheetParsed && sheetParsed.wlbXls) || {}).employees || {}).length;
+        sheetOther.wlbAt = ((sheetParsed && sheetParsed.wlbXls) || {}).uploadedAt || 0;
       }
     } catch(e) { /* Sheet trống hoặc lỗi mạng khi kiểm tra — bỏ qua, vẫn cho lưu bình thường */ }
+
+    // Mở rộng kiểm tra: Đi trễ / Off Day / WLB Excel — trước đây chỉ kiểm tra OT nên 3 phần này
+    // có thể bị ghi đè mất mà không cảnh báo.
+    const lostLate = sheetOther.lateKeys.filter(k => !(k in LATE_DB));
+    const lostOff = sheetOther.offKeys.filter(k => !(k in OFF_DB));
+    const localWlbEmp = Object.keys((WLB_XLS && WLB_XLS.employees) || {}).length;
+    const wlbOlder = sheetOther.wlbEmp > 0 && (localWlbEmp === 0 || ((WLB_XLS.uploadedAt || 0) < sheetOther.wlbAt));
+    if (lostLate.length || lostOff.length || wlbOlder) {
+      const lines = [];
+      if (lostLate.length) lines.push(`Đi trễ tháng ${lostLate.join(', ')} (Sheet có, máy này không)`);
+      if (lostOff.length) lines.push(`Off Day tháng ${lostOff.join(', ')} (Sheet có, máy này không)`);
+      if (wlbOlder) lines.push(`WLB Excel trên Sheet MỚI HƠN/đầy đủ hơn máy này (${sheetOther.wlbEmp} NV vs ${localWlbEmp} NV)`);
+      if (!confirm('⚠️ Tiếp tục sẽ ghi đè mất:\n- ' + lines.join('\n- ') + '\n\nNên Cancel và Update data trước. Vẫn ghi đè?')) {
+        toast('Đã huỷ — hãy Update data trước khi đăng lên.'); refreshSyncBadgeIdle(); return;
+      }
+    }
 
     const localKeys = Object.keys(DB).sort();
     const missingOnLocal = sheetKeys.filter(k => !localKeys.includes(k));
@@ -3710,10 +3787,11 @@ async function syncSave() {
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
+    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS } })
+      body: JSON.stringify({ action: 'save', data: payload })
     });
     let json;
     try { json = await res.json(); }
@@ -3736,7 +3814,11 @@ async function syncSave() {
       refreshSyncBadgeIdle();
       renderSyncPage();
       const apSel = document.getElementById('actionPlanMonthSel'); if (apSel) apSel.value = ''; if (document.getElementById('pg-action')?.classList.contains('show')) renderActionPlan();
-      toast('Đã tải lên & cập nhật đầy đủ! (OT + Đi trễ + Off Day WLB + Action Plan)');
+      updateSyncBadge('busy','Đang kiểm tra lại Sheet...');
+      const verified = await verifyPublish(payload);
+      refreshSyncBadgeIdle();
+      if (verified) toast('✅ Đã đăng & xác nhận trên Sheet: ' + fmtSyncCounts(verified));
+      else if (verified === null) toast('Đã đăng lên Sheet (chưa kiểm tra lại được): ' + fmtSyncCounts(syncCounts(payload)));
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
     updateSyncBadge('err','Lỗi sync');
@@ -3771,7 +3853,11 @@ async function syncSaveActionPlanOnly() {
           if (parsed.ot && Object.keys(parsed.ot).length) sheetOt = parsed.ot;
           if (parsed.late) sheetLate = parsed.late;
           if (parsed.off) sheetOff = parsed.off;
-          if (parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) sheetWlbXls = parsed.wlbXls;
+          if (parsed.wlbXls && Object.keys(parsed.wlbXls.employees||{}).length) {
+            // Chỉ lấy WLB của Sheet nếu nó MỚI HƠN bản trên máy (tránh ghi đè bản Admin vừa upload).
+            const localHas = Object.keys((WLB_XLS && WLB_XLS.employees) || {}).length > 0;
+            if (!localHas || (parsed.wlbXls.uploadedAt || 0) >= (WLB_XLS.uploadedAt || 0)) sheetWlbXls = parsed.wlbXls;
+          }
           if (parsed.projects) sheetProjects = parsed.projects;
           if (parsed.projectsTombstone) sheetTombstones = parsed.projectsTombstone;
         }
@@ -3901,7 +3987,9 @@ async function syncLoad() {
       if (Object.keys(DB).length)     parts.push('OT');
       if (Object.keys(LATE_DB).length) parts.push('Đi trễ');
       if (Object.keys(OFF_DB).length)  parts.push('Off Day (WLB)');
-      toast(`Đã tải dữ liệu từ Sheet: ${parts.length ? parts.join(' + ') : 'không có dữ liệu'}!`);
+      const c = syncCounts({ ot: DB, late: LATE_DB, off: OFF_DB, wlbXls: WLB_XLS, projects: PROJECTS_DB });
+      toast(`Đã tải từ Sheet: ${fmtSyncCounts(c)}`);
+      if (!c.wlbEmp) setTimeout(() => toast('Lưu ý: Sheet chưa có WLB Excel — nhờ Admin upload lại & đăng lên Sheet.'), 3500);
     } else throw new Error(json.error || 'unknown');
   } catch (err) {
     updateSyncBadge('err','Lỗi sync');
@@ -4137,6 +4225,7 @@ async function handleOffDayFile(inp) {
   renderWlbSummary();
   renderWlb();
   toast(totalCnt ? `Upload Off Day thành công! (${mArr.length} tháng)` : 'Lỗi đọc file Off Day');
+  if (totalCnt) offerPublish(`Off Day (${mArr.length} tháng)`, false);
 }
 
 // ============================================================
@@ -4875,7 +4964,7 @@ function latestOtMk() {
 const WLB_XLS_KEY = 'ot_manager_wlb_xls_v1';
 let WLB_XLS = { year: new Date().getFullYear(), employees: {} }; // employees[staffCode] = {name,dept,position,ot:{1..12},off:{1..12}}
 
-function saveWlbXls() { try { localStorage.setItem(WLB_XLS_KEY, JSON.stringify(WLB_XLS)); } catch(e) {} }
+function saveWlbXls() { try { localStorage.setItem(WLB_XLS_KEY, JSON.stringify(WLB_XLS)); } catch(e) { toast('⚠️ Không lưu được WLB vào bộ nhớ trình duyệt (đầy?) — hãy đăng lên Sheet ngay.'); } }
 function loadWlbXls() {
   try { const raw = localStorage.getItem(WLB_XLS_KEY); if (raw) WLB_XLS = JSON.parse(raw); } catch(e) {}
 }
@@ -4989,7 +5078,14 @@ async function handleWlbMonthlyExcel(inp) {
     return;
   }
 
-  WLB_XLS = { year, employees: {} };
+  // Nếu file chỉ có 1 trong 2 sheet và cùng năm → giữ phần còn lại đã có, tránh xoá mất.
+  const prevWlb = (WLB_XLS && WLB_XLS.year === year) ? WLB_XLS : null;
+  WLB_XLS = { year, employees: {}, uploadedAt: Date.now() };
+  if (prevWlb) {
+    Object.entries(prevWlb.employees || {}).forEach(([k, e]) => {
+      WLB_XLS.employees[k] = { ...e, ot: otRows ? {} : { ...(e.ot||{}) }, off: offRows ? {} : { ...(e.off||{}) } };
+    });
+  }
   const ensure = (code, name, dept, position) => {
     const key = code || ('N:'+name);
     if (!WLB_XLS.employees[key]) WLB_XLS.employees[key] = { name, code, dept: dept||'', position: position||'', ot:{}, off:{} };
@@ -5014,7 +5110,7 @@ async function handleWlbMonthlyExcel(inp) {
   const syncReminder = SYNC_URL
     ? `<div style="margin-top:8px;padding:10px 12px;background:var(--accent-bg);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
          <span style="font-size:12px;color:var(--text)"><strong>⚠️ Bước cuối, đừng quên:</strong> dữ liệu này mới chỉ lưu trên máy này — bấm nút bên cạnh để người khác cũng thấy được.</span>
-         <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="syncSaveActionPlanOnly()">📤 Đồng bộ ngay lên Sheet</button>
+         <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="syncSave()">📤 Đồng bộ ngay lên Sheet</button>
        </div>`
     : `<div style="margin-top:8px;padding:10px 12px;background:var(--red-bg);border-radius:8px;font-size:12px;color:var(--red)">⚠️ Chưa cấu hình Google Sheets — dữ liệu này chỉ có trên máy này, người khác sẽ không thấy được. Vào mục Sync bên dưới để cấu hình.</div>`;
   document.getElementById('wlbXlsLog').innerHTML = empCount
@@ -5022,7 +5118,8 @@ async function handleWlbMonthlyExcel(inp) {
     : '❌ Không đọc được dữ liệu nhân viên nào.';
   renderWlbSummary();
   renderWlb();
-  toast(empCount ? `Upload WLB Excel thành công! (${empCount} NV, năm ${year}) — nhớ Đồng bộ lên Sheet!` : 'Lỗi đọc file WLB Excel');
+  toast(empCount ? `Upload WLB Excel thành công! (${empCount} NV, năm ${year})` : 'Lỗi đọc file WLB Excel');
+  if (empCount) offerPublish(`WLB Excel (${empCount} NV)`, false);
 }
 
 // ── Hàm tính toán trên WLB_XLS (dùng cho toàn bộ trang WLB) ──
