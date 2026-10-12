@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.62';
+const APP_VERSION = '2026.63';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3813,6 +3813,7 @@ async function syncSave() {
       // đánh dấu dirty để lần đồng bộ SAU quay lại dùng logic ưu tiên nội dung an toàn hơn.
       DIRTY_PLAN_KEYS.clear();
       saveDirtyPlanKeys();
+      apUnsynced = false;
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -3901,6 +3902,7 @@ async function syncSaveActionPlanOnly() {
       // đánh dấu dirty để lần đồng bộ SAU quay lại dùng logic ưu tiên nội dung an toàn hơn.
       DIRTY_PLAN_KEYS.clear();
       saveDirtyPlanKeys();
+      apUnsynced = false;
       lastSyncedAt = new Date().toLocaleString('vi-VN');
       refreshSyncBadgeIdle();
       renderSyncPage();
@@ -4666,7 +4668,8 @@ function renderActionPlan() {
   buildActionPlanTableSED('actionPlanTBodyED', mk);
   const syncNote = document.getElementById('actionPlanSyncNote');
   if (syncNote) {
-    syncNote.textContent = lastSyncedAt
+    const unsynced = DIRTY_PLAN_KEYS.size > 0 || (typeof apUnsynced !== 'undefined' && apUnsynced);
+    syncNote.textContent = unsynced ? '⚠️ Có thay đổi mới lưu tạm trên máy này — bấm "Lưu & Đồng bộ lên Sheet" để người khác thấy.' : lastSyncedAt
       ? `Lần đồng bộ gần nhất: ${lastSyncedAt}`
       : SYNC_URL ? '⚠️ Chưa đồng bộ lần nào trong phiên này — nhớ bấm "Lưu & Đồng bộ" sau khi điền xong.' : '⚠️ Chưa cấu hình Google Sheets — vào Cài đặt để bật đồng bộ, nếu không dữ liệu chỉ lưu trên máy này.';
   }
@@ -4690,14 +4693,15 @@ function approvalBoxHtml(group, proj, mp, mk) {
 // ── Popup nhập PM/Lý do/Kế hoạch — thay cho 3 ô rời trước đây, gộp thành 1 nút "+" duy nhất ──
 // Hỗ trợ 2 chế độ: sửa (mặc định) và chỉ xem (viewOnly=true) — dùng chung 1 popup, chỉ khoá input
 // + đổi nút Save thành Đóng khi ở chế độ xem, để ECM/HODs xem nhanh mà không lo bấm nhầm sửa.
-let planEditCtx = null; // {group, proj, mk, viewOnly}
-let planEditMoves = {}; // {staffCode: "group|proj"} — chuyển NV đang chọn, chỉ áp dụng khi bấm Save
-let planEditAdds = [];  // staff code muốn THÊM vào dự án này (kéo từ dự án khác) — áp dụng khi Save
+// ── Khung "Lý do / Kế hoạch" (bản gốc): PM / Lý do / Kế hoạch — Lưu TẠM THỜI trên máy, chưa lên Sheet ──
+let apUnsynced = false; // có thay đổi nhân sự lưu tạm chưa đồng bộ
+let planEditCtx = null; // {group, proj, mk}
 function openPlanEditModal(group, proj, mk, viewOnly) {
-  planEditCtx = { group, proj, mk, viewOnly: !!viewOnly };
-  planEditMoves = {}; planEditAdds = [];
+  planEditCtx = { group, proj, mk };
+  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   const mp = getMonthPlan(group, proj, mk);
   document.getElementById('planEditProjName').textContent = proj;
+  document.getElementById('planEditProjMeta').textContent = `Tháng: ${mk ? fmtMK(mk) : '—'}`;
   document.getElementById('planEditPm').value = mp.pm || '';
   document.getElementById('planEditReason').value = mp.reason || '';
   document.getElementById('planEditPlan').value = mp.plan || '';
@@ -4713,17 +4717,46 @@ function openPlanEditModal(group, proj, mk, viewOnly) {
     cancelBtn.textContent = 'Huỷ / Cancel';
     cancelBtn.style.flex = '1';
   }
-  renderPlanEditEmployees();
   document.getElementById('planEditModal').style.display = 'flex';
 }
-// Danh sách NV của dự án (dạng 1 cột) — chuyển dự án thao tác ngay trong khung này, bấm Save mới áp dụng.
-function renderPlanEditEmployees() {
+// Mở popup ở chế độ CHỈ XEM — dùng cho nút "👁️ Xem" cạnh "✏️ Sửa".
+function openPlanViewModal(group, proj, mk) {
+  openPlanEditModal(group, proj, mk, true);
+}
+function closePlanEditModal() {
+  document.getElementById('planEditModal').style.display = 'none';
+  planEditCtx = null;
+}
+// Lưu TẠM THỜI (chỉ trên máy này). Muốn quản lý/User khác thấy → bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.
+function savePlanEditModal() {
   if (!planEditCtx) return;
-  const { group, proj, mk, viewOnly } = planEditCtx;
-  const wrap = document.getElementById('planEditEmpWrap');
-  const listEl = document.getElementById('planEditEmpList');
-  const meta = document.getElementById('planEditProjMeta');
-  if (proj === '__SED_ALL__') { wrap.style.display = 'none'; meta.textContent = `Tháng: ${mk ? fmtMK(mk) : '—'}`; return; }
+  const { group, proj, mk } = planEditCtx;
+  setMonthPlanField(group, proj, mk, 'pm', document.getElementById('planEditPm').value);
+  setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
+  setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
+  closePlanEditModal();
+  renderActionPlan();
+  toast('Đã lưu tạm thời — nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên để người khác thấy.');
+}
+
+// ── Khung "Kế hoạch nhân sự": danh sách NV của dự án, thêm / chuyển dự án / phòng ban — Lưu TẠM THỜI ──
+let staffEditCtx = null; // {group, proj, mk, viewOnly}
+let staffEditMoves = {}; // {staffCode: "group|proj"} — chuyển NV đã chọn, chỉ áp dụng khi bấm Lưu tạm thời
+let staffEditAdds = [];  // staff code muốn THÊM vào dự án này
+function openStaffEditModal(group, proj, mk) {
+  staffEditCtx = { group, proj, mk, viewOnly: false };
+  staffEditMoves = {}; staffEditAdds = [];
+  document.getElementById('staffEditProjName').textContent = proj;
+  renderStaffEditEmployees();
+  document.getElementById('staffEditModal').style.display = 'flex';
+}
+function renderStaffEditEmployees() {
+  if (!staffEditCtx) return;
+  const { group, proj, mk, viewOnly } = staffEditCtx;
+  const wrap = document.getElementById('staffEditEmpWrap');
+  const listEl = document.getElementById('staffEditEmpList');
+  const meta = document.getElementById('staffEditProjMeta');
+  
   wrap.style.display = '';
   const codes = projectEmployeesForMonth(group, proj, mk);
   meta.textContent = `Số NV: ${codes.length} · Tháng: ${mk ? fmtMK(mk) : '—'}`;
@@ -4749,13 +4782,13 @@ function renderPlanEditEmployees() {
   const incomingEff = c => { const ks = Object.keys(PROJ_MOVES[c] || {}).sort(); return ks.length ? ks[ks.length - 1] : null; };
   if (incoming.length) meta.textContent += ` (+${incoming.length} NV sắp chuyển vào)`;
   const rowHtml = (code, isAdd, isIn) => {
-    const chosen = planEditMoves[code] || '';
+    const chosen = staffEditMoves[code] || '';
     const pend = pendingMoveOf(code, mk);
     const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtMK(incomingEff(code))} (${cycleStartLabel(incomingEff(code))})</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
     const ot = (!isIn && otBy[code] != null) ? `${Math.round(otBy[code]*10)/10}h` : '—';
     const sel = viewOnly ? '' : (isAdd
-      ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="planEditAdds=planEditAdds.filter(c=>c!=='${code}');renderPlanEditEmployees();return false">↩ huỷ</a>`
-      : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="planEditMoves['${code}']=this.value;if(!this.value)delete planEditMoves['${code}'];renderPlanEditEmployees()">
+      ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
+      : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="staffEditMoves['${code}']=this.value;if(!this.value)delete staffEditMoves['${code}'];renderStaffEditEmployees()">
            <option value="">Chuyển đến… (giữ nguyên)</option>
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
            <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
@@ -4768,54 +4801,53 @@ function renderPlanEditEmployees() {
     </div>`;
   };
   const sorted = [...codes].sort((a, b) => employeeNameByCode(a).localeCompare(employeeNameByCode(b), 'vi'));
-  listEl.innerHTML = (sorted.map(c => rowHtml(c, false, false)).join('') + incoming.map(c => rowHtml(c, false, true)).join('') + planEditAdds.map(c => rowHtml(c, true, false)).join(''))
+  listEl.innerHTML = (sorted.map(c => rowHtml(c, false, false)).join('') + incoming.map(c => rowHtml(c, false, true)).join('') + staffEditAdds.map(c => rowHtml(c, true, false)).join(''))
     || '<div style="padding:12px;color:var(--text3);font-size:12px">Chưa có nhân viên nào trong dự án này.</div>';
-  const nMoves = Object.keys(planEditMoves).length + planEditAdds.length;
-  document.getElementById('planEditMoveNote').innerHTML = viewOnly ? '' :
+  const nMoves = Object.keys(staffEditMoves).length + staffEditAdds.length;
+  document.getElementById('staffEditMoveNote').innerHTML = viewOnly ? '' :
     `Chuyển NV trong chu kỳ đang chạy sẽ <strong>có hiệu lực từ chu kỳ sau: ${fmtMK(eff)} (từ ${cycleStartLabel(eff)})</strong> — số liệu các tháng đã qua giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
-  document.getElementById('planEditAddRow').style.display = viewOnly ? 'none' : 'flex';
+  document.getElementById('staffEditAddRow').style.display = viewOnly ? 'none' : 'flex';
 }
-function planEditAddEmp() {
-  const inp = document.getElementById('planEditAddInput');
+function staffEditAddEmp() {
+  const inp = document.getElementById('staffEditAddInput');
   const code = (inp.value || '').trim().toUpperCase();
-  if (!code || !planEditCtx) return;
+  if (!code || !staffEditCtx) return;
   const cur = currentProjectMap();
   const known = cur[code] || employeeNameByCode(code) !== code;
   if (!known) { toast(`Không tìm thấy Staff Code "${code}"`); return; }
-  if (projectEmployeesForMonth(planEditCtx.group, planEditCtx.proj, planEditCtx.mk).includes(code) || planEditAdds.includes(code)) { toast('NV này đã nằm trong dự án'); return; }
-  planEditAdds.push(code);
+  if (projectEmployeesForMonth(staffEditCtx.group, staffEditCtx.proj, staffEditCtx.mk).includes(code) || staffEditAdds.includes(code)) { toast('NV này đã nằm trong dự án'); return; }
+  staffEditAdds.push(code);
   inp.value = '';
-  renderPlanEditEmployees();
+  renderStaffEditEmployees();
 }
-// Mở popup ở chế độ CHỈ XEM — dùng cho nút "👁️ Xem" cạnh "✏️ Sửa".
-function openPlanViewModal(group, proj, mk) {
-  openPlanEditModal(group, proj, mk, true);
+function closeStaffEditModal() {
+  document.getElementById('staffEditModal').style.display = 'none';
+  staffEditCtx = null; staffEditMoves = {}; staffEditAdds = [];
 }
-function closePlanEditModal() {
-  document.getElementById('planEditModal').style.display = 'none';
-  planEditCtx = null; planEditMoves = {}; planEditAdds = [];
-}
-async function savePlanEditModal() {
-  if (!planEditCtx) return;
-  const { group, proj, mk } = planEditCtx;
-  setMonthPlanField(group, proj, mk, 'pm', document.getElementById('planEditPm').value);
-  setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
-  setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
-  // Áp dụng các lần chuyển NV đã chọn trong khung (hiệu lực từ chu kỳ sau)
+function saveStaffEditModal() {
+  if (!staffEditCtx) return;
+  const { group, proj } = staffEditCtx;
   let moved = 0;
-  Object.entries(planEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) moved++; });
-  planEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) moved++; });
-  const btn = document.getElementById('planEditSaveBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu... / Saving...'; }
-  try {
-    if (SYNC_URL) await syncSaveActionPlanOnly();
-    else renderActionPlan();
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '💾 Save (lưu & đồng bộ)'; }
-  }
-  if (moved) toast(`Đã chuyển ${moved} NV — hiệu lực từ ${fmtMK(nextCycleMk())} (${cycleStartLabel(nextCycleMk())})`);
-  closePlanEditModal();
+  Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) moved++; });
+  staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) moved++; });
+  if (moved) apUnsynced = true;
+  closeStaffEditModal();
+  renderActionPlan();
+  toast(moved ? `Đã lưu tạm thời ${moved} thay đổi nhân sự — hiệu lực từ ${fmtMK(nextCycleMk())} (${cycleStartLabel(nextCycleMk())}). Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.` : 'Không có thay đổi nhân sự nào.');
 }
+// Ô "Kế hoạch nhân sự" trong bảng: tổng số NV + icon 👁️ để xem/sửa việc di chuyển
+function staffCellHtml(group, proj, mk) {
+  const projEsc = proj.replace(/'/g,"\\'");
+  const n = projectEmployeesForMonth(group, proj, mk).length;
+  const curMap = currentProjectMap(); const key = group + '::' + proj;
+  const act = new Set(projectEmployeesForMonth(group, proj, mk));
+  const inc = Object.keys(curMap).filter(c => curMap[c] === key && !act.has(c)).length;
+  return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:90px;gap:6px">
+    <div style="font-size:12.5px"><strong style="font-size:16px">${n}</strong> NV${inc ? `<div style="font-size:10.5px;color:var(--green)">+${inc} sắp vào</div>` : ''}</div>
+    <button class="btn" style="padding:5px 12px;font-size:15px;line-height:1" onclick="openStaffEditModal('${group}','${projEsc}','${mk}')" title="Xem / chỉnh nhân sự & di chuyển dự án / phòng ban">👁️</button>
+  </div>`;
+}
+
 // Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon Xem/Sửa.
 function planCellHtml(group, proj, mk, mp) {
   const hasContent = (mp.pm||mp.reason||mp.plan||'').trim();
@@ -4839,12 +4871,11 @@ function planCellHtml(group, proj, mk, mp) {
 
 function projNameCellHtml(group, proj, mk) {
   const projEsc = proj.replace(/'/g,"\\'");
-  const n = projectEmployeesForMonth(group, proj, mk).length;
   if (proj === UNASSIGNED_PROJ) {
-    return `<div style="font-weight:700;color:#B8730F">⚠️ ${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${n} NV)</span></div>
-      <div style="font-size:10.5px;color:var(--text3);margin-top:4px;line-height:1.5">NV mới/chưa có dự án — chờ PM xác nhận: bấm + ở cột Kế hoạch → "Chuyển đến…"</div>`;
+    return `<div style="font-weight:700;color:#B8730F">⚠️ ${proj}</div>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:4px;line-height:1.5">NV mới/chưa có dự án — chờ PM xác nhận: bấm 👁️ ở cột Kế hoạch nhân sự → "Chuyển đến…"</div>`;
   }
-  return `<div style="font-weight:600">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${n} NV)</span></div>
+  return `<div style="font-weight:600">${proj}</div>
     <div style="margin-top:4px;display:flex;gap:6px">
       <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
       <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
@@ -4859,7 +4890,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
   projNames = projNames.filter(pn => pn !== UNASSIGNED_PROJ || projectEmployeesForMonth(group, pn, mk).length);
   if (projNames.includes(UNASSIGNED_PROJ)) projNames = [UNASSIGNED_PROJ, ...projNames.filter(pn => pn !== UNASSIGNED_PROJ)];
   if (!projNames.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
     return;
   }
   tbody.innerHTML = projNames.map((proj, i) => {
@@ -4879,6 +4910,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
+      <td>${staffCellHtml(group, proj, mk)}</td>
       <td>${planCellHtml(group, proj, mk, mp)}</td>
       <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
@@ -4924,6 +4956,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
       <span style="color:${overKpiSed>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${overKpiSed}</strong> NV</span><br>
       <span style="color:${overPaySed>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${overPaySed}</strong> NV</span>
     </td>
+    <td style="text-align:center;color:var(--text3)">—</td>
     <td>${planCellHtml(group, sedKey, mk, pAuto)}</td>
     <td>${approvalBoxHtml(group, sedKey, pAuto, mk)}</td>
     <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value,'${mk}')">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
@@ -4947,6 +4980,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
       </td>
+      <td>${staffCellHtml(group, proj, mk)}</td>
       <td>${planCellHtml(group, proj, mk, mp)}</td>
       <td>${approvalBoxHtml(group, proj, mp, mk)}</td>
       <td>${editable('note','Ghi chú...')}</td>
