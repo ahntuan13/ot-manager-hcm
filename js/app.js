@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.60';
+const APP_VERSION = '2026.61';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -1563,7 +1563,7 @@ function clearAll() {
   toast('Đã xóa toàn bộ dữ liệu OT');
 }
 
-function rebuildUI() { updateSelects(); renderDash(); renderEmployeeList(); }
+function rebuildUI() { try { autoAssignUnassigned(); } catch(e) { console.warn(e); } updateSelects(); renderDash(); renderEmployeeList(); }
 
 // ============================================================
 //  DASHBOARD
@@ -1805,7 +1805,7 @@ function renderDashProjectBarChart(totals) {
   const projTotals = {}; // "group/proj" -> tổng OT
   totals.forEach(t => {
     if (!t.staffCode) return;
-    const info = findEmployeeProject(t.staffCode);
+    const info = findEmployeeProject(t.staffCode, activeMK);
     if (!info) return;
     const key = `${info.group}/${info.proj.replace(/^HCM\s+/i,'')}`;
     if (!projTotals[key]) projTotals[key] = 0;
@@ -2218,7 +2218,7 @@ function renderDashTable(totals, periods) {
     // Cách này đảm bảo LUÔN ĐÚNG: OT bình thường + OT sau 22h = Tổng OT luỹ kế (không còn lệch số).
     const night = Math.min(rawNight, t.total);
     const normal = Math.round((t.total - night)*10)/10;
-    const projInfo = t.staffCode ? findEmployeeProject(t.staffCode) : null;
+    const projInfo = t.staffCode ? findEmployeeProject(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : null;
     const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
     const deptDisplay = projInfo ? `${projInfo.group}/${projName}` : t.dept;
     // Tích hợp Chi tiết OT theo ngày NGAY TẠI ĐÂY — bấm tên NV để mở/đóng, thay vì phải xem 1 danh
@@ -3722,7 +3722,7 @@ async function syncSave() {
     let sheetKeys = [];
     let sheetProjects = null;
     let sheetTombstones = null;
-    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0 };
+    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0, projMoves: null };
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3735,6 +3735,7 @@ async function syncSave() {
         sheetKeys = Object.keys(sheetOt || {}).sort();
         if (sheetParsed && sheetParsed.projects) sheetProjects = sheetParsed.projects;
         if (sheetParsed && sheetParsed.projectsTombstone) sheetTombstones = sheetParsed.projectsTombstone;
+        sheetOther.projMoves = (sheetParsed && sheetParsed.projMoves) || null;
         sheetOther.lateKeys = Object.keys((sheetParsed && sheetParsed.late) || {});
         sheetOther.offKeys = Object.keys((sheetParsed && sheetParsed.off) || {});
         sheetOther.wlbEmp = Object.keys(((sheetParsed && sheetParsed.wlbXls) || {}).employees || {}).length;
@@ -3779,7 +3780,8 @@ async function syncSave() {
     // Admin đang upload OT mới nhưng PROJECTS_DB cục bộ đã cũ (chưa Update data gần đây), khiến
     // Action Plan mà User khác vừa lưu riêng bị ghi đè mất. Đồng thời loại trừ đúng dự án đã bị
     // xoá/đổi tên (qua tombstone) — không để Sheet cũ "hồi sinh" nhầm.
-    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
+    const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetOther.projMoves);
+    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
     const mergedProjects = mergeResult.projects;
     const mergedTombstones = mergeResult.tombstones;
 
@@ -3787,7 +3789,7 @@ async function syncSave() {
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
-    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
+    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3803,6 +3805,7 @@ async function syncSave() {
       // Cập nhật lại PROJECTS_DB cục bộ bằng đúng bản đã ghép — Admin vừa upload OT xong cũng
       // thấy đầy đủ mọi dự án/thay đổi mà User khác đã đóng góp trên Sheet, không chỉ dữ liệu cũ.
       PROJECTS_DB = mergedProjects;
+      PROJ_MOVES = mergedMoves; saveProjMoves();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
@@ -3839,7 +3842,7 @@ async function syncSaveActionPlanOnly() {
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
     // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel/Action Plan hiện có trên Sheet.
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null;
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null, sheetMoves = null;
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3860,6 +3863,7 @@ async function syncSaveActionPlanOnly() {
           }
           if (parsed.projects) sheetProjects = parsed.projects;
           if (parsed.projectsTombstone) sheetTombstones = parsed.projectsTombstone;
+          if (parsed.projMoves) sheetMoves = parsed.projMoves;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
@@ -3868,14 +3872,15 @@ async function syncSaveActionPlanOnly() {
     // ghi đè thẳng) với bản trên Sheet — tránh trường hợp 2 người cùng sửa khác dự án gần nhau,
     // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy. Loại trừ
     // đúng dự án đã xoá/đổi tên (tombstone) — không để Sheet cũ hồi sinh nhầm.
-    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
+    const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetMoves);
+    const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
     const mergedProjects = mergeResult.projects;
     const mergedTombstones = mergeResult.tombstones;
     updateSyncBadge('busy','Đang lưu Action Plan...');
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3888,6 +3893,7 @@ async function syncSaveActionPlanOnly() {
       // không, máy này vẫn chỉ thấy dữ liệu cũ của chính nó, KHÔNG thấy được dự án mới/đổi tên/
       // sửa đổi mà người khác đã làm trên Sheet, dù vừa lưu xong. "Lưu" giờ = lưu + tải về đầy đủ.
       PROJECTS_DB = mergedProjects;
+      PROJ_MOVES = mergedMoves; saveProjMoves();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
@@ -3940,6 +3946,7 @@ async function syncLoad() {
       }
       // Tương tự với danh sách tài khoản User — chỉ ghi đè nếu Sheet THỰC SỰ có dữ liệu, để tài
       // khoản Admin vừa tạo trên máy này không bị mất khi Pull về từ 1 Sheet cũ chưa có mục này.
+      if (isNewFormat && parsed.projMoves) { PROJ_MOVES = parsed.projMoves; saveProjMoves(); }
       if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
         USERS_DB = parsed.users;
         saveUsersDB();
@@ -4276,6 +4283,7 @@ const PROJECTS_DB_KEY = 'ot_manager_projects_db_v1';
 let PROJECTS_DB = null; // groups -> project name -> {employees:[staffCode..], pm, plan, reason, approvedBy, note}
 
 function loadProjectsDB() {
+  loadProjMoves();
   try {
     const raw = localStorage.getItem(PROJECTS_DB_KEY);
     if (raw) { PROJECTS_DB = JSON.parse(raw); return; }
@@ -4294,13 +4302,100 @@ function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.str
 
 function projectGroups() { return Object.keys(PROJECTS_DB || {}); }
 function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}); }
-function findEmployeeProject(staffCode) {
-  for (const group of projectGroups()) {
-    for (const proj of projectsInGroup(group)) {
-      if (PROJECTS_DB[group][proj].employees.includes(staffCode)) return { group, proj };
+// ── Gán NV vào dự án THEO THÁNG HIỆU LỰC (v2026.61) ──
+// PROJECTS_DB[g][p].employees = vị trí MỚI NHẤT của NV (đã gồm các lần chuyển sắp có hiệu lực).
+// PROJ_MOVES lưu lịch sử chuyển: { staffCode: { "2026-11": {key:"HCM-EC::HCM X", prev:"HCM-EC::HCM Y", at:ts} } }
+// Chuyển NV trong chu kỳ đang chạy (VD 12/10, chu kỳ 16/09→15/10 = "2026-10") chỉ có hiệu lực
+// từ CHU KỲ SAU ("2026-11", tức 16/10) → số liệu các tháng đã qua giữ nguyên dự án cũ.
+const UNASSIGNED_PROJ = 'Chưa gán dự án';
+const PROJ_MOVES_KEY = 'ot_manager_proj_moves_v1';
+let PROJ_MOVES = {};
+function loadProjMoves() { try { const r = localStorage.getItem(PROJ_MOVES_KEY); if (r) PROJ_MOVES = JSON.parse(r) || {}; } catch(e) {} }
+function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} }
+function nextCycleMk(d) {
+  const cur = companyMonthInfo(d || new Date()).monthKey;
+  let [y, m] = cur.split('-').map(Number);
+  m++; if (m > 12) { m = 1; y++; }
+  return `${y}-${String(m).padStart(2,'0')}`;
+}
+// Ngày bắt đầu chu kỳ của 1 key: "2026-11" → "16/10/2026"
+function cycleStartLabel(mk) {
+  let [y, m] = mk.split('-').map(Number);
+  m--; if (m < 1) { m = 12; y--; }
+  return `16/${String(m).padStart(2,'0')}/${y}`;
+}
+function currentProjectMap() {
+  const map = {};
+  Object.keys(PROJECTS_DB || {}).forEach(g => Object.keys(PROJECTS_DB[g] || {}).forEach(pr => {
+    ((PROJECTS_DB[g][pr] || {}).employees || []).forEach(c => { map[c] = g + '::' + pr; });
+  }));
+  return map;
+}
+function projKeyForEmp(code, mk, curMap) {
+  const mv = PROJ_MOVES[code];
+  if (mv && mk) {
+    const ks = Object.keys(mv).sort();
+    if (ks.length) {
+      let hit = null;
+      for (const k of ks) if (k <= mk) hit = mv[k];
+      return hit ? (hit.key || null) : (mv[ks[0]].prev || null);
     }
   }
-  return null;
+  return (curMap || currentProjectMap())[code] || null;
+}
+function findEmployeeProject(staffCode, mk) {
+  const key = projKeyForEmp(staffCode, mk);
+  if (!key) return null;
+  const i = key.indexOf('::');
+  const group = key.slice(0, i), proj = key.slice(i + 2);
+  return (PROJECTS_DB[group] && PROJECTS_DB[group][proj]) ? { group, proj } : null;
+}
+// Danh sách NV của 1 dự án TẠI 1 THÁNG (mk=null → vị trí mới nhất)
+function projectEmployeesForMonth(group, proj, mk) {
+  const key = group + '::' + proj;
+  const cur = currentProjectMap();
+  const codes = new Set(Object.keys(cur));
+  Object.keys(PROJ_MOVES).forEach(c => codes.add(c));
+  return [...codes].filter(c => projKeyForEmp(c, mk, cur) === key);
+}
+// Lần chuyển SẮP có hiệu lực (sau tháng đang xem) của 1 NV, nếu có
+function pendingMoveOf(code, mk) {
+  const mv = PROJ_MOVES[code]; if (!mv || !mk) return null;
+  const ks = Object.keys(mv).sort().filter(k => k > mk);
+  return ks.length ? { mk: ks[0], key: mv[ks[0]].key } : null;
+}
+// NV thuộc HCM-EC (theo dữ liệu OT) mà chưa ở dự án nào → tự gom vào "Chưa gán dự án", chờ PM chuyển đúng.
+function autoAssignUnassigned() {
+  if (!PROJECTS_DB || !DB) return false;
+  if (!PROJECTS_DB['HCM-EC']) PROJECTS_DB['HCM-EC'] = {};
+  const cur = currentProjectMap();
+  const add = [];
+  Object.keys(DB).forEach(mk => {
+    const m = DB[mk]; if (!m || !m.employees) return;
+    (m.names || []).forEach(n => {
+      const e = m.employees[n];
+      if (!e || !e.staffCode || e.dept !== 'HCM-EC') return;
+      if (cur[e.staffCode] || PROJ_MOVES[e.staffCode]) return;
+      cur[e.staffCode] = 'x'; add.push(e.staffCode);
+    });
+  });
+  if (!add.length) return false;
+  if (!PROJECTS_DB['HCM-EC'][UNASSIGNED_PROJ]) PROJECTS_DB['HCM-EC'][UNASSIGNED_PROJ] = { employees: [], plans: {} };
+  PROJECTS_DB['HCM-EC'][UNASSIGNED_PROJ].employees.push(...add);
+  delete PROJECTS_TOMBSTONES['HCM-EC::' + UNASSIGNED_PROJ];
+  saveProjectsDB();
+  return true;
+}
+function mergeProjMoves(local, sheet) {
+  const out = {};
+  [sheet || {}, local || {}].forEach(src => Object.keys(src).forEach(code => {
+    Object.keys(src[code] || {}).forEach(mk => {
+      if (!out[code]) out[code] = {};
+      const a = out[code][mk], b = src[code][mk];
+      if (!a || (b.at || 0) >= (a.at || 0)) out[code][mk] = b;
+    });
+  }));
+  return out;
 }
 // ── Tombstone: đánh dấu dự án đã bị XOÁ hoặc ĐỔI TÊN (khỏi tên cũ) ──
 // Đây là gốc rễ để sửa lỗi "xoá/đổi tên dự án không có tác dụng sau khi đồng bộ": nếu chỉ đơn
@@ -4332,6 +4427,9 @@ function renameProject(group, oldName, newName) {
   if (!PROJECTS_DB[group] || !PROJECTS_DB[group][oldName] || !newName || PROJECTS_DB[group][newName]) return false;
   PROJECTS_DB[group][newName] = PROJECTS_DB[group][oldName];
   delete PROJECTS_DB[group][oldName];
+  { const ok = group + '::' + oldName, nk = group + '::' + newName;
+    Object.values(PROJ_MOVES).forEach(mv => Object.values(mv).forEach(e => { if (e.key === ok) e.key = nk; if (e.prev === ok) e.prev = nk; }));
+    saveProjMoves(); }
   addTombstone(group, oldName); // tên cũ coi như "đã xoá" — tránh Sheet hồi sinh lại tên cũ
   saveProjectsDB();
   return true;
@@ -4385,7 +4483,7 @@ function setMonthPlanField(group, proj, mk, field, value) {
   saveProjectsDB();
 }
 
-function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
+function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones, moves) {
   // ── Gộp tombstone (đánh dấu đã xoá/đổi tên) — hợp cả 2 bên, NHƯNG nếu dự án đó đang THỰC SỰ
   // tồn tại trong local (vừa được tạo lại bằng đúng tên cũ) thì bỏ đánh dấu, ưu tiên sự tồn tại
   // thực tế mới nhất hơn 1 tombstone cũ.
@@ -4414,6 +4512,12 @@ function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones) {
   const finalEmpMap = {};
   new Set([...Object.keys(localEmpMap), ...Object.keys(sheetEmpMap)]).forEach(code => {
     finalEmpMap[code] = (code in localEmpMap) ? localEmpMap[code] : sheetEmpMap[code];
+  });
+  // Lịch sử chuyển (đã ghép 2 bên) là nguồn đúng nhất cho "vị trí mới nhất" của NV có chuyển.
+  Object.keys(moves || {}).forEach(code => {
+    const ks = Object.keys(moves[code] || {}).sort(); if (!ks.length) return;
+    const last = moves[code][ks[ks.length - 1]];
+    if (last && last.key) finalEmpMap[code] = last.key;
   });
 
   const merged = {};
@@ -4474,16 +4578,30 @@ function deleteProject(group, name) {
   return true;
 }
 function moveEmployeeToProject(staffCode, toGroup, toProj) {
-  const cur = findEmployeeProject(staffCode);
-  if (cur) {
-    const arr = PROJECTS_DB[cur.group][cur.proj].employees;
-    const idx = arr.indexOf(staffCode);
+  const curMap = currentProjectMap();
+  const prevKey = curMap[staffCode] || null;
+  const newKey = (toGroup && toProj && PROJECTS_DB[toGroup] && PROJECTS_DB[toGroup][toProj]) ? toGroup + '::' + toProj : null;
+  if (prevKey === newKey) return false;
+  // Cập nhật vị trí mới nhất
+  if (prevKey) {
+    const [g, ...r] = prevKey.split('::'); const pr = r.join('::');
+    const arr = PROJECTS_DB[g][pr].employees; const idx = arr.indexOf(staffCode);
     if (idx >= 0) arr.splice(idx, 1);
   }
-  if (toGroup && toProj && PROJECTS_DB[toGroup] && PROJECTS_DB[toGroup][toProj]) {
-    if (!PROJECTS_DB[toGroup][toProj].employees.includes(staffCode)) PROJECTS_DB[toGroup][toProj].employees.push(staffCode);
+  if (newKey) {
+    const [g, ...r] = newKey.split('::'); const pr = r.join('::');
+    if (!PROJECTS_DB[g][pr].employees.includes(staffCode)) PROJECTS_DB[g][pr].employees.push(staffCode);
   }
-  saveProjectsDB();
+  // Ghi lịch sử: hiệu lực từ CHU KỲ SAU. Nếu đã có 1 lần chuyển cùng chu kỳ đó → ghi đè (giữ prev gốc).
+  const eff = nextCycleMk();
+  if (!PROJ_MOVES[staffCode]) PROJ_MOVES[staffCode] = {};
+  const existing = PROJ_MOVES[staffCode][eff];
+  const prev = existing ? existing.prev : prevKey;
+  if (newKey === prev && existing) delete PROJ_MOVES[staffCode][eff];   // chuyển lại về chỗ cũ → huỷ lần chuyển
+  else PROJ_MOVES[staffCode][eff] = { key: newKey, prev, at: Date.now() };
+  if (!Object.keys(PROJ_MOVES[staffCode]).length) delete PROJ_MOVES[staffCode];
+  saveProjectsDB(); saveProjMoves();
+  return true;
 }
 // Lấy tên hiển thị NV theo staff code — dò trong WLB_XLS trước (nguồn nhân sự), sau đó DB (chấm công OT).
 
@@ -4505,7 +4623,7 @@ function employeeNameByCode(code) {
 function viewProjectEmployees(group, proj, mk) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return;
-  empProjectFilter = { group, proj, codes: [...p.employees] };
+  empProjectFilter = { group, proj, codes: projectEmployeesForMonth(group, proj, mk || latestOtMk()) };
   if (mk) { empMK = mk; empTab = 'month'; empPeriod = null; }
   goPage('employees', null, true);
 }
@@ -4526,6 +4644,7 @@ function renderActionPlan() {
   const mk = sel ? sel.value : latestOtMk();
   const lbl = document.getElementById('wlbActionMonthLabel');
   if (lbl) lbl.textContent = mk ? `Số liệu OT tháng: ${fmtMK(mk)}` : 'Chưa có dữ liệu OT (chấm công hàng ngày) để tính OT thường/OT đêm.';
+  try { autoAssignUnassigned(); } catch(e) {}
   buildActionPlanTable('HCM-EC', 'actionPlanTBodyEC', mk);
   buildActionPlanTableSED('actionPlanTBodyED', mk);
   const syncNote = document.getElementById('actionPlanSyncNote');
@@ -4554,13 +4673,14 @@ function approvalBoxHtml(group, proj, mp, mk) {
 // ── Popup nhập PM/Lý do/Kế hoạch — thay cho 3 ô rời trước đây, gộp thành 1 nút "+" duy nhất ──
 // Hỗ trợ 2 chế độ: sửa (mặc định) và chỉ xem (viewOnly=true) — dùng chung 1 popup, chỉ khoá input
 // + đổi nút Save thành Đóng khi ở chế độ xem, để ECM/HODs xem nhanh mà không lo bấm nhầm sửa.
-let planEditCtx = null; // {group, proj, mk} — nhớ đang sửa dự án/tháng nào
+let planEditCtx = null; // {group, proj, mk, viewOnly}
+let planEditMoves = {}; // {staffCode: "group|proj"} — chuyển NV đang chọn, chỉ áp dụng khi bấm Save
+let planEditAdds = [];  // staff code muốn THÊM vào dự án này (kéo từ dự án khác) — áp dụng khi Save
 function openPlanEditModal(group, proj, mk, viewOnly) {
-  planEditCtx = { group, proj, mk };
-  const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
+  planEditCtx = { group, proj, mk, viewOnly: !!viewOnly };
+  planEditMoves = {}; planEditAdds = [];
   const mp = getMonthPlan(group, proj, mk);
   document.getElementById('planEditProjName').textContent = proj;
-  document.getElementById('planEditProjMeta').textContent = `Số NV: ${p ? p.employees.length : 0} · Tháng: ${mk ? fmtMK(mk) : '—'}`;
   document.getElementById('planEditPm').value = mp.pm || '';
   document.getElementById('planEditReason').value = mp.reason || '';
   document.getElementById('planEditPlan').value = mp.plan || '';
@@ -4576,7 +4696,69 @@ function openPlanEditModal(group, proj, mk, viewOnly) {
     cancelBtn.textContent = 'Huỷ / Cancel';
     cancelBtn.style.flex = '1';
   }
+  renderPlanEditEmployees();
   document.getElementById('planEditModal').style.display = 'flex';
+}
+// Danh sách NV của dự án (dạng 1 cột) — chuyển dự án thao tác ngay trong khung này, bấm Save mới áp dụng.
+function renderPlanEditEmployees() {
+  if (!planEditCtx) return;
+  const { group, proj, mk, viewOnly } = planEditCtx;
+  const wrap = document.getElementById('planEditEmpWrap');
+  const listEl = document.getElementById('planEditEmpList');
+  const meta = document.getElementById('planEditProjMeta');
+  if (proj === '__SED_ALL__') { wrap.style.display = 'none'; meta.textContent = `Tháng: ${mk ? fmtMK(mk) : '—'}`; return; }
+  wrap.style.display = '';
+  const codes = projectEmployeesForMonth(group, proj, mk);
+  meta.textContent = `Số NV: ${codes.length} · Tháng: ${mk ? fmtMK(mk) : '—'}`;
+  // OT tháng đang xem của từng NV (giúp PM biết nên chuyển ai)
+  const otBy = {};
+  if (mk && DB[mk]) {
+    const periods = buildPeriods(mk);
+    getTotals(mk, '__all__', periods.length ? periods.length - 1 : null).forEach(t => { if (t.staffCode) otBy[t.staffCode] = t.total; });
+  }
+  const eff = nextCycleMk();
+  const opts = [];
+  projectGroups().forEach(g => projectsInGroup(g).forEach(pr => {
+    if (pr === UNASSIGNED_PROJ || pr === '__SED_ALL__' || (g === group && pr === proj)) return;
+    opts.push({ v: g + '|' + pr, label: `${g} / ${pr}` });
+  }));
+  const rowHtml = (code, isAdd) => {
+    const chosen = planEditMoves[code] || '';
+    const pend = pendingMoveOf(code, mk);
+    const pendTxt = pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${pend.key ? pend.key.split('::').slice(1).join('::') : 'bỏ dự án'} từ ${fmtMK(pend.mk)}</span>` : '';
+    const ot = otBy[code] != null ? `${Math.round(otBy[code]*10)/10}h` : '—';
+    const sel = viewOnly ? '' : (isAdd
+      ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="planEditAdds=planEditAdds.filter(c=>c!=='${code}');renderPlanEditEmployees();return false">↩ huỷ</a>`
+      : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="planEditMoves['${code}']=this.value;if(!this.value)delete planEditMoves['${code}'];renderPlanEditEmployees()">
+           <option value="">Chuyển đến… (giữ nguyên)</option>
+           ${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}
+         </select>`);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${chosen||isAdd?'background:var(--accent-bg)':''}">
+      <span style="font-family:var(--font-mono);font-size:11px;width:68px;color:var(--text2)">${code}</span>
+      <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${employeeNameByCode(code)} ${pendTxt}</span>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3);width:46px;text-align:right">${ot}</span>
+      ${sel}
+    </div>`;
+  };
+  const sorted = [...codes].sort((a, b) => employeeNameByCode(a).localeCompare(employeeNameByCode(b), 'vi'));
+  listEl.innerHTML = (sorted.map(c => rowHtml(c, false)).join('') + planEditAdds.map(c => rowHtml(c, true)).join(''))
+    || '<div style="padding:12px;color:var(--text3);font-size:12px">Chưa có nhân viên nào trong dự án này.</div>';
+  const nMoves = Object.keys(planEditMoves).length + planEditAdds.length;
+  document.getElementById('planEditMoveNote').innerHTML = viewOnly ? '' :
+    `Chuyển NV trong chu kỳ đang chạy sẽ <strong>có hiệu lực từ chu kỳ sau: ${fmtMK(eff)} (từ ${cycleStartLabel(eff)})</strong> — số liệu các tháng đã qua giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
+  document.getElementById('planEditAddRow').style.display = viewOnly ? 'none' : 'flex';
+}
+function planEditAddEmp() {
+  const inp = document.getElementById('planEditAddInput');
+  const code = (inp.value || '').trim().toUpperCase();
+  if (!code || !planEditCtx) return;
+  const cur = currentProjectMap();
+  const known = cur[code] || employeeNameByCode(code) !== code;
+  if (!known) { toast(`Không tìm thấy Staff Code "${code}"`); return; }
+  if (projectEmployeesForMonth(planEditCtx.group, planEditCtx.proj, planEditCtx.mk).includes(code) || planEditAdds.includes(code)) { toast('NV này đã nằm trong dự án'); return; }
+  planEditAdds.push(code);
+  inp.value = '';
+  renderPlanEditEmployees();
 }
 // Mở popup ở chế độ CHỈ XEM — dùng cho nút "👁️ Xem" cạnh "✏️ Sửa".
 function openPlanViewModal(group, proj, mk) {
@@ -4584,7 +4766,7 @@ function openPlanViewModal(group, proj, mk) {
 }
 function closePlanEditModal() {
   document.getElementById('planEditModal').style.display = 'none';
-  planEditCtx = null;
+  planEditCtx = null; planEditMoves = {}; planEditAdds = [];
 }
 async function savePlanEditModal() {
   if (!planEditCtx) return;
@@ -4592,16 +4774,19 @@ async function savePlanEditModal() {
   setMonthPlanField(group, proj, mk, 'pm', document.getElementById('planEditPm').value);
   setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
   setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
+  // Áp dụng các lần chuyển NV đã chọn trong khung (hiệu lực từ chu kỳ sau)
+  let moved = 0;
+  Object.entries(planEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) moved++; });
+  planEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) moved++; });
   const btn = document.getElementById('planEditSaveBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu... / Saving...'; }
   try {
-    // Merge giờ ưu tiên LOCAL cho mọi ô text — sửa lại nội dung đã có sẵn sẽ giữ đúng, không còn
-    // bị mất do merge nhầm lấy giá trị cũ trên Sheet đè lên.
     if (SYNC_URL) await syncSaveActionPlanOnly();
     else renderActionPlan();
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Save (lưu & đồng bộ)'; }
   }
+  if (moved) toast(`Đã chuyển ${moved} NV — hiệu lực từ ${fmtMK(nextCycleMk())} (${cycleStartLabel(nextCycleMk())})`);
   closePlanEditModal();
 }
 // Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon Xem/Sửa.
@@ -4625,10 +4810,27 @@ function planCellHtml(group, proj, mk, mp) {
   </div>`;
 }
 
+function projNameCellHtml(group, proj, mk) {
+  const projEsc = proj.replace(/'/g,"\\'");
+  const n = projectEmployeesForMonth(group, proj, mk).length;
+  if (proj === UNASSIGNED_PROJ) {
+    return `<div style="font-weight:700;color:#B8730F">⚠️ ${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${n} NV)</span></div>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:4px;line-height:1.5">NV mới/chưa có dự án — chờ PM xác nhận: bấm + ở cột Kế hoạch → "Chuyển đến…"</div>`;
+  }
+  return `<div style="font-weight:600">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${n} NV)</span></div>
+    <div style="margin-top:4px;display:flex;gap:6px">
+      <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
+      <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
+    </div>`;
+}
+
 function buildActionPlanTable(group, tbodyId, mk) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
-  const projNames = projectsInGroup(group).sort();
+  let projNames = projectsInGroup(group).sort();
+  // "Chưa gán dự án" luôn nằm đầu cho PM thấy; ẩn nếu đang trống ở tháng này
+  projNames = projNames.filter(pn => pn !== UNASSIGNED_PROJ || projectEmployeesForMonth(group, pn, mk).length);
+  if (projNames.includes(UNASSIGNED_PROJ)) projNames = [UNASSIGNED_PROJ, ...projNames.filter(pn => pn !== UNASSIGNED_PROJ)];
   if (!projNames.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
     return;
@@ -4642,14 +4844,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
     const isRejected = (mp.approvedBy||'').startsWith('REJECTED|');
     return `<tr class="${isRejected ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
-      <td>
-        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
-        <div style="margin-top:4px;display:flex;gap:6px">
-          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
-          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
-        </div>
-        <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
-      </td>
+      <td>${projNameCellHtml(group, proj, mk)}</td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4717,14 +4912,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
     const isRejected2 = (mp.approvedBy||'').startsWith('REJECTED|');
     rowsHtml.push(`<tr class="${isRejected2 ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${idx+2}</td>
-      <td>
-        <div style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="toggleProjectEmployees('${group}','${projEsc}')">${proj} <span style="font-weight:400;color:var(--text3);font-size:11px">(${p.employees.length} NV) ▾</span></div>
-        <div style="margin-top:4px;display:flex;gap:6px">
-          <button class="btn" style="padding:2px 8px;font-size:10.5px" onclick="renameProjectPrompt('${group}','${projEsc}')">Đổi tên</button>
-          <button class="btn btn-danger" style="padding:2px 8px;font-size:10.5px" onclick="deleteProjectConfirm('${group}','${projEsc}')">Xoá</button>
-        </div>
-        <div id="projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:8px;font-size:11.5px"></div>
-      </td>
+      <td>${projNameCellHtml(group, proj, mk)}</td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
         OT thường: <strong>${stats.otNormal}h</strong><br>
         OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
@@ -4780,6 +4968,7 @@ function promptAddProject(group) {
   else toast('Tên dự án đã tồn tại hoặc không hợp lệ');
 }
 function renameProjectPrompt(group, proj) {
+  if (proj === UNASSIGNED_PROJ) { toast('Không đổi tên được nhóm này'); return; }
   const name = prompt('Đổi tên dự án thành:', proj);
   if (!name || name.trim() === proj) return;
   if (renameProject(group, proj, name.trim())) { toast('Đã đổi tên dự án'); renderActionPlan(); }
@@ -4787,6 +4976,7 @@ function renameProjectPrompt(group, proj) {
 }
 function deleteProjectConfirm(group, proj) {
   if (!requireAdmin('xoá dự án')) return;
+  if (proj === UNASSIGNED_PROJ) { toast('Không xoá được nhóm này'); return; }
   const n = (PROJECTS_DB[group]?.[proj]?.employees || []).length;
   if (!confirm(`Xoá dự án "${proj}"? ${n} nhân viên trong dự án này sẽ trở thành "chưa gán dự án".`)) return;
   deleteProject(group, proj);
@@ -4794,50 +4984,12 @@ function deleteProjectConfirm(group, proj) {
   renderActionPlan();
 }
 
-function toggleProjectEmployees(group, proj) {
-  const boxId = `projEmpBox_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}`;
-  const box = document.getElementById(boxId);
-  if (!box) return;
-  if (box.style.display === 'block') { box.style.display = 'none'; return; }
-  // Đóng các box khác đang mở để đỡ rối
-  document.querySelectorAll('[id^="projEmpBox_"]').forEach(b => b.style.display = 'none');
-  renderProjectEmployeeBox(group, proj, box);
-  box.style.display = 'block';
-}
-function renderProjectEmployeeBox(group, proj, box) {
-  const p = PROJECTS_DB[group][proj];
-  const allProjOptions = [];
-  projectGroups().forEach(g => projectsInGroup(g).forEach(pr => allProjOptions.push({g, pr})));
-  box.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-      ${p.employees.map(code => `
-        <span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border2);border-radius:999px;padding:3px 6px 3px 10px;font-family:var(--font-mono)">
-          ${code} — ${employeeNameByCode(code)}
-          <select style="font-size:10px;border:none;background:transparent;cursor:pointer" onchange="if(this.value){moveEmployeeToProject('${code}',this.value.split('|')[0],this.value.split('|')[1]);renderActionPlan();toast('Đã chuyển NV');}">
-            <option value="">Chuyển đến...</option>
-            ${allProjOptions.filter(o=>!(o.g===group&&o.pr===proj)).map(o=>`<option value="${o.g}|${o.pr}">${o.g} / ${o.pr}</option>`).join('')}
-          </select>
-          <span style="cursor:pointer;color:var(--red)" title="Bỏ khỏi dự án" onclick="moveEmployeeToProject('${code}',null,null);renderActionPlan();toast('Đã bỏ NV khỏi dự án');">✕</span>
-        </span>`).join('') || '<span style="color:var(--text3)">Chưa có nhân viên nào.</span>'}
-    </div>
-    <div style="display:flex;gap:6px">
-      <input type="text" id="addEmpInput_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}" placeholder="Nhập Staff Code để thêm..." style="flex:1;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:11.5px">
-      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="(function(){
-        const inp=document.getElementById('addEmpInput_${group}_${proj.replace(/[^a-zA-Z0-9]/g,'_')}');
-        const code=inp.value.trim(); if(!code) return;
-        moveEmployeeToProject(code,'${group}','${proj.replace(/'/g,"\\'")}');
-        renderActionPlan(); toast('Đã thêm NV vào dự án');
-      })()">+ Thêm</button>
-    </div>`;
-}
-
-
 // Tính OT thường + OT đêm + số NV có OT, cho 1 dự án cụ thể — lấy từ DB chấm công hàng ngày
 // (không phải WLB_XLS, vì WLB_XLS không tách riêng OT ngày/đêm). Dùng tháng gần nhất có dữ liệu.
 function getProjectOTStats(group, projectName, mk) {
   const proj = PROJECTS_DB[group] && PROJECTS_DB[group][projectName];
   if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0, overKpi: 0, overPay: 0 };
-  const codes = new Set(proj.employees);
+  const codes = new Set(projectEmployeesForMonth(group, projectName, mk));
   // Dùng ĐÚNG getTotals() — cùng 1 hàm mà trang "Danh sách NV OT" đang dùng để hiển thị — đảm bảo
   // 2 nơi luôn ra cùng 1 con số, không tính lại bằng công thức khác dễ gây lệch.
   const periods = buildPeriods(mk);
@@ -4865,7 +5017,7 @@ function getProjectOTStats(group, projectName, mk) {
 function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p || !mk || !DB[mk]) return { total: 0, nvCount: 0 };
-  const codes = new Set(p.employees);
+  const codes = new Set(projectEmployeesForMonth(group, proj, mk));
   const totals = getTotals(mk, '__all__', periodIdx);
   let total = 0, nvCount = 0;
   totals.forEach(t => {
@@ -4882,7 +5034,7 @@ function getProjectWlbForMonth(group, proj, monthNum) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
   let ot = 0, off = 0;
-  p.employees.forEach(code => {
+  projectEmployeesForMonth(group, proj, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`).forEach(code => {
     const e = Object.values(WLB_XLS.employees || {}).find(x => x.code === code);
     if (!e) return;
     ot += (e.ot[monthNum] || 0);
@@ -4896,10 +5048,10 @@ function getProjectWlbForMonths(group, proj, monthNums) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
   let ot = 0, off = 0;
-  p.employees.forEach(code => {
-    const e = Object.values(WLB_XLS.employees || {}).find(x => x.code === code);
-    if (!e) return;
-    monthNums.forEach(m => { ot += (e.ot[m]||0); off += (e.off[m]||0); });
+  const empByMonth = {};
+  monthNums.forEach(m => { empByMonth[m] = new Set(projectEmployeesForMonth(group, proj, `${WLB_XLS.year}-${String(m).padStart(2,'0')}`)); });
+  Object.values(WLB_XLS.employees || {}).forEach(e => {
+    monthNums.forEach(m => { if (e.code && empByMonth[m].has(e.code)) { ot += (e.ot[m]||0); off += (e.off[m]||0); } });
   });
   return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
 }
@@ -5633,7 +5785,7 @@ function renderWlb() {
           const monthNum = parseInt(mk.split('-')[1], 10);
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
             const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: projectEmployeesForMonth('HCM-EC', proj, mk).length };
           });
           rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
@@ -5809,7 +5961,7 @@ function renderWlb() {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
           const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
             const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: PROJECTS_DB['HCM-EC'][proj].employees.length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: projectEmployeesForMonth('HCM-EC', proj, mks[mks.length-1]).length };
           });
           qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
