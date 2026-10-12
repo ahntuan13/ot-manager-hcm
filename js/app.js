@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.61';
+const APP_VERSION = '2026.62';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -1806,7 +1806,7 @@ function renderDashProjectBarChart(totals) {
   totals.forEach(t => {
     if (!t.staffCode) return;
     const info = findEmployeeProject(t.staffCode, activeMK);
-    if (!info) return;
+    if (!info || info.proj.startsWith('__')) return;
     const key = `${info.group}/${info.proj.replace(/^HCM\s+/i,'')}`;
     if (!projTotals[key]) projTotals[key] = 0;
     projTotals[key] += t.total;
@@ -2220,7 +2220,7 @@ function renderDashTable(totals, periods) {
     const normal = Math.round((t.total - night)*10)/10;
     const projInfo = t.staffCode ? findEmployeeProject(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : null;
     const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
-    const deptDisplay = projInfo ? `${projInfo.group}/${projName}` : t.dept;
+    const deptDisplay = (projInfo && !projInfo.proj.startsWith('__')) ? `${projInfo.group}/${projName}` : (projInfo ? projInfo.group : t.dept);
     // Tích hợp Chi tiết OT theo ngày NGAY TẠI ĐÂY — bấm tên NV để mở/đóng, thay vì phải xem 1 danh
     // sách tách riêng ở dưới trang. Dùng đúng tháng đang xem của trang hiện tại (Danh sách NV OT
     // dùng empMK, Dashboard dùng activeMK) — tự nhận diện qua trang nào đang hiển thị.
@@ -4308,6 +4308,23 @@ function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB
 // Chuyển NV trong chu kỳ đang chạy (VD 12/10, chu kỳ 16/09→15/10 = "2026-10") chỉ có hiệu lực
 // từ CHU KỲ SAU ("2026-11", tức 16/10) → số liệu các tháng đã qua giữ nguyên dự án cũ.
 const UNASSIGNED_PROJ = 'Chưa gán dự án';
+// Các phòng ban khác có thể là đích khi chuyển NV ra khỏi dự án HCM-EC
+const DEPT_TARGETS = ['S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ'];
+function deptEntryKey(d) { return d === 'S-ED' ? '__SED_ALL__' : '__DEPT_ALL__'; }
+function ensureDeptEntries() {
+  if (!PROJECTS_DB) return;
+  DEPT_TARGETS.forEach(d => {
+    if (!PROJECTS_DB[d]) PROJECTS_DB[d] = {};
+    const k = deptEntryKey(d);
+    if (!PROJECTS_DB[d][k]) PROJECTS_DB[d][k] = { employees: [], plans: {} };
+  });
+}
+// Tên hiển thị của 1 key "group::proj"
+function labelOfProjKey(key) {
+  if (!key) return 'chưa gán';
+  const i = key.indexOf('::'); const g = key.slice(0, i), pr = key.slice(i + 2);
+  return pr.startsWith('__') ? `phòng ban ${g}` : pr;
+}
 const PROJ_MOVES_KEY = 'ot_manager_proj_moves_v1';
 let PROJ_MOVES = {};
 function loadProjMoves() { try { const r = localStorage.getItem(PROJ_MOVES_KEY); if (r) PROJ_MOVES = JSON.parse(r) || {}; } catch(e) {} }
@@ -4717,23 +4734,33 @@ function renderPlanEditEmployees() {
     getTotals(mk, '__all__', periods.length ? periods.length - 1 : null).forEach(t => { if (t.staffCode) otBy[t.staffCode] = t.total; });
   }
   const eff = nextCycleMk();
-  const opts = [];
+  ensureDeptEntries();
+  const opts = [], deptOpts = [];
   projectGroups().forEach(g => projectsInGroup(g).forEach(pr => {
-    if (pr === UNASSIGNED_PROJ || pr === '__SED_ALL__' || (g === group && pr === proj)) return;
+    if (pr === UNASSIGNED_PROJ || (g === group && pr === proj)) return;
+    if (pr.startsWith('__')) { deptOpts.push({ v: g + '|' + pr, label: `Phòng ban ${g}` }); return; }
     opts.push({ v: g + '|' + pr, label: `${g} / ${pr}` });
   }));
-  const rowHtml = (code, isAdd) => {
+  // NV đã được chuyển VÀO dự án này nhưng chưa tới chu kỳ hiệu lực: vẫn hiện tên (chưa tính OT)
+  const activeSet = new Set(codes);
+  const curMap = currentProjectMap();
+  const key = group + '::' + proj;
+  const incoming = Object.keys(curMap).filter(c => curMap[c] === key && !activeSet.has(c));
+  const incomingEff = c => { const ks = Object.keys(PROJ_MOVES[c] || {}).sort(); return ks.length ? ks[ks.length - 1] : null; };
+  if (incoming.length) meta.textContent += ` (+${incoming.length} NV sắp chuyển vào)`;
+  const rowHtml = (code, isAdd, isIn) => {
     const chosen = planEditMoves[code] || '';
     const pend = pendingMoveOf(code, mk);
-    const pendTxt = pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${pend.key ? pend.key.split('::').slice(1).join('::') : 'bỏ dự án'} từ ${fmtMK(pend.mk)}</span>` : '';
-    const ot = otBy[code] != null ? `${Math.round(otBy[code]*10)/10}h` : '—';
+    const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtMK(incomingEff(code))} (${cycleStartLabel(incomingEff(code))})</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
+    const ot = (!isIn && otBy[code] != null) ? `${Math.round(otBy[code]*10)/10}h` : '—';
     const sel = viewOnly ? '' : (isAdd
       ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="planEditAdds=planEditAdds.filter(c=>c!=='${code}');renderPlanEditEmployees();return false">↩ huỷ</a>`
       : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="planEditMoves['${code}']=this.value;if(!this.value)delete planEditMoves['${code}'];renderPlanEditEmployees()">
            <option value="">Chuyển đến… (giữ nguyên)</option>
-           ${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}
+           <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
+           <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
          </select>`);
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${chosen||isAdd?'background:var(--accent-bg)':''}">
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${chosen||isAdd?'background:var(--accent-bg)':''}${isIn?'background:rgba(60,160,90,.10)':''}">
       <span style="font-family:var(--font-mono);font-size:11px;width:68px;color:var(--text2)">${code}</span>
       <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${employeeNameByCode(code)} ${pendTxt}</span>
       <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3);width:46px;text-align:right">${ot}</span>
@@ -4741,7 +4768,7 @@ function renderPlanEditEmployees() {
     </div>`;
   };
   const sorted = [...codes].sort((a, b) => employeeNameByCode(a).localeCompare(employeeNameByCode(b), 'vi'));
-  listEl.innerHTML = (sorted.map(c => rowHtml(c, false)).join('') + planEditAdds.map(c => rowHtml(c, true)).join(''))
+  listEl.innerHTML = (sorted.map(c => rowHtml(c, false, false)).join('') + incoming.map(c => rowHtml(c, false, true)).join('') + planEditAdds.map(c => rowHtml(c, true, false)).join(''))
     || '<div style="padding:12px;color:var(--text3);font-size:12px">Chưa có nhân viên nào trong dự án này.</div>';
   const nMoves = Object.keys(planEditMoves).length + planEditAdds.length;
   document.getElementById('planEditMoveNote').innerHTML = viewOnly ? '' :
