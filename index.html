@@ -31,35 +31,16 @@
     <div id="roleGateMain">
       <img src="img/icon.png" alt="HCM OT" style="width:64px;height:auto;display:block;margin:0 auto 14px;border-radius:12px">
       <div style="font-size:17px;font-weight:800;color:var(--text)">HCM - OT Monitoring</div>
-      <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:24px">Chọn vai trò để tiếp tục</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="enterAsRole('user')">
-        👤 Đăng nhập <span style="font-weight:400;opacity:.85">— xem &amp; thao tác thường</span>
-      </button>
-      <button class="btn" style="width:100%;padding:12px;font-size:14px;border:1.5px solid var(--border2);margin-bottom:10px" onclick="showSubLoginForm()">
-        🧑‍💼 Quản lý <span style="font-weight:400;opacity:.7">— Sub-admin, cần tài khoản</span>
-      </button>
-      <button class="btn" style="width:100%;padding:12px;font-size:14px;border:1.5px solid var(--border2)" onclick="showAdminPwForm()">
-        🔑 Admin <span style="font-weight:400;opacity:.7">— cần mật khẩu, toàn quyền</span>
-      </button>
-      <div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6">Vai trò "Đăng nhập" không cần mật khẩu nhưng <strong>không xoá được</strong> tháng/tuần/dự án và không vào được mục Cài đặt — giúp tránh xoá nhầm dữ liệu.</div>
-    </div>
-
-    <div id="roleGateSubPw" style="display:none">
-      <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">🧑‍💼 Đăng nhập Quản lý</div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:14px">Duyệt/từ chối Action Plan, nhận thông báo, luân chuyển NV, thêm dự án</div>
-      <input id="subUserInput" type="text" autocomplete="username" placeholder="Tên đăng nhập" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')document.getElementById('subPwInput').focus()">
-      <input id="subPwInput" type="password" autocomplete="current-password" placeholder="Mật khẩu" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')attemptSubLogin()">
-      <div id="subPwError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px;text-align:left">Sai tên đăng nhập hoặc mật khẩu.</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptSubLogin()">Đăng nhập<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Sign in</span></button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Back</span></button>
-    </div>
-
-    <div id="roleGateAdminPw" style="display:none">
-      <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:16px">🔑 Đăng nhập Admin</div>
-      <input id="adminPwInput" type="password" placeholder="Mật khẩu Admin" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')attemptAdminLogin()">
-      <div id="adminPwError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px;text-align:left">Sai mật khẩu Admin.</div>
-      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptAdminLogin()">Vào với quyền Admin<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Enter as Admin</span></button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Back</span></button>
+      <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:20px">Đăng nhập để tiếp tục <span style="opacity:.7">/ Sign in</span></div>
+      <div id="loginBusy" style="display:none;font-size:13px;color:var(--text2);padding:18px 0">Đang kiểm tra đăng nhập…</div>
+      <form id="loginForm" onsubmit="cloudLogin(event)" style="text-align:left">
+        <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" required style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px">
+        <input id="loginPw" type="password" autocomplete="current-password" placeholder="Mật khẩu" required style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px">
+        <div id="loginError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px"></div>
+        <button id="loginBtn" type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px">Đăng nhập</button>
+        <button type="button" class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="cloudForgotPassword()">Quên mật khẩu?</button>
+      </form>
+      <div style="font-size:11px;color:var(--text3);margin-top:14px;line-height:1.6">Chưa có tài khoản? Liên hệ Admin để được cấp. Dữ liệu tự động lưu &amp; đồng bộ cho mọi người.</div>
     </div>
 
   </div>
@@ -210,7 +191,7 @@
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Đổi giao diện sáng/tối · Toggle theme">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>
-      <button class="btn-pull-sheet" onclick="syncLoad()" title="Tải dữ liệu mới nhất từ Google Sheet · Pull latest from Sheet">
+      <button class="btn-pull-sheet legacy-sync" onclick="syncLoad()" title="Tải dữ liệu mới nhất từ Google Sheet · Pull latest from Sheet">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span>Update data</span>
       </button>
@@ -941,7 +922,7 @@
     <div class="action-row" style="margin-top:12px;align-items:center">
       <button class="btn" onclick="promptAddProject('HCM-EC')">+ Thêm dự án (HCM-EC)<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Add Project</span></button>
       <button class="btn" onclick="promptAddProject('S-ED')">+ Thêm dự án (S-ED)<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Add Project</span></button>
-      <button class="btn btn-primary" style="margin-left:auto" onclick="syncSaveActionPlanOnly()">💾 Lưu &amp; Đồng bộ lên Sheet<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Save &amp; Sync</span></button>
+      <button class="btn btn-primary legacy-sync" style="margin-left:auto" onclick="syncSaveActionPlanOnly()">💾 Lưu &amp; Đồng bộ lên Sheet<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Save &amp; Sync</span></button>
     </div>
     <div id="actionPlanSyncNote" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right"></div>
   </div>
@@ -988,12 +969,13 @@
 
 <!-- ====== SETTINGS (Sync Google Sheets) ====== -->
 <div class="pg" id="pg-settings">
-  <div class="info-box">
+  <div id="cloudAdminArea"></div>
+  <div class="info-box legacy-sync">
     <strong>Sync qua Google Sheets:</strong> Dán URL Web App (Apps Script) bên dưới để đồng bộ dữ liệu OT giữa nhiều người/máy. Mọi người dùng cùng URL sẽ chia sẻ chung 1 nguồn dữ liệu.<br>
     <strong>Lưu ý:</strong> Khi <em>Tải lên (Save)</em>, dữ liệu trên Sheet sẽ bị <strong>ghi đè</strong> bằng dữ liệu hiện tại của bạn. Khi <em>Tải xuống (Load)</em>, dữ liệu local sẽ bị thay bằng dữ liệu trên Sheet.
   </div>
 
-  <div class="card ac-top ac-red">
+  <div class="card ac-top ac-red legacy-sync">
     <div class="card-title">🔑 Mật khẩu Admin<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Admin Password</i></div>
     <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px">
       Mật khẩu để vào chế độ Admin (toàn quyền, có thể xoá dữ liệu). <strong>Đổi ngay</strong> khỏi mật khẩu mặc định lần đầu để đảm bảo an toàn hơn.<br>
@@ -1002,7 +984,7 @@
     <button class="btn btn-danger" onclick="changeAdminPassword()">Đổi mật khẩu Admin<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Change Password</span></button>
   </div>
 
-  <div class="card">
+  <div class="card legacy-sync">
     <div class="card-title">Cấu hình kết nối<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Connection Settings</i></div>
     <div class="action-row" style="margin-bottom:12px">
       <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" style="flex:1;min-width:280px">
@@ -1052,7 +1034,7 @@
       "Gửi tự động" cần Apps Script (cùng URL Sheet ở trên) đã thêm action <code>sendNotifyEmail</code> dùng <code>MailApp.sendEmail()</code> để tự gửi từ tài khoản anhtuan@taikisha-vn.com mà không cần mở email cá nhân.
     </div>
   </div>
-  <div class="card">
+  <div class="card legacy-sync">
     <div class="card-title">Hướng dẫn quy trình hàng tuần<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Weekly Process Guide</i></div>
     <div style="font-size:12px;color:var(--text2);line-height:1.9">
       1. Mỗi tuần, upload file Excel chấm công ở mục <strong style="color:var(--text)">Upload dữ liệu</strong> bên dưới<br>
@@ -1275,7 +1257,12 @@
 
 </div><!-- /app-root -->
 
+<script>window.CLOUD_ON = true;</script>
 <script src="js/app.js"></script>
 <script src="js/manpower.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/cloud.js"></script>
 </body>
 </html>

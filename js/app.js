@@ -1,7 +1,9 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.66';
+const APP_VERSION = '2026.67';
+// Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
+function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -15,7 +17,7 @@ const ROLE_KEY = 'ot_manager_role_v1';
 function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
 // Sub-admin (quản lý, không phải Admin): duyệt/từ chối Action Plan, nhận thông báo, luân chuyển NV, thêm dự án.
 // KHÔNG vào được Cài đặt/upload dữ liệu/xoá dữ liệu. Tài khoản mặc định: quochuy / tve (chỉ để phân quyền, không phải bảo mật thực sự).
-const SUBADMIN_DEFAULTS = { quochuy: 'tve' };
+const SUBADMIN_DEFAULTS = {}; // (đã bỏ tài khoản mặc định — dùng đăng nhập Firebase)
 function isSubAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'sub'; }
 function isManager() { return isAdmin() || isSubAdmin(); }
 function checkSubAdminLogin(username, password) {
@@ -147,6 +149,7 @@ function enterAsRole(role, username) {
 // ── Popup nhắc "Update data" ngay sau khi đăng nhập — tránh trường hợp User/Admin quên bấm,
 // dẫn tới nhìn thấy dữ liệu cũ (thiếu tháng mới nhất) mà không hề hay biết.
 function showUpdateReminderPopup() {
+  if (window.CLOUD_ON) return;
   if (!SYNC_URL) return; // chưa cấu hình Sheet thì không có gì để nhắc
   const modal = document.getElementById('updateReminderModal');
   if (!modal) return;
@@ -880,7 +883,8 @@ function fmtCompanyMK(mk) {
 // ============================================================
 function saveDB(triggerAuto = true) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch(e) {}
-  if (triggerAuto && AUTO_SYNC && SYNC_URL) syncSave();
+  cloudTouch();
+  if (!window.CLOUD_ON && triggerAuto && AUTO_SYNC && SYNC_URL) syncSave();
 }
 function loadDB() {
   try {
@@ -3548,7 +3552,7 @@ function loadSyncConfig() {
   try {
     SYNC_URL = localStorage.getItem(SYNC_URL_KEY);
     if (SYNC_URL === null) { SYNC_URL = DEFAULT_SYNC_URL; localStorage.setItem(SYNC_URL_KEY, SYNC_URL); }
-    AUTO_SYNC = localStorage.getItem(AUTOSYNC_KEY) === '1';
+    AUTO_SYNC = !window.CLOUD_ON && localStorage.getItem(AUTOSYNC_KEY) === '1';
   } catch(e) { SYNC_URL = DEFAULT_SYNC_URL; }
 }
 
@@ -3739,6 +3743,7 @@ async function verifyPublish(sent) {
 let _publishPending = false;
 let pendingDataNotes = [];
 async function offerPublish(what, alreadyAuto) {
+  if (window.CLOUD_ON) { try { notify('all', { type:'data', k:'data:' + Date.now(), ic:'📥', title:'Dữ liệu mới đã được cập nhật', body: what || '' }); } catch(e) {} return; }
   if (!SYNC_URL) return;
   if (what) pendingDataNotes.push(what);
   if (alreadyAuto && AUTO_SYNC) return;       // saveDB() đã tự gọi syncSave rồi
@@ -3752,6 +3757,7 @@ async function offerPublish(what, alreadyAuto) {
 }
 
 async function syncSave() {
+  if (window.CLOUD_ON) { return window.cloudFlushNow ? window.cloudFlushNow(true) : undefined; } // chế độ Cloud: tự lưu, hàm này chỉ ép lưu ngay
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang kiểm tra Sheet...');
   try {
@@ -3891,6 +3897,7 @@ async function syncSave() {
 // Không cần sửa gì ở Google Apps Script — vẫn dùng chung 1 kho lưu trữ, chỉ khác cách GHÉP dữ liệu
 // phía client trước khi gửi lên.
 async function syncSaveActionPlanOnly() {
+  if (window.CLOUD_ON) { return window.cloudFlushNow ? window.cloudFlushNow(true) : undefined; }
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
@@ -3975,6 +3982,7 @@ async function syncSaveActionPlanOnly() {
 }
 
 async function syncLoad() {
+  if (window.CLOUD_ON) { toast('Dữ liệu tự động cập nhật theo thời gian thực — không cần bấm Update.'); return; }
   if (!SYNC_URL) { toast('Chưa cấu hình URL Sheet'); goPage('settings'); return; }
   const hasData = Object.keys(DB).length || Object.keys(LATE_DB).length || Object.keys(OFF_DB).length;
   if (hasData && !confirm('Dữ liệu hiện tại (OT + Đi trễ + Off Day WLB + Action Plan) sẽ bị thay bằng dữ liệu trên Sheet. Tiếp tục?')) return;
@@ -4093,7 +4101,7 @@ let wlbTab = 'month';
 
 function killWlbChart(id) { if (WLB_CH[id]) { WLB_CH[id].destroy(); WLB_CH[id] = null; } }
 
-function saveOffDB() { try { localStorage.setItem(OFF_STORAGE_KEY, JSON.stringify(OFF_DB)); } catch(e) {} }
+function saveOffDB() { try { localStorage.setItem(OFF_STORAGE_KEY, JSON.stringify(OFF_DB)); } catch(e) {} cloudTouch(); }
 function loadOffDB() {
   try { const r = localStorage.getItem(OFF_STORAGE_KEY); if (r) OFF_DB = JSON.parse(r); } catch(e) {}
   migrateOffDBKeys();
@@ -4360,7 +4368,7 @@ function loadProjectsDB() {
   });
   saveProjectsDB();
 }
-function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} }
+function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} cloudTouch(); }
 
 function projectGroups() { return Object.keys(PROJECTS_DB || {}); }
 function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}); }
@@ -4392,7 +4400,7 @@ function labelOfProjKey(key) {
 const HC_PLAN_KEY = 'ot_manager_hc_plan_v1';
 let HC_PLAN = {};
 function loadHcPlan() { try { const r = localStorage.getItem(HC_PLAN_KEY); if (r) HC_PLAN = JSON.parse(r) || {}; } catch(e) {} }
-function saveHcPlan() { try { localStorage.setItem(HC_PLAN_KEY, JSON.stringify(HC_PLAN)); } catch(e) {} }
+function saveHcPlan() { try { localStorage.setItem(HC_PLAN_KEY, JSON.stringify(HC_PLAN)); } catch(e) {} cloudTouch(); }
 function mergeHcPlan(local, sheet) {
   const out = JSON.parse(JSON.stringify(local || {}));
   Object.keys(sheet || {}).forEach(k => Object.keys(sheet[k] || {}).forEach(mk => {
@@ -4419,7 +4427,7 @@ function migrateUnassignedMoves() {
   });
   if (ch) saveProjMoves();
 }
-function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} }
+function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} cloudTouch(); }
 function nextCycleMk(d) {
   const cur = companyMonthInfo(d || new Date()).monthKey;
   let [y, m] = cur.split('-').map(Number);
@@ -4764,6 +4772,7 @@ function renderActionPlan() {
   const syncNote = document.getElementById('actionPlanSyncNote');
   if (syncNote) {
     const unsynced = DIRTY_PLAN_KEYS.size > 0 || (typeof apUnsynced !== 'undefined' && apUnsynced);
+    if (window.CLOUD_ON) { syncNote.textContent = '✅ Tự động lưu & đồng bộ — mọi người thấy ngay khi bạn bấm Lưu.'; } else
     syncNote.textContent = unsynced ? '⚠️ Có thay đổi mới lưu tạm trên máy này — bấm "Lưu & Đồng bộ lên Sheet" để người khác thấy.' : lastSyncedAt
       ? `Lần đồng bộ gần nhất: ${lastSyncedAt}`
       : SYNC_URL ? '⚠️ Chưa đồng bộ lần nào trong phiên này — nhớ bấm "Lưu & Đồng bộ" sau khi điền xong.' : '⚠️ Chưa cấu hình Google Sheets — vào Cài đặt để bật đồng bộ, nếu không dữ liệu chỉ lưu trên máy này.';
@@ -5308,7 +5317,7 @@ function latestOtMk() {
 const WLB_XLS_KEY = 'ot_manager_wlb_xls_v1';
 let WLB_XLS = { year: new Date().getFullYear(), employees: {} }; // employees[staffCode] = {name,dept,position,ot:{1..12},off:{1..12}}
 
-function saveWlbXls() { try { localStorage.setItem(WLB_XLS_KEY, JSON.stringify(WLB_XLS)); } catch(e) { toast('⚠️ Không lưu được WLB vào bộ nhớ trình duyệt (đầy?) — hãy đăng lên Sheet ngay.'); } }
+function saveWlbXls() { cloudTouch(); try { localStorage.setItem(WLB_XLS_KEY, JSON.stringify(WLB_XLS)); } catch(e) { toast('⚠️ Không lưu được WLB vào bộ nhớ trình duyệt (đầy?) — hãy đăng lên Sheet ngay.'); } }
 function loadWlbXls() {
   try { const raw = localStorage.getItem(WLB_XLS_KEY); if (raw) WLB_XLS = JSON.parse(raw); } catch(e) {}
 }
@@ -5451,7 +5460,7 @@ async function handleWlbMonthlyExcel(inp) {
   // KHÔNG bao giờ thấy dữ liệu mới này cho tới khi có ai đó bấm đồng bộ lên Sheet. Đây là nguyên
   // nhân "Admin đã update đầy đủ nhưng User vẫn báo thiếu tháng" — vì thiếu bước đẩy lên Sheet sau
   // khi upload. Hiện nhắc RÕ RÀNG + nút bấm 1 chạm để đóng gap này ngay tại chỗ.
-  const syncReminder = SYNC_URL
+  const syncReminder = (window.CLOUD_ON ? true : false) ? '<div style="margin-top:8px;font-size:12px;color:var(--green)">✅ Đã tự động lưu lên Cloud — mọi người thấy ngay.</div>' : SYNC_URL
     ? `<div style="margin-top:8px;padding:10px 12px;background:var(--accent-bg);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
          <span style="font-size:12px;color:var(--text)"><strong>⚠️ Bước cuối, đừng quên:</strong> dữ liệu này mới chỉ lưu trên máy này — bấm nút bên cạnh để người khác cũng thấy được.</span>
          <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="syncSave()">📤 Đồng bộ ngay lên Sheet</button>
@@ -6185,6 +6194,7 @@ function killLateChart(id) { if (CHL[id]) { CHL[id].destroy(); CHL[id] = null; }
 
 function saveLateDB() {
   try { localStorage.setItem(LATE_STORAGE_KEY, JSON.stringify(LATE_DB)); } catch(e) {}
+  cloudTouch();
 }
 function loadLateDB() {
   try {
@@ -6795,13 +6805,13 @@ function init() {
     document.getElementById('appBody').style.display = 'block';
     // Nếu phiên này đã chọn vai trò rồi (refresh lại trang cùng tab) thì khỏi hỏi lại — ngược lại
     // vẫn hiện màn hình chọn vai trò (đã hiện sẵn theo mặc định trong HTML).
-    if (sessionStorage.getItem(ROLE_KEY)) {
+    if (!window.CLOUD_ON && sessionStorage.getItem(ROLE_KEY)) {
       const gate = document.getElementById('roleGate');
       if (gate) gate.style.display = 'none';
     }
     applyRoleUI();
     notifOnRoleChange();
-    if (!ok || !keys.length) loadDemo();
+    if ((!ok || !keys.length) && !window.CLOUD_ON) loadDemo();
     else rebuildUI();
   } catch (err) {
     console.error('init error:', err);
@@ -6826,14 +6836,16 @@ const NOTIF_DEVICE_KEY = 'ot_manager_device_id_v1';
 let NOTIFS_DB = []; // [{id,k,to,type,ic,title,body,mk,fromId,from,at,readBy:[]}]
 let notifSeen = null, notifPollTimer = null;
 function loadNotifs() { try { const r = localStorage.getItem(NOTIFS_KEY); if (r) NOTIFS_DB = JSON.parse(r) || []; } catch(e) {} }
-function saveNotifs() { try { localStorage.setItem(NOTIFS_KEY, JSON.stringify(NOTIFS_DB)); } catch(e) {} }
+function saveNotifs() { try { localStorage.setItem(NOTIFS_KEY, JSON.stringify(NOTIFS_DB)); } catch(e) {} cloudTouch(); }
 function notifMyId() {
+  if (window.CLOUD_USER) return window.CLOUD_USER.uid;
   if (isAdmin()) return 'admin';
   if (isSubAdmin()) return 'sub:' + (sessionStorage.getItem('ot_manager_username') || '');
   let d = ''; try { d = localStorage.getItem(NOTIF_DEVICE_KEY); if (!d) { d = 'dev:' + Math.random().toString(36).slice(2, 10); localStorage.setItem(NOTIF_DEVICE_KEY, d); } } catch(e) { d = 'dev:x'; }
   return d;
 }
 function notifActorLabel() {
+  if (window.CLOUD_USER) return (isAdmin() ? 'Admin ' : isSubAdmin() ? 'Quản lý ' : '') + (window.CLOUD_USER.name || window.CLOUD_USER.email);
   if (isAdmin()) return 'Admin';
   if (isSubAdmin()) return 'Quản lý ' + (sessionStorage.getItem('ot_manager_username') || '');
   return 'User';
@@ -6912,7 +6924,7 @@ function notifOpen(id) {
   const n = NOTIFS_DB.find(x => x.id === id); if (!n) return;
   notifMarkRead([id]);
   const p = document.getElementById('notifPanel'); if (p) p.remove();
-  if (n.type === 'data') { syncLoad(); return; }
+  if (n.type === 'data') { goPage('dash'); return; }
   goPage('action');
   const sel = document.getElementById('actionPlanMonthSel');
   if (n.mk && sel && [...sel.options].some(o => o.value === n.mk)) { sel.value = n.mk; renderActionPlan(); }
@@ -6943,6 +6955,7 @@ async function notifAskPermission() {
 }
 // Quản lý/Admin: tự kiểm tra Sheet mỗi 3 phút (chỉ ghép phần thông báo, KHÔNG đụng dữ liệu khác)
 async function notifPollNow(manual) {
+  if (window.CLOUD_ON) return;
   if (!SYNC_URL) { if (manual) toast('Chưa cấu hình URL Sheet'); return; }
   try {
     const parsed = await fetchSheetParsed();

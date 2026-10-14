@@ -545,3 +545,11 @@
 .mp-heat td.hc{border:2px solid #e34948}
 .mp-heat td.sep,.mp-heat th.sep{border-left:2px solid var(--border2,#ccc)}
 #mpPlanTable input{width:64px;padding:3px 6px}
+
+/* Cloud mode */
+body.cloud-on .legacy-sync{display:none!important}
+.cloud-card table{width:100%;font-size:12.5px}
+.cloud-card input,.cloud-card select{padding:6px 8px;border:1px solid var(--border2);border-radius:6px;font-size:12.5px;background:var(--bg,#fff);color:inherit}
+.cloud-modal{position:fixed;inset:0;z-index:9990;background:rgba(20,24,30,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.cloud-modal>div{background:var(--bg,#fff);color:var(--text);border-radius:16px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.cloud-modal input{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px;box-sizing:border-box}

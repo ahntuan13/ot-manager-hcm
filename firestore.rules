@@ -1,0 +1,45 @@
+rules_version = '2';
+// Dán toàn bộ nội dung này vào: Firebase Console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myDoc()    { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function active()   { return hasProfile() && myDoc().active == true; }
+    function isAdmin()  { return active() && myDoc().role == 'admin'; }
+    function isMgr()    { return active() && (myDoc().role == 'admin' || myDoc().role == 'sub'); }
+
+    // Hồ sơ người dùng (vai trò). Chỉ Admin sửa. Mỗi người đọc được hồ sơ của chính mình.
+    // Ngoại lệ: email Admin gốc tự tạo hồ sơ Admin cho mình ở lần đăng nhập đầu tiên.
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.auth.token.email == 'ahntuan13@gmail.com'
+            && request.resource.data.role == 'admin');
+      allow update, delete: if isAdmin();
+    }
+
+    // Người tự đăng ký chưa được cấp quyền → để lại yêu cầu cho Admin duyệt.
+    match /pending/{uid} {
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow read, delete: if isAdmin();
+    }
+
+    // Dữ liệu ứng dụng: mỗi doc là 1 phần nhỏ (tháng OT, 1 dự án, 1 nhân viên...).
+    match /data/{id} {
+      allow read: if active();
+      // File WLB chỉ Admin được ghi; còn lại mọi tài khoản đang hoạt động đều ghi được.
+      allow create, update, delete: if active() && (id != 'wlb' || isAdmin());
+    }
+
+    // Lịch sử chỉnh sửa: ai cũng ghi được (khi đang hoạt động), chỉ Admin xem.
+    match /log/{logId} {
+      allow create: if active();
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}
