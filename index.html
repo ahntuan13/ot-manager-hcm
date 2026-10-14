@@ -35,10 +35,23 @@
       <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="enterAsRole('user')">
         👤 Đăng nhập <span style="font-weight:400;opacity:.85">— xem &amp; thao tác thường</span>
       </button>
+      <button class="btn" style="width:100%;padding:12px;font-size:14px;border:1.5px solid var(--border2);margin-bottom:10px" onclick="showSubLoginForm()">
+        🧑‍💼 Quản lý <span style="font-weight:400;opacity:.7">— Sub-admin, cần tài khoản</span>
+      </button>
       <button class="btn" style="width:100%;padding:12px;font-size:14px;border:1.5px solid var(--border2)" onclick="showAdminPwForm()">
         🔑 Admin <span style="font-weight:400;opacity:.7">— cần mật khẩu, toàn quyền</span>
       </button>
       <div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6">Vai trò "Đăng nhập" không cần mật khẩu nhưng <strong>không xoá được</strong> tháng/tuần/dự án và không vào được mục Cài đặt — giúp tránh xoá nhầm dữ liệu.</div>
+    </div>
+
+    <div id="roleGateSubPw" style="display:none">
+      <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">🧑‍💼 Đăng nhập Quản lý</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:14px">Duyệt/từ chối Action Plan, nhận thông báo, luân chuyển NV, thêm dự án</div>
+      <input id="subUserInput" type="text" autocomplete="username" placeholder="Tên đăng nhập" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')document.getElementById('subPwInput').focus()">
+      <input id="subPwInput" type="password" autocomplete="current-password" placeholder="Mật khẩu" style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px" onkeydown="if(event.key==='Enter')attemptSubLogin()">
+      <div id="subPwError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px;text-align:left">Sai tên đăng nhập hoặc mật khẩu.</div>
+      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px" onclick="attemptSubLogin()">Đăng nhập<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Sign in</span></button>
+      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="backToRoleMain()">← Quay lại<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Back</span></button>
     </div>
 
     <div id="roleGateAdminPw" style="display:none">
@@ -188,6 +201,10 @@
       <div class="greet-date" id="greetDate"></div>
     </div>
     <div class="icon-row">
+      <button class="icon-btn" id="notifBellBtn" onclick="notifTogglePanel()" title="Thông báo · Notifications" style="position:relative">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <span id="notifBadge" class="notif-badge" hidden>0</span>
+      </button>
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Đổi giao diện sáng/tối · Toggle theme">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>

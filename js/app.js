@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.63';
+const APP_VERSION = '2026.64';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -13,6 +13,36 @@ const APP_VERSION = '2026.63';
 // người dùng thường, không phải chống truy cập trái phép có chủ đích.
 const ROLE_KEY = 'ot_manager_role_v1';
 function isAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'admin'; }
+// Sub-admin (quản lý, không phải Admin): duyệt/từ chối Action Plan, nhận thông báo, luân chuyển NV, thêm dự án.
+// KHÔNG vào được Cài đặt/upload dữ liệu/xoá dữ liệu. Tài khoản mặc định: quochuy / tve (chỉ để phân quyền, không phải bảo mật thực sự).
+const SUBADMIN_DEFAULTS = { quochuy: 'tve' };
+function isSubAdmin() { return sessionStorage.getItem(ROLE_KEY) === 'sub'; }
+function isManager() { return isAdmin() || isSubAdmin(); }
+function checkSubAdminLogin(username, password) {
+  const u = (username || '').trim().toLowerCase();
+  if (!u) return null;
+  if (SUBADMIN_DEFAULTS[u] !== undefined && SUBADMIN_DEFAULTS[u] === password) return u;
+  const ex = Object.keys(USERS_DB || {}).find(k => k.toLowerCase() === u);
+  if (ex && USERS_DB[ex].role === 'sub' && USERS_DB[ex].password === password) return ex;
+  return null;
+}
+function showSubLoginForm() {
+  document.getElementById('roleGateMain').style.display = 'none';
+  document.getElementById('roleGateSubPw').style.display = 'block';
+  document.getElementById('subUserInput').value = ''; document.getElementById('subPwInput').value = '';
+  document.getElementById('subPwError').style.display = 'none';
+  setTimeout(() => document.getElementById('subUserInput').focus(), 50);
+}
+function attemptSubLogin() {
+  const u = checkSubAdminLogin(document.getElementById('subUserInput').value, document.getElementById('subPwInput').value);
+  if (u) enterAsRole('sub', u);
+  else document.getElementById('subPwError').style.display = 'block';
+}
+function requireManager(actionLabel) {
+  if (isManager()) return true;
+  toast(`⚠️ Chỉ Quản lý (Sub-admin) hoặc Admin mới được ${actionLabel || 'thực hiện thao tác này'}.`);
+  return false;
+}
 
 // ── Mật khẩu Admin — đặt sẵn 1 mật khẩu cụ thể (không phải mặc định kiểu ai cũng đoán được),
 // đổi lại trong Cài đặt bất cứ lúc nào nếu muốn.
@@ -93,6 +123,7 @@ function showAdminPwForm() {
 }
 function backToRoleMain() {
   document.getElementById('roleGateAdminPw').style.display = 'none';
+  const sp = document.getElementById('roleGateSubPw'); if (sp) sp.style.display = 'none';
   document.getElementById('roleGateMain').style.display = 'block';
 }
 function attemptAdminLogin() {
@@ -105,11 +136,13 @@ function attemptAdminLogin() {
   }
 }
 
-function enterAsRole(role) {
+function enterAsRole(role, username) {
   sessionStorage.setItem(ROLE_KEY, role);
+  if (username) sessionStorage.setItem('ot_manager_username', username); else sessionStorage.removeItem('ot_manager_username');
   document.getElementById('roleGate').style.display = 'none';
   applyRoleUI();
-  if (role === 'user') showUpdateReminderPopup(); // chỉ nhắc User — Admin thường đã chủ động biết cần Update
+  notifOnRoleChange();
+  if (role !== 'admin') showUpdateReminderPopup(); // nhắc User/Quản lý — Admin thường đã chủ động biết cần Update
 }
 // ── Popup nhắc "Update data" ngay sau khi đăng nhập — tránh trường hợp User/Admin quên bấm,
 // dẫn tới nhìn thấy dữ liệu cũ (thiếu tháng mới nhất) mà không hề hay biết.
@@ -154,7 +187,7 @@ function applyRoleUI() {
   document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
   const badge = document.getElementById('roleBadge');
   const uname = sessionStorage.getItem('ot_manager_username');
-  if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : (uname ? `👤 ${uname}` : '👤 User');
+  if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : isSubAdmin() ? `🧑‍💼 Quản lý · ${uname || 'sub-admin'}` : (uname ? `👤 ${uname}` : '👤 User');
 }
 // Dùng để bọc quanh MỌI hành động xoá dữ liệu — nếu không phải Admin, chặn lại + báo rõ lý do,
 // thay vì ẩn nút lặt vặt ở từng nơi (dễ sót) — gọi hàm này ở ĐẦU mỗi hàm xoá là đủ an toàn.
@@ -3698,8 +3731,10 @@ async function verifyPublish(sent) {
 }
 // Sau mỗi lần Admin upload file: nếu bật Tự động đồng bộ thì đăng luôn, nếu không thì hỏi 1 chạm.
 let _publishPending = false;
+let pendingDataNotes = [];
 async function offerPublish(what, alreadyAuto) {
   if (!SYNC_URL) return;
+  if (what) pendingDataNotes.push(what);
   if (alreadyAuto && AUTO_SYNC) return;       // saveDB() đã tự gọi syncSave rồi
   if (_publishPending) return;
   _publishPending = true;
@@ -3722,7 +3757,7 @@ async function syncSave() {
     let sheetKeys = [];
     let sheetProjects = null;
     let sheetTombstones = null;
-    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0, projMoves: null };
+    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0, projMoves: null, notifs: null };
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3736,6 +3771,7 @@ async function syncSave() {
         if (sheetParsed && sheetParsed.projects) sheetProjects = sheetParsed.projects;
         if (sheetParsed && sheetParsed.projectsTombstone) sheetTombstones = sheetParsed.projectsTombstone;
         sheetOther.projMoves = (sheetParsed && sheetParsed.projMoves) || null;
+        sheetOther.notifs = (sheetParsed && sheetParsed.notifs) || null;
         sheetOther.lateKeys = Object.keys((sheetParsed && sheetParsed.late) || {});
         sheetOther.offKeys = Object.keys((sheetParsed && sheetParsed.off) || {});
         sheetOther.wlbEmp = Object.keys(((sheetParsed && sheetParsed.wlbXls) || {}).employees || {}).length;
@@ -3780,6 +3816,12 @@ async function syncSave() {
     // Admin đang upload OT mới nhưng PROJECTS_DB cục bộ đã cũ (chưa Update data gần đây), khiến
     // Action Plan mà User khác vừa lưu riêng bị ghi đè mất. Đồng thời loại trừ đúng dự án đã bị
     // xoá/đổi tên (qua tombstone) — không để Sheet cũ "hồi sinh" nhầm.
+    // Admin vừa upload dữ liệu mới → báo cho mọi người (Quản lý/User) biết để bấm Update data
+    if (isAdmin() && pendingDataNotes.length) {
+      notify('all', { type:'data', k:'data:' + Date.now(), ic:'📥', title:'Admin đã cập nhật dữ liệu mới', body: pendingDataNotes.join(' · ') + ' — bấm để Update data' });
+      pendingDataNotes = [];
+    }
+    const mergedNotifs = mergeNotifs(NOTIFS_DB, sheetOther.notifs);
     const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetOther.projMoves);
     const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
     const mergedProjects = mergeResult.projects;
@@ -3789,7 +3831,7 @@ async function syncSave() {
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
-    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
+    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3806,6 +3848,7 @@ async function syncSave() {
       // thấy đầy đủ mọi dự án/thay đổi mà User khác đã đóng góp trên Sheet, không chỉ dữ liệu cũ.
       PROJECTS_DB = mergedProjects;
       PROJ_MOVES = mergedMoves; saveProjMoves();
+      NOTIFS_DB = mergedNotifs; saveNotifs(); notifRefresh();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
@@ -3843,7 +3886,7 @@ async function syncSaveActionPlanOnly() {
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
     // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel/Action Plan hiện có trên Sheet.
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null, sheetMoves = null;
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null, sheetMoves = null, sheetNotifs = null;
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3865,6 +3908,7 @@ async function syncSaveActionPlanOnly() {
           if (parsed.projects) sheetProjects = parsed.projects;
           if (parsed.projectsTombstone) sheetTombstones = parsed.projectsTombstone;
           if (parsed.projMoves) sheetMoves = parsed.projMoves;
+          if (parsed.notifs) sheetNotifs = parsed.notifs;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
@@ -3873,6 +3917,7 @@ async function syncSaveActionPlanOnly() {
     // ghi đè thẳng) với bản trên Sheet — tránh trường hợp 2 người cùng sửa khác dự án gần nhau,
     // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy. Loại trừ
     // đúng dự án đã xoá/đổi tên (tombstone) — không để Sheet cũ hồi sinh nhầm.
+    const mergedNotifs = mergeNotifs(NOTIFS_DB, sheetNotifs);
     const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetMoves);
     const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
     const mergedProjects = mergeResult.projects;
@@ -3881,7 +3926,7 @@ async function syncSaveActionPlanOnly() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3895,6 +3940,7 @@ async function syncSaveActionPlanOnly() {
       // sửa đổi mà người khác đã làm trên Sheet, dù vừa lưu xong. "Lưu" giờ = lưu + tải về đầy đủ.
       PROJECTS_DB = mergedProjects;
       PROJ_MOVES = mergedMoves; saveProjMoves();
+      NOTIFS_DB = mergedNotifs; saveNotifs(); notifRefresh();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
       saveProjectsTombstones();
@@ -3949,6 +3995,7 @@ async function syncLoad() {
       // Tương tự với danh sách tài khoản User — chỉ ghi đè nếu Sheet THỰC SỰ có dữ liệu, để tài
       // khoản Admin vừa tạo trên máy này không bị mất khi Pull về từ 1 Sheet cũ chưa có mục này.
       if (isNewFormat && parsed.projMoves) { PROJ_MOVES = parsed.projMoves; saveProjMoves(); }
+      if (isNewFormat && parsed.notifs) { NOTIFS_DB = mergeNotifs(NOTIFS_DB, parsed.notifs); saveNotifs(); notifRefresh(); }
       if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
         USERS_DB = parsed.users;
         saveUsersDB();
@@ -4682,6 +4729,12 @@ function approvalBoxHtml(group, proj, mp, mk) {
   const status = raw.startsWith('APPROVED|') ? 'approved' : raw.startsWith('REJECTED|') ? 'rejected' : '';
   const comment = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : raw;
   const projEsc = proj.replace(/'/g,"\\'");
+  if (!isManager()) {
+    return `<div style="font-size:12px;line-height:1.6">
+      <div style="font-weight:700;color:${status==='approved'?'var(--green)':status==='rejected'?'#C0392B':'var(--text3)'}">${status==='approved'?'✅ Đã duyệt':status==='rejected'?'❌ Từ chối':'⏳ Chờ ECM/HODs duyệt'}</div>
+      ${comment ? `<div style="color:var(--text2);margin-top:4px;white-space:pre-wrap">${comment.replace(/</g,'&lt;')}</div>` : ''}
+    </div>`;
+  }
   return `
     <div style="display:flex;gap:6px;margin-bottom:6px">
       <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='approved'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setApprovalStatus('${group}','${projEsc}','APPROVED','${mk}')">✅ Duyệt</button>
@@ -4731,11 +4784,18 @@ function closePlanEditModal() {
 function savePlanEditModal() {
   if (!planEditCtx) return;
   const { group, proj, mk } = planEditCtx;
+  const before = getMonthPlan(group, proj, mk);
+  const changed = before.pm !== document.getElementById('planEditPm').value || before.reason !== document.getElementById('planEditReason').value || before.plan !== document.getElementById('planEditPlan').value;
   setMonthPlanField(group, proj, mk, 'pm', document.getElementById('planEditPm').value);
   setMonthPlanField(group, proj, mk, 'reason', document.getElementById('planEditReason').value);
   setMonthPlanField(group, proj, mk, 'plan', document.getElementById('planEditPlan').value);
   closePlanEditModal();
   renderActionPlan();
+  if (changed) {
+    const mpN = getMonthPlan(group, proj, mk);
+    notify('mgr', { type:'plan', k:`plan:${group}::${proj}::${mk}`, ic:'📝', title:`${notifActorLabel()} nhập Lý do/Kế hoạch — ${proj}`,
+      body: `Tháng ${fmtMK(mk)}${mpN.pm ? ' · PM: ' + mpN.pm : ''}${mpN.reason ? ' · Lý do: ' + mpN.reason.slice(0, 100) : ''}`, mk });
+  }
   toast('Đã lưu tạm thời — nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên để người khác thấy.');
 }
 
@@ -4827,9 +4887,11 @@ function closeStaffEditModal() {
 function saveStaffEditModal() {
   if (!staffEditCtx) return;
   const { group, proj } = staffEditCtx;
-  let moved = 0;
-  Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) moved++; });
-  staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) moved++; });
+  let moved = 0; const lines = [];
+  Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${labelOfProjKey(g + '::' + r.join('|'))}`); } });
+  staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${proj}`); } });
+  if (moved) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} luân chuyển nhân sự — ${proj}`,
+    body: `${moved} NV (hiệu lực từ ${fmtMK(nextCycleMk())}): ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
   if (moved) apUnsynced = true;
   closeStaffEditModal();
   renderActionPlan();
@@ -4990,6 +5052,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
 }
 
 function setApprovalStatus(group, proj, status, mk) {
+  if (!requireManager('duyệt / từ chối Action Plan')) return;
   const mp = getMonthPlan(group, proj, mk); if (!mp) return;
   const comment = (mp.approvedBy||'').includes('|') ? mp.approvedBy.slice(mp.approvedBy.indexOf('|')+1) : (mp.approvedBy||'');
   mp.approvedBy = `${status}|${comment}`;
@@ -4997,8 +5060,12 @@ function setApprovalStatus(group, proj, status, mk) {
   saveProjectsDB();
   renderActionPlan();
   toast(status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối');
+  notify('all', { type:'approval', k:`approval:${group}::${proj}::${mk}`, ic: status === 'APPROVED' ? '✅' : '❌',
+    title: `${status === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'} Action Plan — ${proj}`,
+    body: `Tháng ${fmtMK(mk)} · ${notifActorLabel()}${comment ? ' · ' + comment.slice(0, 120) : ''}`, mk });
 }
 function setApprovalComment(group, proj, comment, mk) {
+  if (!requireManager('nhập comment duyệt')) { renderActionPlan(); return; }
   const mp = getMonthPlan(group, proj, mk); if (!mp) return;
   const status = (mp.approvedBy||'').startsWith('APPROVED|') ? 'APPROVED' : (mp.approvedBy||'').startsWith('REJECTED|') ? 'REJECTED' : '';
   mp.approvedBy = status ? `${status}|${comment}` : comment;
@@ -5025,7 +5092,10 @@ function saveProjectField(group, proj, field, value, mk) {
 function promptAddProject(group) {
   const name = prompt(`Tên dự án mới (nhóm ${group}):`);
   if (!name) return;
-  if (addProject(group, name.trim())) { toast(`Đã thêm dự án "${name.trim()}"`); renderActionPlan(); }
+  if (addProject(group, name.trim())) {
+    toast(`Đã thêm dự án "${name.trim()}"`); renderActionPlan();
+    notify('mgr', { type:'project', k:`project:${group}::${name.trim()}`, ic:'🆕', title:`${notifActorLabel()} thêm dự án mới — ${name.trim()}`, body: `Nhóm ${group}` });
+  }
   else toast('Tên dự án đã tồn tại hoặc không hợp lệ');
 }
 function renameProjectPrompt(group, proj) {
@@ -6654,6 +6724,7 @@ function init() {
     loadProjectsTombstones();
     loadDirtyPlanKeys();
     loadUsersDB();
+    loadNotifs();
     rebuildLateUI();
     renderWlbSummary();
     document.getElementById('loadingState').style.display = 'none';
@@ -6665,6 +6736,7 @@ function init() {
       if (gate) gate.style.display = 'none';
     }
     applyRoleUI();
+    notifOnRoleChange();
     if (!ok || !keys.length) loadDemo();
     else rebuildUI();
   } catch (err) {
@@ -6676,6 +6748,154 @@ function init() {
     </div>`;
   }
 }
+
+// ============================================================
+//  THÔNG BÁO (🔔) — chuông + số chưa đọc + khung nhảy ra góc phải + thông báo của Chrome/Windows
+// ============================================================
+// App OT không có máy chủ realtime như app KPI, nên thông báo đi theo cơ chế đồng bộ Sheet có sẵn:
+//  • Sự kiện (User nhập Lý do/Kế hoạch, luân chuyển NV, thêm dự án, Admin up dữ liệu, duyệt/từ chối)
+//    tạo 1 thông báo trên máy người thao tác → được đẩy lên Sheet khi bấm "Lưu & Đồng bộ".
+//  • Người nhận thấy khi "Update data", và Quản lý/Admin còn được tự kiểm tra mỗi 3 phút + khi quay lại tab.
+// to: 'mgr' (Admin + Quản lý/Sub-admin) | 'all' (mọi người). Không báo cho chính người thao tác.
+const NOTIFS_KEY = 'ot_manager_notifs_v1';
+const NOTIF_DEVICE_KEY = 'ot_manager_device_id_v1';
+let NOTIFS_DB = []; // [{id,k,to,type,ic,title,body,mk,fromId,from,at,readBy:[]}]
+let notifSeen = null, notifPollTimer = null;
+function loadNotifs() { try { const r = localStorage.getItem(NOTIFS_KEY); if (r) NOTIFS_DB = JSON.parse(r) || []; } catch(e) {} }
+function saveNotifs() { try { localStorage.setItem(NOTIFS_KEY, JSON.stringify(NOTIFS_DB)); } catch(e) {} }
+function notifMyId() {
+  if (isAdmin()) return 'admin';
+  if (isSubAdmin()) return 'sub:' + (sessionStorage.getItem('ot_manager_username') || '');
+  let d = ''; try { d = localStorage.getItem(NOTIF_DEVICE_KEY); if (!d) { d = 'dev:' + Math.random().toString(36).slice(2, 10); localStorage.setItem(NOTIF_DEVICE_KEY, d); } } catch(e) { d = 'dev:x'; }
+  return d;
+}
+function notifActorLabel() {
+  if (isAdmin()) return 'Admin';
+  if (isSubAdmin()) return 'Quản lý ' + (sessionStorage.getItem('ot_manager_username') || '');
+  return 'User';
+}
+function notify(to, o) {
+  const me = notifMyId();
+  const id = o.k ? `${o.k}|${me}` : `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+  const n = { id, k: o.k || '', to, type: o.type || '', ic: o.ic || '🔔', title: String(o.title || '').slice(0, 140), body: String(o.body || '').slice(0, 300),
+    mk: o.mk || '', fromId: me, from: notifActorLabel(), at: Date.now(), readBy: [] };
+  NOTIFS_DB = NOTIFS_DB.filter(x => x.id !== id); NOTIFS_DB.push(n);
+  saveNotifs();
+  if (typeof apUnsynced !== 'undefined') apUnsynced = true;
+}
+// Ghép 2 danh sách theo id: bản có `at` mới hơn thắng; cùng `at` thì gộp readBy. Bỏ thông báo >60 ngày, giữ tối đa 300.
+function mergeNotifs(local, sheet) {
+  const map = {};
+  [...(sheet || []), ...(local || [])].forEach(n => {
+    if (!n || !n.id) return;
+    const a = map[n.id];
+    if (!a || (n.at || 0) > (a.at || 0)) map[n.id] = { ...n, readBy: [...(n.readBy || [])] };
+    else if ((n.at || 0) === (a.at || 0)) a.readBy = [...new Set([...(a.readBy || []), ...(n.readBy || [])])];
+  });
+  const cutoff = Date.now() - 60 * 864e5;
+  return Object.values(map).filter(n => (n.at || 0) >= cutoff).sort((a, b) => a.at - b.at).slice(-300);
+}
+function notifVisible(n) {
+  if (n.fromId === notifMyId()) return false;
+  if (n.to === 'all') return true;
+  if (n.to === 'mgr') return isManager();
+  return false;
+}
+const notifIsUnread = n => !(n.readBy || []).includes(notifMyId());
+function notifList() { return NOTIFS_DB.filter(notifVisible).sort((a, b) => b.at - a.at); }
+function notifAgo(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'vừa xong' : m < 60 ? m + ' phút trước' : m < 1440 ? Math.round(m / 60) + ' giờ trước' : new Date(t).toLocaleDateString('vi-VN');
+}
+const notifEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// Cập nhật số trên chuông, hiện khung nhảy ra cho thông báo MỚI, làm mới panel nếu đang mở
+function notifRefresh() {
+  const list = notifList(), unread = list.filter(notifIsUnread);
+  const badge = document.getElementById('notifBadge');
+  if (badge) { badge.hidden = !unread.length; badge.textContent = unread.length > 99 ? '99+' : String(unread.length); }
+  if (notifSeen === null) {
+    notifSeen = new Set(list.map(n => n.id + '@' + n.at));
+    if (unread.length) notifPop({ ic: '🔔', title: `Bạn có ${unread.length} thông báo chưa đọc`, body: unread.slice(0, 3).map(n => n.title).join(' · '), sum: true });
+  } else {
+    const fresh = list.filter(n => !notifSeen.has(n.id + '@' + n.at));
+    fresh.forEach(n => notifSeen.add(n.id + '@' + n.at));
+    fresh.filter(notifIsUnread).slice(0, 3).reverse().forEach(n => { notifPop(n); notifSystem(n); });
+  }
+  if (document.getElementById('notifPanel')) notifPanelRender();
+}
+function notifPop(n) {
+  let box = document.getElementById('notifPop');
+  if (!box) { box = document.createElement('div'); box.id = 'notifPop'; box.setAttribute('aria-live', 'polite'); document.body.appendChild(box); }
+  const el = document.createElement('div'); el.className = 'notif-pop-card'; el.setAttribute('role', 'status');
+  el.innerHTML = `<span class="ni">${notifEsc(n.ic || '🔔')}</span><div class="nb"><b>${notifEsc(n.title)}</b>${n.body ? `<span>${notifEsc(n.body)}</span>` : ''}<small>${n.sum ? 'Bấm để xem' : notifEsc((n.from ? n.from + ' · ' : '') + notifAgo(n.at))}</small></div><button class="x" title="Đóng">×</button>`;
+  el.addEventListener('click', ev => { if (ev.target.closest('.x')) { el.remove(); return; } el.remove(); n.sum ? notifTogglePanel(true) : notifOpen(n.id); });
+  box.prepend(el); while (box.children.length > 4) box.lastChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 9000);
+}
+function notifSystem(n) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const sn = new Notification(n.title, { body: n.body || '', tag: n.id });
+    sn.onclick = () => { window.focus(); notifOpen(n.id); sn.close(); };
+  } catch(e) {}
+}
+function notifMarkRead(ids) {
+  const me = notifMyId(); let ch = false;
+  NOTIFS_DB.forEach(n => { if (ids.includes(n.id) && !(n.readBy || []).includes(me)) { n.readBy = [...(n.readBy || []), me]; ch = true; } });
+  if (ch) { saveNotifs(); notifRefresh(); }
+}
+function notifOpen(id) {
+  const n = NOTIFS_DB.find(x => x.id === id); if (!n) return;
+  notifMarkRead([id]);
+  const p = document.getElementById('notifPanel'); if (p) p.remove();
+  if (n.type === 'data') { syncLoad(); return; }
+  goPage('action');
+  const sel = document.getElementById('actionPlanMonthSel');
+  if (n.mk && sel && [...sel.options].some(o => o.value === n.mk)) { sel.value = n.mk; renderActionPlan(); }
+}
+function notifPanelRender() {
+  const p = document.getElementById('notifPanel'); if (!p) return;
+  const list = notifList();
+  const sys = 'Notification' in window ? Notification.permission : 'unsupported';
+  p.innerHTML = `<div class="nph"><b>Thông báo <span style="font-weight:400;opacity:.7">/ Notifications</span></b>${list.some(notifIsUnread) ? '<button type="button" class="lnk" onclick="notifMarkRead(notifList().map(n=>n.id))">Đánh dấu đã đọc hết</button>' : ''}</div>
+    ${sys === 'default' ? '<div class="npsys"><span>Bật thông báo trên máy tính để thấy cả khi đang mở tab khác.</span><button type="button" class="btn" style="padding:3px 10px;font-size:11px" onclick="notifAskPermission()">Bật</button></div>' : ''}
+    <div class="npl">${list.length ? list.slice(0, 40).map(n => `<button type="button" class="npi ${notifIsUnread(n) ? 'un' : ''}" onclick="notifOpen('${n.id.replace(/'/g, "\\'")}')"><span class="ni">${notifEsc(n.ic)}</span><span class="nb"><b>${notifEsc(n.title)}</b>${n.body ? `<span>${notifEsc(n.body)}</span>` : ''}<small>${notifEsc(n.from)} · ${notifAgo(n.at)}</small></span></button>`).join('') : '<div class="npe">Chưa có thông báo nào.</div>'}</div>
+    <div class="npf">${SYNC_URL ? '<button type="button" class="lnk" onclick="notifPollNow(true)">🔄 Kiểm tra thông báo mới</button>' : ''}</div>`;
+}
+function notifTogglePanel(forceOpen) {
+  let p = document.getElementById('notifPanel');
+  if (p) { if (!forceOpen) { p.remove(); return; } else return; }
+  const pb = document.getElementById('notifPop'); if (pb) pb.innerHTML = '';
+  p = document.createElement('div'); p.id = 'notifPanel'; document.body.appendChild(p); notifPanelRender();
+  setTimeout(() => document.addEventListener('click', notifOutside, true), 0);
+}
+function notifOutside(ev) {
+  const p = document.getElementById('notifPanel');
+  if (!p) { document.removeEventListener('click', notifOutside, true); return; }
+  if (!p.contains(ev.target) && !ev.target.closest('#notifBellBtn')) { p.remove(); document.removeEventListener('click', notifOutside, true); }
+}
+async function notifAskPermission() {
+  try { const r = await Notification.requestPermission(); toast(r === 'granted' ? 'Đã bật thông báo trên máy tính' : 'Chưa bật được thông báo'); notifPanelRender(); } catch(e) {}
+}
+// Quản lý/Admin: tự kiểm tra Sheet mỗi 3 phút (chỉ ghép phần thông báo, KHÔNG đụng dữ liệu khác)
+async function notifPollNow(manual) {
+  if (!SYNC_URL) { if (manual) toast('Chưa cấu hình URL Sheet'); return; }
+  try {
+    const parsed = await fetchSheetParsed();
+    if (parsed.notifs) { NOTIFS_DB = mergeNotifs(NOTIFS_DB, parsed.notifs); saveNotifs(); notifRefresh(); }
+    if (manual) toast('Đã kiểm tra thông báo mới');
+  } catch(e) { if (manual) toast('Không kiểm tra được thông báo: ' + e.message); }
+}
+function notifOnRoleChange() {
+  notifSeen = null;
+  notifRefresh();
+  if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
+  if (isManager() && SYNC_URL) {
+    setTimeout(() => notifPollNow(false), 2500);
+    notifPollTimer = setInterval(() => { if (!document.hidden) notifPollNow(false); }, 3 * 60 * 1000);
+  }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && isManager() && SYNC_URL) notifPollNow(false); });
 
 // ============================================================
 //  APP INIT (password gate removed)
