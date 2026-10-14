@@ -12,6 +12,8 @@
 <script src="js/vendor/xlsx.full.min.js"></script>
 <script src="js/vendor/jspdf.umd.min.js"></script>
 <script src="js/vendor/html2canvas.min.js"></script>
+<link rel="icon" type="image/png" href="img/icon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -27,9 +29,7 @@
   <div style="background:#fff;border-radius:20px;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);text-align:center">
 
     <div id="roleGateMain">
-      <div style="width:52px;height:52px;margin:0 auto 16px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      </div>
+      <img src="img/icon.png" alt="HCM OT" style="width:64px;height:auto;display:block;margin:0 auto 14px;border-radius:12px">
       <div style="font-size:17px;font-weight:800;color:var(--text)">HCM - OT Monitoring</div>
       <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:24px">Chọn vai trò để tiếp tục</div>
       <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:10px" onclick="enterAsRole('user')">
@@ -102,9 +102,7 @@
 
   <!-- Brand -->
   <div class="sb-brand" onclick="switchRole()" style="cursor:pointer" title="Bấm để đổi vai trò (User/Admin)">
-    <div class="sb-brand-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    </div>
+    <div class="sb-brand-icon" style="background:none;padding:0"><img src="img/icon.png" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:8px"></div>
     <div>
       <h1>HCM - OT Monitoring <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
       <p title="Dữ liệu được tính theo chu kỳ lương hàng tháng, từ ngày 16 của tháng hiện tại đến ngày 15 của tháng kế tiếp.">Chu kỳ 16→15 · OT 45h/tháng</p>
@@ -144,6 +142,10 @@
     <button class="nt nt-highlight" data-page="action" onclick="goPage('action')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       <span class="nt-label"><span class="nt-vi">Action Plan</span><span class="nt-en">OT Action Plan</span></span>
+    </button>
+    <button class="nt mp-nav" data-page="manpower" onclick="goPage('manpower')" style="display:none">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      <span class="nt-label"><span class="nt-vi">Manpower 🔒</span><span class="nt-en">Manpower</span></span>
     </button>
 
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
@@ -742,7 +744,7 @@
     <!-- Biểu đồ 1: WLB tháng đang chọn — từng phòng ban -->
     <div class="card ac-top ac-blue">
       <div class="card-title">WLB từng phòng ban —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Department</i> <span id="wlbMonthSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt (T1–T9; Quý 4 &gt;15%)</span> <span class="badge bd">≤ ngưỡng Không đạt</span></div>
       <div id="cWlbMonthEmpty" style="display:none;align-items:center;justify-content:center;height:280px;color:var(--text2);font-size:13px;text-align:center;padding:0 24px;line-height:1.5">Chưa có dữ liệu Off Day cho tháng này — vào <button type="button" onclick="goPage('settings')" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;padding:0;text-decoration:underline">Cài đặt → Upload Off Day</button> để xem biểu đồ WLB.</div>
       <div id="cWlbMonthWrap" style="position:relative;width:100%;height:280px"><canvas id="cWlbMonth" role="img">WLB tháng.</canvas></div>
     </div>
@@ -796,7 +798,7 @@
     <!-- Biểu đồ 1: WLB quý đang chọn — từng phòng ban -->
     <div class="card ac-top ac-amber">
       <div class="card-title">WLB từng phòng ban —<i style="font-weight:400;font-size:11px;color:var(--text3)"> / WLB by Department</i> <span id="wlbQtrSelLabel" style="font-weight:400;color:var(--text2)"></span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt</span> <span class="badge bd">≤10% Không đạt</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">WLB = Ngày nghỉ (off) ÷ Tổng OT × 100%. <span class="badge bo">&gt;10% Đạt (T1–T9; Quý 4 &gt;15%)</span> <span class="badge bd">≤ ngưỡng Không đạt</span></div>
       <div style="position:relative;width:100%;height:280px"><canvas id="cWlbQuarter" role="img">WLB quý.</canvas></div>
     </div>
 
@@ -882,6 +884,34 @@
       <button class="btn" style="flex:1;padding:10px;font-size:13px" onclick="closeStaffEditModal()">Huỷ<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Cancel</span></button>
       <button class="btn btn-primary" style="flex:2;padding:10px;font-size:13px" onclick="saveStaffEditModal()">💾 Lưu tạm thời</button>
     </div>
+  </div>
+</div>
+
+<div class="pg" id="pg-manpower">
+  <div class="page-title"><span>Manpower <span style="font-size:12px;color:var(--text2);font-weight:400">/ Nhân sự theo dự án — HCM-EC</span></span></div>
+  <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <label style="font-size:12px;color:var(--text2)">Kỳ xem / Period</label>
+    <select id="mpPeriod" onchange="renderManpower()"></select>
+    <span style="font-size:11.5px;color:var(--text2)">Chu kỳ OT 16→15 · Mốc OT/người: 45h · Mốc chi trả: 70h</span>
+  </div>
+  <div id="mpKpi" class="mp-kpi"></div>
+  <div class="card"><div class="card-title">1. Tổng quan: Nhân sự vs Kế hoạch / OT trên đầu người</div>
+    <div class="mp-two"><div><div class="mp-sub">Số người (thực tế vs kế hoạch)</div><div style="height:300px"><canvas id="cMpHead"></canvas></div></div>
+    <div><div class="mp-sub">OT / người (giờ) — vạch đỏ 45h</div><div style="height:300px"><canvas id="cMpOt"></canvas></div></div></div>
+    <div style="overflow:auto;margin-top:12px"><table id="mpPlanTable"></table></div>
+    <div id="mpPlanNote" style="font-size:11.5px;color:var(--text2);margin-top:6px"></div>
+  </div>
+  <div class="card"><div class="card-title">2. Biến động nhân sự theo tháng</div>
+    <div style="height:280px"><canvas id="cMpMove"></canvas></div>
+    <div style="overflow:auto;margin-top:10px"><table id="mpMoveTable"></table></div>
+  </div>
+  <div class="card"><div class="card-title">3. Heatmap OT / người: Dự án × Tháng / Quý / Năm (giờ)</div>
+    <div style="overflow:auto"><table id="mpHeat" class="mp-heat"></table></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-top:6px">Màu càng đậm = OT/người càng cao. Viền đỏ = vượt 45h. Quý/Năm = trung bình OT mỗi người mỗi tháng.</div>
+  </div>
+  <div class="card"><div class="card-title">4. Quá tải vs Dư năng lực</div>
+    <div style="height:380px"><canvas id="cMpQuad"></canvas></div>
+    <div id="mpQuadNote" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
   </div>
 </div>
 
@@ -1224,12 +1254,14 @@
       <table style="margin-top:10px;font-size:12.5px">
         <thead><tr><th>Tỷ lệ %</th><th>Kết quả</th></tr></thead>
         <tbody>
-          <tr><td>&gt; 10%</td><td><span class="badge bo">Đạt</span></td></tr>
-          <tr><td>≤ 10%</td><td><span class="badge bd">Không đạt</span></td></tr>
+          <tr><td>Q1–Q3 (T1–T9): &gt; 10%</td><td><span class="badge bo">Đạt</span></td></tr>
+          <tr><td>Q1–Q3 (T1–T9): ≤ 10%</td><td><span class="badge bd">Không đạt</span></td></tr>
+          <tr><td>Q4 (T10–T12): &gt; 15%</td><td><span class="badge bo">Đạt</span></td></tr>
+          <tr><td>Q4 (T10–T12): ≤ 15%</td><td><span class="badge bd">Không đạt</span></td></tr>
         </tbody>
       </table>
       <p style="margin-top:10px"><strong>Theo tháng:</strong> tính trực tiếp bằng dữ liệu Off Day + OT của đúng tháng đang chọn.</p>
-      <p style="color:var(--text2);font-size:12px"><strong>Theo quý:</strong> cộng dồn <strong>3 tháng liên tiếp, chồng lấp 1 tháng</strong> giữa các quý — không phải quý lịch chuẩn (Jan-Mar/Apr-Jun...). Cụ thể: Quý 1 = tháng 1+2+3, Quý 2 = tháng 3+4+5, Quý 3 = tháng 5+6+7... (tháng cuối của quý trước = tháng đầu của quý sau).</p>
+      <p style="color:var(--text2);font-size:12px"><strong>Theo quý:</strong> cộng dồn 3 tháng của <strong>quý lịch, không chồng lấp</strong>: Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12. Ngưỡng: Q1–Q3 &gt; 10% là Đạt; Q4 &gt; 15% là Đạt.</p>
       <p style="margin-top:10px;color:var(--text2);font-size:12px">Dữ liệu Off Day cần được upload riêng ở mục <strong>Cài đặt → Upload file Off Day</strong> (khác với file chấm công OT) — WLB chỉ tính được cho tháng nào đã có cả 2 nguồn dữ liệu (OT + Off Day).</p>
     </div>
   </div>
@@ -1244,5 +1276,6 @@
 </div><!-- /app-root -->
 
 <script src="js/app.js"></script>
+<script src="js/manpower.js"></script>
 </body>
 </html>

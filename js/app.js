@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.65';
+const APP_VERSION = '2026.66';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -185,6 +185,7 @@ function applyRoleUI() {
   const adminSection = document.querySelector('.sb-admin');
   if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
   document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
+  document.querySelectorAll('.mp-nav').forEach(el => { el.style.display = canSeeManpower() ? '' : 'none'; });
   const badge = document.getElementById('roleBadge');
   const uname = sessionStorage.getItem('ot_manager_username');
   if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : isSubAdmin() ? `🧑‍💼 Quản lý · ${uname || 'sub-admin'}` : (uname ? `👤 ${uname}` : '👤 User');
@@ -1019,6 +1020,10 @@ function goPage(p, deptFilter, keepProjectFilter) {
     toast('⚠️ Chỉ Admin mới vào được mục Cài đặt. Bấm vào tên app để đổi vai trò.');
     return;
   }
+  if (p === 'manpower' && !canSeeManpower()) {
+    toast('🔒 Mục Manpower đang khoá — chỉ Admin xem được.');
+    return;
+  }
   const dashGroup = ['dash','dept','compare','late','wlb'];
   document.querySelectorAll('.pg').forEach(x => x.classList.remove('show'));
   document.querySelectorAll('.nt[data-page]').forEach(x => x.classList.remove('active'));
@@ -1032,6 +1037,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'settings')  { renderSavedMonths(); renderSyncPage(); }
   if (p === 'report') { populateReportSelectors(); }
   if (p === 'action') renderActionPlan();
+  if (p === 'manpower' && typeof renderManpower === 'function') renderManpower();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
@@ -3757,7 +3763,7 @@ async function syncSave() {
     let sheetKeys = [];
     let sheetProjects = null;
     let sheetTombstones = null;
-    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0, projMoves: null, notifs: null };
+    let sheetOther = { lateKeys: [], offKeys: [], wlbEmp: 0, wlbAt: 0, projMoves: null, notifs: null, hcPlan: null };
     try {
       const checkRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3772,6 +3778,7 @@ async function syncSave() {
         if (sheetParsed && sheetParsed.projectsTombstone) sheetTombstones = sheetParsed.projectsTombstone;
         sheetOther.projMoves = (sheetParsed && sheetParsed.projMoves) || null;
         sheetOther.notifs = (sheetParsed && sheetParsed.notifs) || null;
+        sheetOther.hcPlan = (sheetParsed && sheetParsed.hcPlan) || null;
         sheetOther.lateKeys = Object.keys((sheetParsed && sheetParsed.late) || {});
         sheetOther.offKeys = Object.keys((sheetParsed && sheetParsed.off) || {});
         sheetOther.wlbEmp = Object.keys(((sheetParsed && sheetParsed.wlbXls) || {}).employees || {}).length;
@@ -3823,6 +3830,7 @@ async function syncSave() {
     }
     const mergedNotifs = mergeNotifs(NOTIFS_DB, sheetOther.notifs);
     const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetOther.projMoves);
+    const mergedHcPlan = mergeHcPlan(HC_PLAN, sheetOther.hcPlan);
     const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
     const mergedProjects = mergeResult.projects;
     const mergedTombstones = mergeResult.tombstones;
@@ -3831,7 +3839,7 @@ async function syncSave() {
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
-    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
+    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3848,6 +3856,7 @@ async function syncSave() {
       // thấy đầy đủ mọi dự án/thay đổi mà User khác đã đóng góp trên Sheet, không chỉ dữ liệu cũ.
       PROJECTS_DB = mergedProjects;
       PROJ_MOVES = mergedMoves; saveProjMoves();
+      HC_PLAN = mergedHcPlan; saveHcPlan();
       NOTIFS_DB = mergedNotifs; saveNotifs(); notifRefresh();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
@@ -3886,7 +3895,7 @@ async function syncSaveActionPlanOnly() {
   updateSyncBadge('busy','Đang lấy dữ liệu mới nhất...');
   try {
     // Bước 1: PULL đúng dữ liệu OT/Đi trễ/Off Day/WLB Excel/Action Plan hiện có trên Sheet.
-    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null, sheetMoves = null, sheetNotifs = null;
+    let sheetOt = DB, sheetLate = LATE_DB, sheetOff = OFF_DB, sheetWlbXls = WLB_XLS, sheetProjects = null, sheetTombstones = null, sheetMoves = null, sheetNotifs = null, sheetHcPlan = null;
     try {
       const loadRes = await fetch(SYNC_URL, {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -3909,6 +3918,7 @@ async function syncSaveActionPlanOnly() {
           if (parsed.projectsTombstone) sheetTombstones = parsed.projectsTombstone;
           if (parsed.projMoves) sheetMoves = parsed.projMoves;
           if (parsed.notifs) sheetNotifs = parsed.notifs;
+          if (parsed.hcPlan) sheetHcPlan = parsed.hcPlan;
         }
       }
     } catch(e) { /* Không pull được — vẫn tiếp tục lưu Action Plan, dùng tạm dữ liệu OT local */ }
@@ -3917,6 +3927,7 @@ async function syncSaveActionPlanOnly() {
     // ghi đè thẳng) với bản trên Sheet — tránh trường hợp 2 người cùng sửa khác dự án gần nhau,
     // người lưu sau vô tình xoá mất phần người lưu trước chưa kịp Update data để thấy. Loại trừ
     // đúng dự án đã xoá/đổi tên (tombstone) — không để Sheet cũ hồi sinh nhầm.
+    const mergedHcPlan = mergeHcPlan(HC_PLAN, sheetHcPlan);
     const mergedNotifs = mergeNotifs(NOTIFS_DB, sheetNotifs);
     const mergedMoves = mergeProjMoves(PROJ_MOVES, sheetMoves);
     const mergeResult = sheetProjects ? mergeProjectsDb(PROJECTS_DB, sheetProjects, PROJECTS_TOMBSTONES, sheetTombstones, mergedMoves) : { projects: PROJECTS_DB, tombstones: PROJECTS_TOMBSTONES };
@@ -3926,7 +3937,7 @@ async function syncSaveActionPlanOnly() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }
@@ -3940,6 +3951,7 @@ async function syncSaveActionPlanOnly() {
       // sửa đổi mà người khác đã làm trên Sheet, dù vừa lưu xong. "Lưu" giờ = lưu + tải về đầy đủ.
       PROJECTS_DB = mergedProjects;
       PROJ_MOVES = mergedMoves; saveProjMoves();
+      HC_PLAN = mergedHcPlan; saveHcPlan();
       NOTIFS_DB = mergedNotifs; saveNotifs(); notifRefresh();
       saveProjectsDB();
       PROJECTS_TOMBSTONES = mergedTombstones;
@@ -3995,6 +4007,7 @@ async function syncLoad() {
       // Tương tự với danh sách tài khoản User — chỉ ghi đè nếu Sheet THỰC SỰ có dữ liệu, để tài
       // khoản Admin vừa tạo trên máy này không bị mất khi Pull về từ 1 Sheet cũ chưa có mục này.
       if (isNewFormat && parsed.projMoves) { PROJ_MOVES = parsed.projMoves; migrateUnassignedMoves(); saveProjMoves(); }
+      if (isNewFormat && parsed.hcPlan) { HC_PLAN = mergeHcPlan(HC_PLAN, parsed.hcPlan); saveHcPlan(); }
       if (isNewFormat && parsed.notifs) { NOTIFS_DB = mergeNotifs(NOTIFS_DB, parsed.notifs); saveNotifs(); notifRefresh(); }
       if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
         USERS_DB = parsed.users;
@@ -4332,7 +4345,7 @@ const PROJECTS_DB_KEY = 'ot_manager_projects_db_v1';
 let PROJECTS_DB = null; // groups -> project name -> {employees:[staffCode..], pm, plan, reason, approvedBy, note}
 
 function loadProjectsDB() {
-  loadProjMoves();
+  loadProjMoves(); loadHcPlan();
   try {
     const raw = localStorage.getItem(PROJECTS_DB_KEY);
     if (raw) { PROJECTS_DB = JSON.parse(raw); return; }
@@ -4374,6 +4387,23 @@ function labelOfProjKey(key) {
   const i = key.indexOf('::'); const g = key.slice(0, i), pr = key.slice(i + 2);
   return pr.startsWith('__') ? `phòng ban ${g}` : pr;
 }
+// ── Manpower: số người THEO KẾ HOẠCH của từng dự án — HC_PLAN['group::proj'][mk] = {n, at}. Giá trị áp dụng
+// từ tháng mk trở đi (cho tới khi có mốc mới). Đồng bộ lên Sheet (key hcPlan), ghép theo `at` mới hơn.
+const HC_PLAN_KEY = 'ot_manager_hc_plan_v1';
+let HC_PLAN = {};
+function loadHcPlan() { try { const r = localStorage.getItem(HC_PLAN_KEY); if (r) HC_PLAN = JSON.parse(r) || {}; } catch(e) {} }
+function saveHcPlan() { try { localStorage.setItem(HC_PLAN_KEY, JSON.stringify(HC_PLAN)); } catch(e) {} }
+function mergeHcPlan(local, sheet) {
+  const out = JSON.parse(JSON.stringify(local || {}));
+  Object.keys(sheet || {}).forEach(k => Object.keys(sheet[k] || {}).forEach(mk => {
+    const a = (out[k] || {})[mk], b = sheet[k][mk];
+    if (!a || (b.at || 0) > (a.at || 0)) { (out[k] = out[k] || {})[mk] = b; }
+  }));
+  return out;
+}
+// ── Khoá module Manpower: true = chỉ Admin thấy. Muốn mở cho mọi người → đổi thành false (1 dòng duy nhất).
+const MANPOWER_ADMIN_ONLY = true;
+function canSeeManpower() { return !MANPOWER_ADMIN_ONLY || isAdmin(); }
 const PROJ_MOVES_KEY = 'ot_manager_proj_moves_v1';
 let PROJ_MOVES = {};
 function loadProjMoves() { try { const r = localStorage.getItem(PROJ_MOVES_KEY); if (r) PROJ_MOVES = JSON.parse(r) || {}; } catch(e) {} migrateUnassignedMoves(); }
@@ -5460,13 +5490,13 @@ function wlbXlsTotalOff(monthNum, dept) {
     .filter(e => !dept || dept==='__all__' || e.dept===dept)
     .reduce((s,e)=> s + (e.off[monthNum]||0), 0);
 }
-// Nhóm Quý kiểu CHỒNG LẤP 3 tháng liên tiếp, đúng công thức Excel: Q1=T1+T2+T3, Q2=T3+T4+T5...
+// Nhóm Quý theo QUÝ LỊCH, không chồng lấp: Q1=T1-3, Q2=T4-6, Q3=T7-9, Q4=T10-12.
 function wlbXlsQuarterGroups() {
   const months = wlbXlsMonthsWithData();
   const groups = [];
-  for (let i = 0; i + 2 < months.length; i += 2) {
-    const ms = [months[i], months[i+1], months[i+2]];
-    groups.push({ key:'RQ'+(groups.length+1), label:`Quý ${groups.length+1} (${MONTH_NAMES_VI[ms[0]-1]}–${MONTH_NAMES_VI[ms[2]-1]})`, months: ms });
+  for (let q = 1; q <= 4; q++) {
+    const ms = [3*q-2, 3*q-1, 3*q].filter(m => months.includes(m));
+    if (ms.length) groups.push({ key:'Q'+q, label:`Quý ${q} (${MONTH_NAMES_VI[3*q-3]}–${MONTH_NAMES_VI[3*q-1]})`, months: ms });
   }
   return groups;
 }
@@ -5569,11 +5599,11 @@ function renderWlbSummary() {
 // Nhân lại ×100 để CẢ giá trị và ngưỡng cùng nằm trên 1 thang đo % thống nhất, tránh hiểu sai kết
 // quả. Trường hợp phòng ban có OT quá thấp gây % nhảy vọt bất thường (VD: OT=5h → 1150%) đã được
 // xử lý riêng bằng cảnh báo "OT quá thấp" bên dưới (wlbDisplayWithWarn), không cần thu nhỏ thang đo.
-// NGƯỠNG THAY ĐỔI THEO THỜI GIAN: từ tháng 9/2026 trở đi (và Quý 4) áp dụng ngưỡng MỚI 15% —
-// các tháng TRƯỚC đó (đến hết tháng 8/2026) vẫn giữ ngưỡng CŨ 10%, để không làm thay đổi ngược
+// NGƯỠNG THAY ĐỔI THEO THỜI GIAN: từ tháng 10/2026 trở đi (Quý 4: Oct–Dec) áp dụng ngưỡng MỚI 15% —
+// 3 quý trước (Q1–Q3, đến hết tháng 9/2026) vẫn giữ ngưỡng CŨ 10%, để không làm thay đổi ngược
 // kết quả Đạt/Không đạt đã đánh giá cho các tháng trước đây. Công thức tính % (wlbRatio) giữ
 // nguyên không đổi — chỉ đổi mốc so sánh.
-const WLB_THRESHOLD_CHANGE_MK = '2026-09'; // từ tháng này (bao gồm) trở đi dùng ngưỡng mới
+const WLB_THRESHOLD_CHANGE_MK = '2026-10'; // từ tháng này (bao gồm) trở đi dùng ngưỡng mới
 function getWlbThreshold(mk) {
   if (!mk) return 15; // không rõ tháng nào (VD: hiển thị chung) → mặc định dùng ngưỡng mới nhất
   return mk >= WLB_THRESHOLD_CHANGE_MK ? 15 : 10;
@@ -5970,15 +6000,18 @@ function renderWlb() {
     renderEmployeeWlbTable('wlbEmpMonthTHead', 'wlbEmpMonthTBody', empRowsM, selMk);
 
   } else {
-    // ── TAB QUARTER — WLB tính theo Quý kiểu CHỒNG LẤP 3 tháng liên tiếp (KHÔNG phải quý lịch
-    // chuẩn Jan-Mar/Apr-Jun) — đúng theo công thức Excel công ty cung cấp:
-    //   Quý 1 = tháng 1+2+3, Quý 2 = tháng 3+4+5, Quý 3 = tháng 5+6+7...
-    // (tháng cuối của quý trước = tháng đầu của quý sau, mỗi quý lùi lại 2 tháng so với quý trước).
+    // ── TAB QUARTER — WLB theo QUÝ LỊCH (không chồng lấp): Q1 T1–T3, Q2 T4–T6, Q3 T7–T9, Q4 T10–T12.
+    // Ngưỡng: Q4 (từ T10) > 15% là Đạt; Q1–Q3 giữ > 10%.
     const wlbQGroups = [];
-    for (let i = 0; i + 2 < allMks.length; i += 2) {
-      const mks = [allMks[i], allMks[i+1], allMks[i+2]];
-      wlbQGroups.push({ key: 'RQ'+(wlbQGroups.length+1), label: `Quý ${wlbQGroups.length+1} (${fmtMK(mks[0])} – ${fmtMK(mks[2])})`, mks });
-    }
+    const qByKey = {};
+    allMks.forEach(mk => {
+      const [y, m] = mk.split('-').map(Number);
+      const q = Math.ceil(m/3), key = `${y}-Q${q}`;
+      if (!qByKey[key]) { qByKey[key] = { key, label: `Quý ${q}/${y} (${MONTH_NAMES_VI[3*q-3]}–${MONTH_NAMES_VI[3*q-1]})`, mks: [], q, y }; wlbQGroups.push(qByKey[key]); }
+      qByKey[key].mks.push(mk);
+    });
+    wlbQGroups.sort((a,b)=> a.key<b.key?-1:1);
+    const qThr = (qk) => { const g = qByKey[qk]; return g ? getWlbThreshold(`${g.y}-${String(3*g.q).padStart(2,'0')}`) : THRESHOLD; };
     const qKeys = wlbQGroups.map(g => g.key);
     const qLabel = {}; wlbQGroups.forEach(g => { qLabel[g.key] = g.label; });
     const qMks = (qk) => (wlbQGroups.find(g => g.key === qk) || {mks:[]}).mks;
@@ -6006,7 +6039,7 @@ function renderWlb() {
       } else {
         const otMax  = Math.max(10, ...otData);
         const offMax = Math.max(5, ...offData);
-        const wlbMax = Math.max(12, THRESHOLD * 1.5, ...wlbData.filter(v => v !== null));
+        const wlbMax = Math.max(12, qThr(selQk) * 1.5, ...wlbData.filter(v => v !== null));
         safeMakeChart(WLB_CH, killWlbChart, 'cWlbQuarter', document.getElementById('cWlbQuarter'), {
           type:'bar',
           data:{ labels: allDepts,
@@ -6073,7 +6106,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:`Ngưỡng ${THRESHOLD}%`, data:qKeys.map(()=>THRESHOLD),
+            { label:'Ngưỡng (Q1–Q3: 10%, Q4: 15%)', data:qKeys.map(qk=>qThr(qk)),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
