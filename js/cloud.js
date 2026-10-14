@@ -137,6 +137,37 @@
   const isForce = id => FORCE_PREFIXES.some(p => id === p || id.startsWith(p));
   const canDelete = id => GATE_PREFIXES_DELETE.some(p => id.startsWith(p)) && (!/^(ot_|late_|off_)/.test(id) || isAdmin());
 
+  // ── Ghép 3 chiều: base (bản đồng bộ gần nhất) · mine (bản đang sửa trên máy) · theirs (bản mới từ server).
+  // Mỗi trường chỉ 1 bên đổi → giữ thay đổi đó; cả 2 bên đổi cùng 1 trường → ưu tiên bản của mình.
+  // Nhờ vậy khi 2 người sửa các trường khác nhau của cùng 1 dự án (vd: người này nhập Lý do, người kia bấm Duyệt) thì không ai mất dữ liệu.
+  const deepEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const isObj = x => x && typeof x === 'object' && !Array.isArray(x);
+  function merge3(base, mine, theirs) {
+    if (deepEq(mine, base)) return theirs;
+    if (deepEq(theirs, base)) return mine;
+    if (isObj(mine) && isObj(theirs)) {
+      const b = isObj(base) ? base : {}, out = {};
+      new Set([...Object.keys(mine), ...Object.keys(theirs)]).forEach(k => {
+        const inM = k in mine, inT = k in theirs, inB = k in b;
+        if (inM && inT) out[k] = merge3(b[k], mine[k], theirs[k]);
+        else if (inM) { if (!(inB && deepEq(mine[k], b[k]))) out[k] = mine[k]; }     // mình thêm/sửa → giữ; mình không đổi mà họ xoá → xoá
+        else { if (!(inB && deepEq(theirs[k], b[k]))) out[k] = theirs[k]; }
+      });
+      return out;
+    }
+    return mine;
+  }
+  const MERGEABLE = /^(proj_|mv_|hc_)/;
+  // Áp bản của server nhưng GIỮ phần mình đang sửa dở (chưa kịp đẩy lên). Trả về true nếu còn phần của mình cần đẩy.
+  function applyMerged(id, data, mineObj) {
+    let base = null; try { base = remote[id] ? JSON.parse(remote[id].j) : null; } catch (e) {}
+    let theirs; try { theirs = JSON.parse(data.j); } catch (e) { return false; }
+    const merged = merge3(base, mineObj, theirs);
+    applyDoc(id, { j: JSON.stringify(merged), ver: data.ver });
+    remote[id] = { j: data.j, ver: data.ver || 0 };
+    return !deepEq(merged, theirs);
+  }
+
   function applyDoc(id, data) {
     let obj; try { obj = JSON.parse(data.j); } catch (e) { return; }
     remote[id] = { j: data.j, ver: data.ver || 0 };
@@ -192,7 +223,7 @@
       persistLocal(); rerender(); setStatus('ok', 'Đã đồng bộ · ' + hhmm());
       return;
     }
-    let changed = false; applying = true;
+    let changed = false, needPush = false, mine = null; applying = true;
     try {
       snap.docChanges().forEach(c => {
         const id = c.doc.id;
@@ -200,11 +231,17 @@
         if (c.type === 'removed') { if (remote[id]) { delete remote[id]; removeDoc(id); changed = true; } return; }
         const data = c.doc.data();
         if (remote[id] && remote[id].j === data.j) { remote[id].ver = data.ver || 0; return; }
+        if (MERGEABLE.test(id) && remote[id]) {
+          mine = mine || desired();
+          const lj = id in mine ? JSON.stringify(mine[id]) : null;
+          if (lj !== null && lj !== remote[id].j) { if (applyMerged(id, data, mine[id])) needPush = true; changed = true; return; }
+        }
         applyDoc(id, data); changed = true;
       });
       ensureShape();
     } finally { applying = false; }
     if (changed) { persistLocal(); rerender(); setStatus('ok', 'Cập nhật · ' + hhmm()); }
+    if (needPush) window.cloudPush();
   }
   function persistLocal() {
     clearTimeout(saveTimer);
@@ -305,8 +342,11 @@
   function handleConflict(o, rd) {
     applying = true;
     try {
-      if (!rd) { if (!o.del) { removeDoc(o.id); } delete remote[o.id]; }
-      else { const same = rd.j === o.j; applyDoc(o.id, rd); if (!same) toast('⚠️ ' + (rd.byName || 'Người khác') + ' vừa sửa mục này trước bạn — đã tải bản mới nhất. Vui lòng kiểm tra và nhập lại phần của bạn nếu cần.'); }
+      if (!rd) { if (!o.del) removeDoc(o.id); delete remote[o.id]; }
+      else if (!o.del && MERGEABLE.test(o.id)) {
+        let mine; try { mine = JSON.parse(o.j); } catch (e) { mine = null; }
+        if (mine) applyMerged(o.id, rd, mine); else applyDoc(o.id, rd);   // ghép: giữ phần mình vừa sửa + phần người khác vừa sửa
+      } else applyDoc(o.id, rd);
     } finally { applying = false; }
     persistLocal(); rerender(); again = true;
   }
