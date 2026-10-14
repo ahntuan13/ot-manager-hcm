@@ -17,7 +17,7 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-            && request.auth.token.email == 'ahntuan13@gmail.com'
+            && request.auth.uid == 'MKZWSMQne1UdyjJmNdfyNQCglk23'
             && request.resource.data.role == 'admin');
       allow update, delete: if isAdmin();
     }

@@ -15,8 +15,8 @@
     messagingSenderId: '486381760217',
     appId: '1:486381760217:web:2fdd274268079d72b558c8'
   };
-  // Tài khoản này đăng nhập lần đầu sẽ tự thành Admin (khớp với firestore.rules).
-  const BOOTSTRAP_ADMIN_EMAIL = 'ahntuan13@gmail.com';
+  // Tài khoản (UID) này đăng nhập lần đầu sẽ tự thành Admin (khớp với firestore.rules).
+  const BOOTSTRAP_ADMIN_UID = 'MKZWSMQne1UdyjJmNdfyNQCglk23';
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -82,7 +82,7 @@
     try {
       const ref = db.collection('users').doc(user.uid);
       let snap = await ref.get();
-      if (!snap.exists && (user.email || '').toLowerCase() === BOOTSTRAP_ADMIN_EMAIL) {
+      if (!snap.exists && user.uid === BOOTSTRAP_ADMIN_UID) {
         await ref.set({ email: user.email, name: 'Admin', role: 'admin', active: true, createdAt: Date.now() });
         snap = await ref.get();
       }
