@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.64';
+const APP_VERSION = '2026.65';
 
 // ============================================================
 //  PHÂN QUYỀN USER / ADMIN — chống xoá nhầm dữ liệu
@@ -3994,7 +3994,7 @@ async function syncLoad() {
       }
       // Tương tự với danh sách tài khoản User — chỉ ghi đè nếu Sheet THỰC SỰ có dữ liệu, để tài
       // khoản Admin vừa tạo trên máy này không bị mất khi Pull về từ 1 Sheet cũ chưa có mục này.
-      if (isNewFormat && parsed.projMoves) { PROJ_MOVES = parsed.projMoves; saveProjMoves(); }
+      if (isNewFormat && parsed.projMoves) { PROJ_MOVES = parsed.projMoves; migrateUnassignedMoves(); saveProjMoves(); }
       if (isNewFormat && parsed.notifs) { NOTIFS_DB = mergeNotifs(NOTIFS_DB, parsed.notifs); saveNotifs(); notifRefresh(); }
       if (isNewFormat && parsed.users && Object.keys(parsed.users).length) {
         USERS_DB = parsed.users;
@@ -4376,7 +4376,19 @@ function labelOfProjKey(key) {
 }
 const PROJ_MOVES_KEY = 'ot_manager_proj_moves_v1';
 let PROJ_MOVES = {};
-function loadProjMoves() { try { const r = localStorage.getItem(PROJ_MOVES_KEY); if (r) PROJ_MOVES = JSON.parse(r) || {}; } catch(e) {} }
+function loadProjMoves() { try { const r = localStorage.getItem(PROJ_MOVES_KEY); if (r) PROJ_MOVES = JSON.parse(r) || {}; } catch(e) {} migrateUnassignedMoves(); }
+// Các lần gán từ "Chưa gán dự án" đã lưu trước đây với hiệu lực chu kỳ sau → đổi thành hiệu lực ngay chu kỳ hiện tại
+function migrateUnassignedMoves() {
+  const cur = companyMonthInfo(new Date()).monthKey, unKey = 'HCM-EC::' + UNASSIGNED_PROJ; let ch = false;
+  Object.keys(PROJ_MOVES).forEach(code => {
+    const mv = PROJ_MOVES[code];
+    Object.keys(mv).forEach(mk => {
+      const e = mv[mk];
+      if (mk > cur && e.prev === unKey && !mv[cur]) { mv[cur] = { ...e, at: Date.now() }; delete mv[mk]; ch = true; }
+    });
+  });
+  if (ch) saveProjMoves();
+}
 function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} }
 function nextCycleMk(d) {
   const cur = companyMonthInfo(d || new Date()).monthKey;
@@ -4390,6 +4402,8 @@ function cycleStartLabel(mk) {
   m--; if (m < 1) { m = 12; y--; }
   return `16/${String(m).padStart(2,'0')}/${y}`;
 }
+// Xoá NV nghỉ việc khỏi mọi dự án — có hiệu lực từ chu kỳ hiện tại; các tháng trước giữ nguyên
+function deleteEmployeeFromProjects(code) { return moveEmployeeToProject(code, null, null, { immediate: true, del: true }); }
 function currentProjectMap() {
   const map = {};
   Object.keys(PROJECTS_DB || {}).forEach(g => Object.keys(PROJECTS_DB[g] || {}).forEach(pr => {
@@ -4584,6 +4598,7 @@ function mergeProjectsDb(local, sheet, localTombstones, sheetTombstones, moves) 
     const ks = Object.keys(moves[code] || {}).sort(); if (!ks.length) return;
     const last = moves[code][ks[ks.length - 1]];
     if (last && last.key) finalEmpMap[code] = last.key;
+    else if (last && last.del) delete finalEmpMap[code];   // NV nghỉ việc đã xoá — không để Sheet cũ hồi sinh
   });
 
   const merged = {};
@@ -4643,7 +4658,7 @@ function deleteProject(group, name) {
   saveProjectsDB();
   return true;
 }
-function moveEmployeeToProject(staffCode, toGroup, toProj) {
+function moveEmployeeToProject(staffCode, toGroup, toProj, o) {
   const curMap = currentProjectMap();
   const prevKey = curMap[staffCode] || null;
   const newKey = (toGroup && toProj && PROJECTS_DB[toGroup] && PROJECTS_DB[toGroup][toProj]) ? toGroup + '::' + toProj : null;
@@ -4659,12 +4674,15 @@ function moveEmployeeToProject(staffCode, toGroup, toProj) {
     if (!PROJECTS_DB[g][pr].employees.includes(staffCode)) PROJECTS_DB[g][pr].employees.push(staffCode);
   }
   // Ghi lịch sử: hiệu lực từ CHU KỲ SAU. Nếu đã có 1 lần chuyển cùng chu kỳ đó → ghi đè (giữ prev gốc).
-  const eff = nextCycleMk();
+  // Có hiệu lực NGAY từ chu kỳ hiện tại nếu: xoá NV nghỉ việc, hoặc NV đang "Chưa gán dự án"/chưa thuộc nhóm nào
+  // (đó chỉ là chỗ chờ PM xác nhận, không phải 1 lần chuyển thật). Còn lại: từ chu kỳ sau.
+  const immediate = (o && o.immediate) || prevKey === null || prevKey === ('HCM-EC::' + UNASSIGNED_PROJ);
+  const eff = immediate ? companyMonthInfo(new Date()).monthKey : nextCycleMk();
   if (!PROJ_MOVES[staffCode]) PROJ_MOVES[staffCode] = {};
   const existing = PROJ_MOVES[staffCode][eff];
   const prev = existing ? existing.prev : prevKey;
   if (newKey === prev && existing) delete PROJ_MOVES[staffCode][eff];   // chuyển lại về chỗ cũ → huỷ lần chuyển
-  else PROJ_MOVES[staffCode][eff] = { key: newKey, prev, at: Date.now() };
+  else PROJ_MOVES[staffCode][eff] = { key: newKey, prev, at: Date.now(), ...(o && o.del ? { del: true } : {}) };
   if (!Object.keys(PROJ_MOVES[staffCode]).length) delete PROJ_MOVES[staffCode];
   saveProjectsDB(); saveProjMoves();
   return true;
@@ -4803,9 +4821,10 @@ function savePlanEditModal() {
 let staffEditCtx = null; // {group, proj, mk, viewOnly}
 let staffEditMoves = {}; // {staffCode: "group|proj"} — chuyển NV đã chọn, chỉ áp dụng khi bấm Lưu tạm thời
 let staffEditAdds = [];  // staff code muốn THÊM vào dự án này
+let staffEditDeletes = []; // staff code NV nghỉ việc muốn XOÁ khỏi dự án (hiệu lực từ chu kỳ hiện tại)
 function openStaffEditModal(group, proj, mk) {
   staffEditCtx = { group, proj, mk, viewOnly: false };
-  staffEditMoves = {}; staffEditAdds = [];
+  staffEditMoves = {}; staffEditAdds = []; staffEditDeletes = [];
   document.getElementById('staffEditProjName').textContent = proj;
   renderStaffEditEmployees();
   document.getElementById('staffEditModal').style.display = 'flex';
@@ -4846,14 +4865,18 @@ function renderStaffEditEmployees() {
     const pend = pendingMoveOf(code, mk);
     const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtMK(incomingEff(code))} (${cycleStartLabel(incomingEff(code))})</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
     const ot = (!isIn && otBy[code] != null) ? `${Math.round(otBy[code]*10)/10}h` : '—';
-    const sel = viewOnly ? '' : (isAdd
+    const isDel = staffEditDeletes.includes(code);
+    const curMk = companyMonthInfo(new Date()).monthKey;
+    const sel = viewOnly ? '' : (isDel
+      ? `<span style="font-size:11px;color:#C0392B;font-weight:600">🗑 sẽ xoá (nghỉ việc) từ ${fmtMK(curMk)}</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditDeletes=staffEditDeletes.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
+      : isIn ? '' : isAdd
       ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
       : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="staffEditMoves['${code}']=this.value;if(!this.value)delete staffEditMoves['${code}'];renderStaffEditEmployees()">
            <option value="">Chuyển đến… (giữ nguyên)</option>
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
            <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
-         </select>`);
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${chosen||isAdd?'background:var(--accent-bg)':''}${isIn?'background:rgba(60,160,90,.10)':''}">
+         </select>${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${isDel?'background:rgba(192,57,43,.10);text-decoration:line-through;':''}${chosen||isAdd?'background:var(--accent-bg)':''}${isIn?'background:rgba(60,160,90,.10)':''}">
       <span style="font-family:var(--font-mono);font-size:11px;width:68px;color:var(--text2)">${code}</span>
       <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${employeeNameByCode(code)} ${pendTxt}</span>
       <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3);width:46px;text-align:right">${ot}</span>
@@ -4863,9 +4886,9 @@ function renderStaffEditEmployees() {
   const sorted = [...codes].sort((a, b) => employeeNameByCode(a).localeCompare(employeeNameByCode(b), 'vi'));
   listEl.innerHTML = (sorted.map(c => rowHtml(c, false, false)).join('') + incoming.map(c => rowHtml(c, false, true)).join('') + staffEditAdds.map(c => rowHtml(c, true, false)).join(''))
     || '<div style="padding:12px;color:var(--text3);font-size:12px">Chưa có nhân viên nào trong dự án này.</div>';
-  const nMoves = Object.keys(staffEditMoves).length + staffEditAdds.length;
+  const nMoves = Object.keys(staffEditMoves).length + staffEditAdds.length + staffEditDeletes.length;
   document.getElementById('staffEditMoveNote').innerHTML = viewOnly ? '' :
-    `Chuyển NV trong chu kỳ đang chạy sẽ <strong>có hiệu lực từ chu kỳ sau: ${fmtMK(eff)} (từ ${cycleStartLabel(eff)})</strong> — số liệu các tháng đã qua giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
+    `Chuyển NV giữa các dự án/phòng ban có hiệu lực <strong>từ chu kỳ sau: ${fmtMK(eff)} (từ ${cycleStartLabel(eff)})</strong>. NV đang ở "Chưa gán dự án" được gán, và NV nghỉ việc bị xoá, có hiệu lực <strong>ngay từ ${fmtMK(companyMonthInfo(new Date()).monthKey)}</strong>. Các tháng trước đó giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
   document.getElementById('staffEditAddRow').style.display = viewOnly ? 'none' : 'flex';
 }
 function staffEditAddEmp() {
@@ -4882,20 +4905,26 @@ function staffEditAddEmp() {
 }
 function closeStaffEditModal() {
   document.getElementById('staffEditModal').style.display = 'none';
-  staffEditCtx = null; staffEditMoves = {}; staffEditAdds = [];
+  staffEditCtx = null; staffEditMoves = {}; staffEditAdds = []; staffEditDeletes = [];
 }
 function saveStaffEditModal() {
   if (!staffEditCtx) return;
   const { group, proj } = staffEditCtx;
-  let moved = 0; const lines = [];
+  let moved = 0; const lines = []; let deleted = 0;
+  if (staffEditDeletes.length) {
+    const curMk = companyMonthInfo(new Date()).monthKey;
+    if (!confirm(`Xoá ${staffEditDeletes.length} NV nghỉ việc khỏi dự án từ ${fmtMK(curMk)}?\n\n` + staffEditDeletes.map(c => `${c} — ${employeeNameByCode(c)}`).join('\n') + `\n\nCác tháng trước ${fmtMK(curMk)} giữ nguyên.`)) return;
+    staffEditDeletes.forEach(code => { if (deleteEmployeeFromProjects(code)) { deleted++; lines.push(`${code} ${employeeNameByCode(code)} → xoá (nghỉ việc)`); delete staffEditMoves[code]; } });
+  }
   Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${labelOfProjKey(g + '::' + r.join('|'))}`); } });
   staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${proj}`); } });
-  if (moved) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} luân chuyển nhân sự — ${proj}`,
-    body: `${moved} NV (hiệu lực từ ${fmtMK(nextCycleMk())}): ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
+  if (moved + deleted) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} cập nhật nhân sự — ${proj}`,
+    body: `${moved} chuyển${deleted ? `, ${deleted} xoá (nghỉ việc)` : ''}: ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
+  moved += deleted;
   if (moved) apUnsynced = true;
   closeStaffEditModal();
   renderActionPlan();
-  toast(moved ? `Đã lưu tạm thời ${moved} thay đổi nhân sự — hiệu lực từ ${fmtMK(nextCycleMk())} (${cycleStartLabel(nextCycleMk())}). Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.` : 'Không có thay đổi nhân sự nào.');
+  toast(moved ? `Đã lưu tạm thời ${moved} thay đổi nhân sự${deleted ? ` (${deleted} NV nghỉ việc đã xoá từ ${fmtMK(companyMonthInfo(new Date()).monthKey)})` : ''}. Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.` : 'Không có thay đổi nhân sự nào.');
 }
 // Ô "Kế hoạch nhân sự" trong bảng: tổng số NV + icon 👁️ để xem/sửa việc di chuyển
 function staffCellHtml(group, proj, mk) {
@@ -4949,7 +4978,9 @@ function buildActionPlanTable(group, tbodyId, mk) {
   if (!tbody) return;
   let projNames = projectsInGroup(group).sort();
   // "Chưa gán dự án" luôn nằm đầu cho PM thấy; ẩn nếu đang trống ở tháng này
-  projNames = projNames.filter(pn => pn !== UNASSIGNED_PROJ || projectEmployeesForMonth(group, pn, mk).length);
+  { const curM = currentProjectMap(); const unKey = group + '::' + UNASSIGNED_PROJ;
+    const anyUnassignedNow = Object.keys(curM).some(c => curM[c] === unKey);
+    projNames = projNames.filter(pn => pn !== UNASSIGNED_PROJ || (anyUnassignedNow && projectEmployeesForMonth(group, pn, mk).length)); }
   if (projNames.includes(UNASSIGNED_PROJ)) projNames = [UNASSIGNED_PROJ, ...projNames.filter(pn => pn !== UNASSIGNED_PROJ)];
   if (!projNames.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án nào trong nhóm ${group}. Bấm "+ Thêm dự án" ở trên để tạo mới.</td></tr>`;
