@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.69';
+const APP_VERSION = '2026.70';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -4786,18 +4786,57 @@ function approvalBoxHtml(group, proj, mp, mk) {
   const status = raw.startsWith('APPROVED|') ? 'approved' : raw.startsWith('REJECTED|') ? 'rejected' : '';
   const comment = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : raw;
   const projEsc = proj.replace(/'/g,"\\'");
-  if (!isManager()) {
-    return `<div style="font-size:12px;line-height:1.6">
-      <div style="font-weight:700;color:${status==='approved'?'var(--green)':status==='rejected'?'#C0392B':'var(--text3)'}">${status==='approved'?'✅ Đã duyệt':status==='rejected'?'❌ Từ chối':'⏳ Chờ ECM/HODs duyệt'}</div>
-      ${comment ? `<div style="color:var(--text2);margin-top:4px;white-space:pre-wrap">${comment.replace(/</g,'&lt;')}</div>` : ''}
-    </div>`;
-  }
-  return `
-    <div style="display:flex;gap:6px;margin-bottom:6px">
-      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='approved'?'background:var(--green);color:#fff;border-color:var(--green)':''}" onclick="setApprovalStatus('${group}','${projEsc}','APPROVED','${mk}')">✅ Duyệt</button>
-      <button class="btn" style="flex:1;padding:4px 6px;font-size:11px;${status==='rejected'?'background:#C0392B;color:#fff;border-color:#C0392B':''}" onclick="setApprovalStatus('${group}','${projEsc}','REJECTED','${mk}')">❌ Từ chối</button>
-    </div>
-    <textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Comment của ECM/HODs..." onchange="setApprovalComment('${group}','${projEsc}',this.value,'${mk}')">${comment.replace(/</g,'&lt;')}</textarea>`;
+  const stHtml = `<div style="font-weight:700;font-size:13px;color:${status==='approved'?'var(--green)':status==='rejected'?'#C0392B':'var(--text3)'}">${status==='approved'?'✅ Đã duyệt':status==='rejected'?'❌ Từ chối':'Chưa duyệt'}</div>`;
+  const cmHtml = comment ? `<div style="font-size:12.5px;color:var(--text);margin-top:4px;line-height:1.5;white-space:pre-wrap">${comment.replace(/</g,'&lt;')}</div>` : '';
+  const whoHtml = (status && mp.approvedByName) ? `<div style="font-size:10.5px;color:var(--text3);margin-top:3px">${String(mp.approvedByName).replace(/</g,'&lt;')}${mp.approvedAt ? ' · ' + new Date(mp.approvedAt).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''}</div>` : '';
+  if (!isManager()) return `<div>${stHtml}${cmHtml}${whoHtml}</div>`;
+  const icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="M9 14l2 2 4-4"/></svg>';
+  return `<div>
+    <button class="btn" style="padding:6px 12px;display:inline-flex;align-items:center;gap:6px;color:var(--accent)" onclick="openApprovalModal('${group}','${projEsc}','${mk}')" title="Duyệt / Từ chối + comment">${icon}</button>
+    ${stHtml}${cmHtml}${whoHtml}</div>`;
+}
+
+// ── Khung Duyệt / Từ chối + comment (chỉ Quản lý/Admin) ──
+let approvalCtx = null, approvalChoice = '';
+function openApprovalModal(group, proj, mk) {
+  if (!requireManager('duyệt / từ chối Action Plan')) return;
+  approvalCtx = { group, proj, mk };
+  const mp = getMonthPlan(group, proj, mk) || {};
+  const raw = mp.approvedBy || '';
+  approvalChoice = raw.startsWith('APPROVED|') ? 'APPROVED' : raw.startsWith('REJECTED|') ? 'REJECTED' : '';
+  document.getElementById('approvalProjName').textContent = proj === '__SED_ALL__' ? 'S-ED (tất cả)' : proj;
+  document.getElementById('approvalProjMeta').textContent = `Duyệt Action Plan · Tháng: ${mk ? fmtMK(mk) : '—'}`;
+  const sum = [mp.pm ? '👤 ' + mp.pm : '', mp.reason ? 'Lý do: ' + mp.reason : '', mp.plan ? 'KH: ' + mp.plan : ''].filter(Boolean).join(' · ');
+  const sEl = document.getElementById('approvalSummary'); sEl.textContent = sum; sEl.style.display = sum ? 'block' : 'none';
+  document.getElementById('approvalComment').value = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : '';
+  approvalPaint();
+  document.getElementById('approvalModal').style.display = 'flex';
+}
+function approvalPaint() {
+  const paint = (el, on, c) => { el.style.background = on ? c : ''; el.style.color = on ? '#fff' : ''; el.style.borderColor = on ? c : ''; };
+  paint(document.getElementById('approvalBtnOk'), approvalChoice === 'APPROVED', '#1F9D55');
+  paint(document.getElementById('approvalBtnNo'), approvalChoice === 'REJECTED', '#C0392B');
+}
+function approvalPick(c) { approvalChoice = c; approvalPaint(); }
+function closeApprovalModal() { document.getElementById('approvalModal').style.display = 'none'; approvalCtx = null; }
+function saveApprovalModal() {
+  if (!approvalCtx) return;
+  if (!requireManager('duyệt / từ chối Action Plan')) return;
+  if (!approvalChoice) { toast('Chọn Duyệt hoặc Từ chối trước khi Lưu.'); return; }
+  const { group, proj, mk } = approvalCtx;
+  const comment = document.getElementById('approvalComment').value.trim();
+  const mp = getMonthPlan(group, proj, mk); if (!mp) return;
+  mp.approvedBy = `${approvalChoice}|${comment}`;
+  mp.approvedByName = (window.CLOUD_USER && window.CLOUD_USER.name) || sessionStorage.getItem('ot_manager_username') || (isAdmin() ? 'Admin' : 'Quản lý');
+  mp.approvedAt = Date.now();
+  markPlanDirty(group, proj, mk);
+  saveProjectsDB();
+  closeApprovalModal();
+  renderActionPlan();
+  toast(window.CLOUD_ON ? (approvalChoice === 'APPROVED' ? '✅ Đã duyệt — mọi người thấy ngay.' : '❌ Đã từ chối — mọi người thấy ngay.') : (approvalChoice === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'));
+  notify('all', { type:'approval', k:`approval:${group}::${proj}::${mk}`, ic: approvalChoice === 'APPROVED' ? '✅' : '❌',
+    title: `${approvalChoice === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'} Action Plan — ${proj === '__SED_ALL__' ? 'S-ED' : proj}`,
+    body: `Tháng ${fmtMK(mk)} · ${notifActorLabel()}${comment ? ' · ' + comment.slice(0, 120) : ''}`, mk });
 }
 
 // ── Popup nhập PM/Lý do/Kế hoạch — thay cho 3 ô rời trước đây, gộp thành 1 nút "+" duy nhất ──

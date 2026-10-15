@@ -846,6 +846,25 @@
   </div>
 </div>
 
+<div id="approvalModal" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface,#fff);border-radius:16px;padding:32px 34px 28px;max-width:720px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:2px" id="approvalProjName">Tên dự án</div>
+    <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px" id="approvalProjMeta">—</div>
+    <div id="approvalSummary" style="font-size:13px;background:var(--bg2);border-radius:8px;padding:10px 12px;margin-bottom:16px;color:var(--text2);line-height:1.6;max-height:110px;overflow:auto"></div>
+    <label style="font-size:14px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px">Comment của ECM / HODs <i style="font-weight:400;opacity:.65">/ Comment</i></label>
+    <textarea id="approvalComment" rows="5" placeholder="Nhập comment..." style="width:100%;padding:11px 13px;border:1px solid var(--border2);border-radius:8px;font-size:15px;line-height:1.55;margin-bottom:16px;resize:vertical;font-family:inherit"></textarea>
+    <label style="font-size:14px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px">Quyết định <i style="font-weight:400;opacity:.65">/ Decision</i></label>
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      <button class="btn" id="approvalBtnOk" style="flex:1;padding:12px;font-size:15px;font-weight:700" onclick="approvalPick('APPROVED')">✅ Duyệt <span style="font-weight:400;font-size:11px;opacity:.8">/ Approve</span></button>
+      <button class="btn" id="approvalBtnNo" style="flex:1;padding:12px;font-size:15px;font-weight:700" onclick="approvalPick('REJECTED')">❌ Từ chối <span style="font-weight:400;font-size:11px;opacity:.8">/ Reject</span></button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1;padding:12px;font-size:15px" onclick="closeApprovalModal()">Huỷ<span style="font-weight:400;font-size:11px;opacity:.7"> / Cancel</span></button>
+      <button class="btn btn-primary" style="flex:2;padding:12px;font-size:15px" onclick="saveApprovalModal()">💾 Lưu<span style="font-weight:400;font-size:11px;opacity:.75"> / Save</span></button>
+    </div>
+  </div>
+</div>
+
 <div id="staffEditModal" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--surface,#fff);border-radius:16px;padding:32px 34px 28px;max-width:1040px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
     <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.04em">KẾ HOẠCH NHÂN SỰ <i style="font-weight:400">/ Staffing plan</i></div>
