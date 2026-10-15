@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.68';
+const APP_VERSION = '2026.69';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -4853,7 +4853,7 @@ function savePlanEditModal() {
     notify('mgr', { type:'plan', k:`plan:${group}::${proj}::${mk}`, ic:'📝', title:`${notifActorLabel()} nhập Lý do/Kế hoạch — ${proj}`,
       body: `Tháng ${fmtMK(mk)}${mpN.pm ? ' · PM: ' + mpN.pm : ''}${mpN.reason ? ' · Lý do: ' + mpN.reason.slice(0, 100) : ''}`, mk });
   }
-  toast('Đã lưu tạm thời — nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên để người khác thấy.');
+  toast(window.CLOUD_ON ? '✅ Đã lưu — mọi người thấy ngay.' : 'Đã lưu tạm thời — nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên để người khác thấy.');
 }
 
 // ── Khung "Kế hoạch nhân sự": danh sách NV của dự án, thêm / chuyển dự án / phòng ban — Lưu TẠM THỜI ──
@@ -4963,7 +4963,7 @@ function saveStaffEditModal() {
   if (moved) apUnsynced = true;
   closeStaffEditModal();
   renderActionPlan();
-  toast(moved ? `Đã lưu tạm thời ${moved} thay đổi nhân sự${deleted ? ` (${deleted} NV nghỉ việc đã xoá từ ${fmtMK(companyMonthInfo(new Date()).monthKey)})` : ''}. Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.` : 'Không có thay đổi nhân sự nào.');
+  toast(moved ? `Đã lưu ${moved} thay đổi nhân sự${deleted ? ` (${deleted} NV nghỉ việc đã xoá từ ${fmtMK(companyMonthInfo(new Date()).monthKey)})` : ''}${window.CLOUD_ON ? ' — mọi người thấy ngay.' : '. Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.'}` : 'Không có thay đổi nhân sự nào.');
 }
 // Ô "Kế hoạch nhân sự" trong bảng: tổng số NV + icon 👁️ để xem/sửa việc di chuyển
 function staffCellHtml(group, proj, mk) {
@@ -4974,7 +4974,7 @@ function staffCellHtml(group, proj, mk) {
   const inc = Object.keys(curMap).filter(c => curMap[c] === key && !act.has(c)).length;
   return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:90px;gap:6px">
     <div style="font-size:12.5px"><strong style="font-size:16px">${n}</strong> NV${inc ? `<div style="font-size:10.5px;color:var(--green)">+${inc} sắp vào</div>` : ''}</div>
-    <button class="btn" style="padding:5px 12px;font-size:15px;line-height:1" onclick="openStaffEditModal('${group}','${projEsc}','${mk}')" title="Xem / chỉnh nhân sự & di chuyển dự án / phòng ban">👁️</button>
+    <button class="btn" style="padding:6px 12px;line-height:1;display:inline-flex;align-items:center" onclick="openStaffEditModal('${group}','${projEsc}','${mk}')" title="Xem / chỉnh nhân sự & di chuyển dự án / phòng ban"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 00-3-3.87"/><path d="M17 3.13a4 4 0 010 7.75"/></svg></button>
   </div>`;
 }
 
