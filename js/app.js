@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.70';
+const APP_VERSION = '2026.71';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5270,7 +5270,34 @@ function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
 }
 // WLB (off÷OT) của 1 dự án cho ĐÚNG 1 tháng dương lịch (monthNum 1-12) — lấy từ WLB_XLS
 // (nguồn nhân sự), vì Off Day chỉ có ở đó, không có trong DB chấm công hàng ngày.
+// ── WLB theo dự án: danh sách dự án lấy từ ACTION PLAN (PROJECTS_DB). NV HCM-EC có trong Excel
+// nhưng chưa thuộc dự án nào → gom vào dòng "Chưa gán dự án (Excel)" để tổng các dự án = tổng HCM-EC.
+const WLB_REMAIN_PROJ = 'Chưa gán dự án (Excel)';
+function wlbRemainCodes(monthNum) {
+  const mk = `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`;
+  const cur = currentProjectMap();
+  const out = [];
+  Object.values(WLB_XLS.employees || {}).forEach(e => {
+    if (e.dept !== 'HCM-EC' || !e.code) return;
+    if (!projKeyForEmp(e.code, mk, cur)) out.push(e.code);
+  });
+  return out;
+}
+function wlbProjectList(monthNums) {
+  const list = projectsInGroup('HCM-EC').sort();
+  if (monthNums.some(m => wlbRemainCodes(m).length)) list.push(WLB_REMAIN_PROJ);
+  return list;
+}
+function wlbProjNv(proj, monthNum) {
+  const mk = `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`;
+  return proj === WLB_REMAIN_PROJ ? wlbRemainCodes(monthNum).length : projectEmployeesForMonth('HCM-EC', proj, mk).length;
+}
 function getProjectWlbForMonth(group, proj, monthNum) {
+  if (proj === WLB_REMAIN_PROJ) {
+    let ot = 0, off = 0; const set = new Set(wlbRemainCodes(monthNum));
+    Object.values(WLB_XLS.employees || {}).forEach(e => { if (set.has(e.code)) { ot += (e.ot[monthNum]||0); off += (e.off[monthNum]||0); } });
+    return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+  }
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
   let ot = 0, off = 0;
@@ -5285,6 +5312,11 @@ function getProjectWlbForMonth(group, proj, monthNum) {
 // WLB của 1 dự án cho 1 NHÓM THÁNG (quý chồng lấp) — cộng dồn OT + Off trước rồi mới chia,
 // đúng công thức Excel (không phải trung bình cộng của từng tháng riêng lẻ).
 function getProjectWlbForMonths(group, proj, monthNums) {
+  if (proj === WLB_REMAIN_PROJ) {
+    let ot = 0, off = 0;
+    monthNums.forEach(m => { const r = getProjectWlbForMonth(group, proj, m); ot += r.ot; off += r.off; });
+    return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+  }
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
   let ot = 0, off = 0;
@@ -5551,6 +5583,12 @@ function wlbXlsQuarterGroups() {
 // Trả về danh sách "mk" (định dạng YYYY-MM) tương ứng các tháng có dữ liệu trong WLB_XLS —
 // để gộp vào allMks của trang WLB, đảm bảo dropdown tháng vẫn hiện đủ dù người dùng CHỈ
 // upload file Excel WLB (chưa có dữ liệu OT/Off Day nào khác).
+// Danh sách tháng hiển thị ở trang WLB: nếu đã upload Excel WLB thì CHỈ các tháng có trong file
+// (tháng chưa có data như 10-11-12 không hiện); chưa có Excel thì dùng dữ liệu OT/Off cũ.
+function wlbAllMks() {
+  if (Object.keys(WLB_XLS.employees||{}).length && wlbXlsMks().length) return wlbXlsMks().sort();
+  return [...new Set([...Object.keys(OFF_DB),...Object.keys(DB)])].sort();
+}
 function wlbXlsMks() {
   return wlbXlsMonthsWithData().map(m => `${WLB_XLS.year}-${String(m).padStart(2,'0')}`);
 }
@@ -5763,19 +5801,44 @@ function refreshWlbEmpTableMonth() {
 function refreshWlbEmpTableQtr() {
   const selQk = document.getElementById('wlbQtrSel')?.value;
   if (!selQk) return;
-  const offKeys = Object.keys(OFF_DB).sort();
-  const otKeys  = Object.keys(DB).sort();
-  const allMks  = [...new Set([...offKeys,...otKeys,...wlbXlsMks()])].sort();
+  const allMks  = wlbAllMks();
   const mks = allMks.filter(mk => quarterKeyOf(mk) === selQk);
   const df = document.getElementById('wlbEmpQtrDept')?.value || '__all__';
   const q = document.getElementById('wlbEmpQtrSearch')?.value || '';
   renderEmployeeWlbTable('wlbEmpQtrTHead', 'wlbEmpQtrTBody', buildEmployeeWlbRows(mks, df, q), mks[mks.length-1]);
 }
 
+// Đối soát OT: Excel WLB (tháng dương lịch) vs DB chấm công (chu kỳ 16→15, key = tháng của ngày 15)
+function renderWlbRecon(mks) {
+  const body = document.getElementById('wlbReconBody'); if (!body) return;
+  const rows = [];
+  mks.forEach(mk => {
+    const mn = parseInt(mk.split('-')[1], 10);
+    WLB_ALLOWED_DEPTS.forEach(d => {
+      const ex = Object.values(WLB_XLS.employees || {}).filter(e => e.dept === d && (e.ot[mn]||0) > 0);
+      const exOt = ex.reduce((s,e) => s + (e.ot[mn]||0), 0);
+      const m = DB[mk];
+      let dbOt = null, dbCodes = new Set();
+      if (m && m.employees) {
+        dbOt = 0;
+        (m.names || []).forEach(n => { const e = m.employees[n]; if (e && e.dept === d) { const t = totalOf(e); if (t > 0) { dbOt += t; if (e.staffCode) dbCodes.add(String(e.staffCode)); } } });
+      }
+      const exCodes = new Set(ex.map(e => String(e.code)));
+      const onlyEx = [...exCodes].filter(c => !dbCodes.has(c)).length;
+      const onlyDb = [...dbCodes].filter(c => !exCodes.has(c)).length;
+      const diff = dbOt === null ? null : exOt - dbOt;
+      rows.push(`<tr><td>${fmtMK(mk)}</td><td>${d}</td><td style="text-align:right;font-family:var(--font-mono)">${(Math.round(exOt*10)/10).toLocaleString()}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${dbOt === null ? '<span style="color:var(--text3)">chưa có data</span>' : (Math.round(dbOt*10)/10).toLocaleString()}</td>
+        <td style="text-align:right;font-family:var(--font-mono);font-weight:600;color:${diff === null ? 'var(--text3)' : (Math.abs(diff) < 0.5 ? 'var(--green,#2e7d32)' : '#C0392B')}">${diff === null ? '—' : (diff > 0 ? '+' : '') + (Math.round(diff*10)/10).toLocaleString()}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${dbOt === null ? '—' : onlyEx}</td><td style="text-align:right;font-family:var(--font-mono)">${dbOt === null ? '—' : onlyDb}</td></tr>`);
+    });
+  });
+  body.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
+}
+
 function renderWlb() {
-  const offKeys = Object.keys(OFF_DB).sort();
-  const otKeys  = Object.keys(DB).sort();
-  const allMks  = [...new Set([...offKeys,...otKeys,...wlbXlsMks()])].sort();
+  const allMks  = wlbAllMks();
+  try { renderWlbRecon(allMks); } catch(e) { console.warn('recon', e); }
   const allDepts = getAllDeptsForWlb();
   const THRESHOLD = WLB_THRESHOLD; // dùng cho đường tham chiếu trên biểu đồ (đơn giản hoá — biểu đồ trải nhiều tháng nên dùng 1 mốc chung là ngưỡng mới nhất); bảng chi tiết/KPI dùng đúng ngưỡng theo từng tháng qua getWlbThreshold()
   const EMPTY = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dữ liệu. Upload file OT và Off Day để bắt đầu.</td></tr>';
@@ -5931,8 +5994,8 @@ function renderWlb() {
     if (wlbProjLbl) wlbProjLbl.textContent = selMk ? fmtMK(selMk) : '';
     if (selMk) {
       const monthNumP = parseInt(selMk.split('-')[1], 10);
-      const allEcProjects = projectsInGroup('HCM-EC');
-      const projEntries = allEcProjects.sort().map(proj => {
+      const allEcProjects = wlbProjectList([monthNumP]);
+      const projEntries = allEcProjects.map(proj => {
         const w = getProjectWlbForMonth('HCM-EC', proj, monthNumP);
         return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
       }).filter(e => e.value !== null && e.value !== undefined);
@@ -6023,9 +6086,9 @@ function renderWlb() {
           <td>${wlbBadge(v,mk)}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNum = parseInt(mk.split('-')[1], 10);
-          const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
+          const projRows = wlbProjectList([monthNum]).map(proj => {
             const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: projectEmployeesForMonth('HCM-EC', proj, mk).length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, monthNum) };
           });
           rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
@@ -6119,8 +6182,8 @@ function renderWlb() {
     if (wlbProjQLbl) wlbProjQLbl.textContent = selQk ? qLabel[selQk] : '';
     if (selQk) {
       const monthNumsQ = qMks(selQk).map(mk => parseInt(mk.split('-')[1], 10));
-      const allEcProjectsQ = projectsInGroup('HCM-EC');
-      const projEntriesQ = allEcProjectsQ.sort().map(proj => {
+      const allEcProjectsQ = wlbProjectList(monthNumsQ);
+      const projEntriesQ = allEcProjectsQ.map(proj => {
         const w = getProjectWlbForMonths('HCM-EC', proj, monthNumsQ);
         return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
       }).filter(e => e.value !== null && e.value !== undefined);
@@ -6202,9 +6265,9 @@ function renderWlb() {
           <td>${wlbBadge(v,mks[mks.length-1])}</td></tr>`);
         if (d === 'HCM-EC') {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
-          const projRows = projectsInGroup('HCM-EC').sort().map(proj => {
+          const projRows = wlbProjectList(monthNums).map(proj => {
             const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: projectEmployeesForMonth('HCM-EC', proj, mks[mks.length-1]).length };
+            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, parseInt(mks[mks.length-1].split('-')[1],10)) };
           });
           qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
