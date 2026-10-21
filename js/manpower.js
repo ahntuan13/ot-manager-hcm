@@ -20,11 +20,10 @@ function mpTotalsMap(mk, cache) {
 }
 // Chỉ số 1 dự án trong 1 chu kỳ
 function mpMetric(proj, mk, cache) {
-  const codes = projectEmployeesForMonth(MP_GROUP, proj, mk);
   const tm = mpTotalsMap(mk, cache);
-  let ot = 0, o45 = 0, o70 = 0;
-  codes.forEach(c => { const v = tm[c] || 0; ot += v; if (v > MP_KPI_H) o45++; if (v > MP_PAY_H) o70++; });
-  const hc = codes.length;
+  const sh = DB[mk] ? projectEmployeesWithShare(MP_GROUP, proj, mk, periodEndIso(mk, null)) : [];
+  let ot = 0, o45 = 0, o70 = 0, hc = 0;
+  sh.forEach(x => { const v = tm[x.code] || 0; ot += v * x.frac; hc += x.fte; if (v > MP_KPI_H && x.frac > 0) o45++; if (v > MP_PAY_H && x.frac > 0) o70++; });
   return { hc, ot: Math.round(ot * 10) / 10, per: hc ? ot / hc : 0, o45, o70, has: !!DB[mk] };
 }
 function mpPlanFor(proj, mk) {

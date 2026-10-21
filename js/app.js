@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.74';
+const APP_VERSION = '2026.75';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -2381,7 +2381,8 @@ function renderDashTable(totals, periods) {
     const normal = Math.round((t.total - night)*10)/10;
     const projInfo = t.staffCode ? findEmployeeProject(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : null;
     const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
-    const deptDisplay = (projInfo && !projInfo.proj.startsWith('__')) ? `${projInfo.group}/${projName}` : (projInfo ? projInfo.group : t.dept);
+    const mvTxt = t.staffCode ? midCycleMoveText(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : '';
+    const deptDisplay = mvTxt ? `${projInfo ? projInfo.group : t.dept}: ${mvTxt}` : ((projInfo && !projInfo.proj.startsWith('__')) ? `${projInfo.group}/${projName}` : (projInfo ? projInfo.group : t.dept));
     // Tích hợp Chi tiết OT theo ngày NGAY TẠI ĐÂY — bấm tên NV để mở/đóng, thay vì phải xem 1 danh
     // sách tách riêng ở dưới trang. Dùng đúng tháng đang xem của trang hiện tại (Danh sách NV OT
     // dùng empMK, Dashboard dùng activeMK) — tự nhận diện qua trang nào đang hiển thị.
@@ -4662,6 +4663,82 @@ function projKeyForEmp(code, mk, curMap) {
   }
   return (curMap || currentProjectMap())[code] || null;
 }
+
+// ── CHUYỂN DỰ ÁN GIỮA KỲ (v2026.75): mỗi lần chuyển có thể kèm NGÀY chuyển (PROJ_MOVES[code][mk].date, ISO).
+// OT luỹ kế của kỳ được TÁCH theo ngày chuyển: dự án cũ nhận phần OT luỹ kế đến hết ngày trước ngày chuyển,
+// dự án mới nhận phần còn lại → tổng các dự án = tổng OT cả kỳ của NV (không mất, không tính đôi).
+// Lần chuyển KHÔNG có `date` = hiệu lực từ đầu chu kỳ (như cũ).
+function moveEffIso(k, e) { return (e && e.date) || isoDate(cycleStartOf(k)); }
+function projKeyAtDate(code, iso, curMap) {
+  const mv = PROJ_MOVES[code];
+  if (mv) {
+    const ents = Object.keys(mv).map(k => ({ d: moveEffIso(k, mv[k]), e: mv[k] })).sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+    if (ents.length) { let hit = null; for (const x of ents) if (x.d <= iso) hit = x.e; return hit ? (hit.key || null) : (ents[0].e.prev || null); }
+  }
+  return (curMap || currentProjectMap())[code] || null;
+}
+const hasDatedMoveInCycle = (code, mk) => !!(PROJ_MOVES[code] && PROJ_MOVES[code][mk] && PROJ_MOVES[code][mk].date);
+function dayDiff(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+function addDaysIso(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); }
+// Các đoạn [from,to] (ISO) trong kỳ mk tới ngày endIso, mỗi đoạn 1 dự án
+function projSegments(code, mk, endIso, curMap) {
+  const start = isoDate(cycleStartOf(mk));
+  const mv = PROJ_MOVES[code] || {};
+  const cuts = Object.keys(mv).map(k => mv[k].date).filter(d => d && d > start && d <= endIso).sort();
+  const pts = [start, ...cuts], segs = [];
+  pts.forEach((from, i) => segs.push({ key: projKeyAtDate(code, from, curMap), from, to: i + 1 < pts.length ? addDaysIso(pts[i + 1], -1) : endIso }));
+  return segs;
+}
+// Tìm dữ liệu chấm công của NV (theo staff code) trong kỳ mk
+function empRecByCode(mk, code) {
+  const m = DB[mk]; if (!m) return null;
+  for (const n of m.names) { const e = m.employees[n]; if (e && e.staffCode === code) return e; }
+  return null;
+}
+const cumOtTo = (e, startIso, toIso) => {
+  let w = 0, q = 0;
+  for (const k in (e.days || {})) if (k >= startIso && k <= toIso) w += e.days[k];
+  for (const k in (e.quotaDays || {})) if (k >= startIso && k <= toIso) q += e.quotaDays[k];
+  return Math.max(0, w - q);
+};
+// Ngày cuối của kỳ đang xét (hết tuần đang xem / hết kỳ)
+function periodEndIso(mk, periodIdx) {
+  const per = buildPeriods(mk);
+  if (!per.length) return isoDate(cycleEndOf(mk));
+  const i = (periodIdx === null || periodIdx === undefined || periodIdx < 0 || periodIdx >= per.length) ? per.length - 1 : periodIdx;
+  return isoDate(per[i].end);
+}
+// Danh sách NV của dự án trong kỳ + tỷ lệ OT (frac) và tỷ lệ ngày (fte) thuộc dự án đó.
+// Không chuyển giữa kỳ → frac = fte = 1 (như cũ).
+function projectEmployeesWithShare(group, proj, mk, endIso) {
+  const key = group + '::' + proj, cur = currentProjectMap();
+  const codes = new Set(Object.keys(cur)); Object.keys(PROJ_MOVES).forEach(c => codes.add(c));
+  const out = [];
+  codes.forEach(code => {
+    if (!hasDatedMoveInCycle(code, mk)) { if (projKeyForEmp(code, mk, cur) === key) out.push({ code, frac: 1, fte: 1 }); return; }
+    const start = isoDate(cycleStartOf(mk)), end = endIso || isoDate(cycleEndOf(mk));
+    const segs = projSegments(code, mk, end, cur), e = empRecByCode(mk, code), total = dayDiff(start, end) + 1;
+    const total_ot = e ? cumOtTo(e, start, end) : 0;
+    let ot = 0, days = 0;
+    segs.forEach(sg => {
+      if (sg.key !== key) return;
+      days += dayDiff(sg.from, sg.to) + 1;
+      if (e) ot += cumOtTo(e, start, sg.to) - (sg.from > start ? cumOtTo(e, start, addDaysIso(sg.from, -1)) : 0);
+    });
+    if (!days) return;
+    const fte = total > 0 ? days / total : 0;
+    out.push({ code, fte, frac: total_ot > 0 ? Math.max(0, ot) / total_ot : fte });
+  });
+  return out;
+}
+// Chuỗi hiển thị "Dự án B → C (02/10)" cho NV có chuyển giữa kỳ
+function midCycleMoveText(code, mk) {
+  if (!mk || !hasDatedMoveInCycle(code, mk)) return '';
+  const e = PROJ_MOVES[code][mk], lbl = k => k ? (k.split('::').slice(1).join('::') || k).replace(/^HCM\s+/i, '').replace(/^__.*$/, 'phòng khác') : 'chưa gán';
+  const d = e.date.split('-');
+  return `${lbl(e.prev)} → ${lbl(e.key)} (${d[2]}/${d[1]})`;
+}
+
 function findEmployeeProject(staffCode, mk) {
   const key = projKeyForEmp(staffCode, mk);
   if (!key) return null;
@@ -4916,12 +4993,13 @@ function moveEmployeeToProject(staffCode, toGroup, toProj, o) {
   // Có hiệu lực NGAY từ chu kỳ hiện tại nếu: xoá NV nghỉ việc, hoặc NV đang "Chưa gán dự án"/chưa thuộc nhóm nào
   // (đó chỉ là chỗ chờ PM xác nhận, không phải 1 lần chuyển thật). Còn lại: từ chu kỳ sau.
   const immediate = (o && o.immediate) || prevKey === null || prevKey === ('HCM-EC::' + UNASSIGNED_PROJ);
-  const eff = immediate ? companyMonthInfo(new Date()).monthKey : nextCycleMk();
+  const mvDate = (o && o.date && /^\d{4}-\d{2}-\d{2}$/.test(o.date)) ? o.date : null;
+  const eff = mvDate ? companyMonthKeyOf(new Date(mvDate + 'T00:00:00')) : (immediate ? companyMonthInfo(new Date()).monthKey : nextCycleMk());
   if (!PROJ_MOVES[staffCode]) PROJ_MOVES[staffCode] = {};
   const existing = PROJ_MOVES[staffCode][eff];
   const prev = existing ? existing.prev : prevKey;
   if (newKey === prev && existing) delete PROJ_MOVES[staffCode][eff];   // chuyển lại về chỗ cũ → huỷ lần chuyển
-  else PROJ_MOVES[staffCode][eff] = { key: newKey, prev, at: Date.now(), ...(o && o.del ? { del: true } : {}) };
+  else PROJ_MOVES[staffCode][eff] = { key: newKey, prev, at: Date.now(), ...(mvDate ? { date: mvDate } : {}), ...(o && o.del ? { del: true } : {}) };
   if (!Object.keys(PROJ_MOVES[staffCode]).length) delete PROJ_MOVES[staffCode];
   saveProjectsDB(); saveProjMoves();
   return true;
@@ -4946,7 +5024,7 @@ function employeeNameByCode(code) {
 function viewProjectEmployees(group, proj, mk) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return;
-  empProjectFilter = { group, proj, codes: projectEmployeesForMonth(group, proj, mk || latestOtMk()) };
+  empProjectFilter = { group, proj, codes: projectEmployeesWithShare(group, proj, mk || latestOtMk(), null).map(x => x.code) };
   if (mk) { empMK = mk; empTab = 'month'; empPeriod = null; }
   goPage('employees', null, true);
 }
@@ -5098,16 +5176,18 @@ function savePlanEditModal() {
 
 // ── Khung "Kế hoạch nhân sự": danh sách NV của dự án, thêm / chuyển dự án / phòng ban — Lưu TẠM THỜI ──
 let staffEditCtx = null; // {group, proj, mk, viewOnly}
+let staffEditDates = {}; // {staffCode: 'YYYY-MM-DD'} ngày chuyển
 let staffEditMoves = {}; // {staffCode: "group|proj"} — chuyển NV đã chọn, chỉ áp dụng khi bấm Lưu tạm thời
 let staffEditAdds = [];  // staff code muốn THÊM vào dự án này
 let staffEditDeletes = []; // staff code NV nghỉ việc muốn XOÁ khỏi dự án (hiệu lực từ chu kỳ hiện tại)
 function openStaffEditModal(group, proj, mk) {
   staffEditCtx = { group, proj, mk, viewOnly: false };
-  staffEditMoves = {}; staffEditAdds = []; staffEditDeletes = [];
+  staffEditMoves = {}; staffEditDates = {}; staffEditAdds = []; staffEditDeletes = [];
   document.getElementById('staffEditProjName').textContent = proj;
   renderStaffEditEmployees();
   document.getElementById('staffEditModal').style.display = 'flex';
 }
+function defaultMoveDate() { return isoDate(cycleStartOf(nextCycleMk())); }
 function renderStaffEditEmployees() {
   if (!staffEditCtx) return;
   const { group, proj, mk, viewOnly } = staffEditCtx;
@@ -5150,11 +5230,11 @@ function renderStaffEditEmployees() {
       ? `<span style="font-size:11px;color:#C0392B;font-weight:600">🗑 sẽ xoá (nghỉ việc) từ ${fmtMK(curMk)}</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditDeletes=staffEditDeletes.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
       : isIn ? '' : isAdd
       ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
-      : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="staffEditMoves['${code}']=this.value;if(!this.value)delete staffEditMoves['${code}'];renderStaffEditEmployees()">
+      : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="staffEditMoves['${code}']=this.value;if(!this.value){delete staffEditMoves['${code}'];delete staffEditDates['${code}'];}else if(!staffEditDates['${code}'])staffEditDates['${code}']=defaultMoveDate();renderStaffEditEmployees()">
            <option value="">Chuyển đến… (giữ nguyên)</option>
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
            <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
-         </select>${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
+         </select>${chosen ? ` <label style="font-size:11px;color:var(--text2)" title="Từ ngày này, OT tính cho dự án mới; trước đó vẫn tính dự án cũ">Ngày chuyển <input type="date" value="${staffEditDates[code]||''}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : ''}${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${isDel?'background:rgba(192,57,43,.10);text-decoration:line-through;':''}${chosen||isAdd?'background:var(--accent-bg)':''}${isIn?'background:rgba(60,160,90,.10)':''}">
       <span style="font-family:var(--font-mono);font-size:11px;width:68px;color:var(--text2)">${code}</span>
       <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${employeeNameByCode(code)} ${pendTxt}</span>
@@ -5167,7 +5247,7 @@ function renderStaffEditEmployees() {
     || '<div style="padding:12px;color:var(--text3);font-size:12px">Chưa có nhân viên nào trong dự án này.</div>';
   const nMoves = Object.keys(staffEditMoves).length + staffEditAdds.length + staffEditDeletes.length;
   document.getElementById('staffEditMoveNote').innerHTML = viewOnly ? '' :
-    `Chuyển NV giữa các dự án/phòng ban có hiệu lực <strong>từ chu kỳ sau: ${fmtMK(eff)} (từ ${cycleStartLabel(eff)})</strong>. NV đang ở "Chưa gán dự án" được gán, và NV nghỉ việc bị xoá, có hiệu lực <strong>ngay từ ${fmtMK(companyMonthInfo(new Date()).monthKey)}</strong>. Các tháng trước đó giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
+    `Chọn <strong>Ngày chuyển</strong> cho từng NV (mặc định: đầu chu kỳ sau, ${cycleStartLabel(eff)}). Từ ngày đó, OT tính cho dự án mới; OT trước ngày chuyển vẫn tính cho dự án cũ (tổng OT của NV không đổi). NV đang ở "Chưa gán dự án" được gán, và NV nghỉ việc bị xoá, có hiệu lực <strong>ngay từ ${fmtMK(companyMonthInfo(new Date()).monthKey)}</strong>. Các tháng trước đó giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
   document.getElementById('staffEditAddRow').style.display = viewOnly ? 'none' : 'flex';
 }
 function staffEditAddEmp() {
@@ -5184,7 +5264,7 @@ function staffEditAddEmp() {
 }
 function closeStaffEditModal() {
   document.getElementById('staffEditModal').style.display = 'none';
-  staffEditCtx = null; staffEditMoves = {}; staffEditAdds = []; staffEditDeletes = [];
+  staffEditCtx = null; staffEditMoves = {}; staffEditDates = {}; staffEditAdds = []; staffEditDeletes = [];
 }
 function saveStaffEditModal() {
   if (!staffEditCtx) return;
@@ -5195,7 +5275,7 @@ function saveStaffEditModal() {
     if (!confirm(`Xoá ${staffEditDeletes.length} NV nghỉ việc khỏi dự án từ ${fmtMK(curMk)}?\n\n` + staffEditDeletes.map(c => `${c} — ${employeeNameByCode(c)}`).join('\n') + `\n\nCác tháng trước ${fmtMK(curMk)} giữ nguyên.`)) return;
     staffEditDeletes.forEach(code => { if (deleteEmployeeFromProjects(code)) { deleted++; lines.push(`${code} ${employeeNameByCode(code)} → xoá (nghỉ việc)`); delete staffEditMoves[code]; } });
   }
-  Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'))) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${labelOfProjKey(g + '::' + r.join('|'))}`); } });
+  Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'), { date: staffEditDates[code] })) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${labelOfProjKey(g + '::' + r.join('|'))}`); } });
   staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${proj}`); } });
   if (moved + deleted) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} cập nhật nhân sự — ${proj}`,
     body: `${moved} chuyển${deleted ? `, ${deleted} xoá (nghỉ việc)` : ''}: ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
@@ -5430,22 +5510,22 @@ function deleteProjectConfirm(group, proj) {
 function getProjectOTStats(group, projectName, mk) {
   const proj = PROJECTS_DB[group] && PROJECTS_DB[group][projectName];
   if (!proj || !mk || !DB[mk]) return { otNormal: 0, otNight: 0, nvCount: 0, overKpi: 0, overPay: 0 };
-  const codes = new Set(projectEmployeesForMonth(group, projectName, mk));
-  // Dùng ĐÚNG getTotals() — cùng 1 hàm mà trang "Danh sách NV OT" đang dùng để hiển thị — đảm bảo
-  // 2 nơi luôn ra cùng 1 con số, không tính lại bằng công thức khác dễ gây lệch.
   const periods = buildPeriods(mk);
   const periodIdx = periods.length ? periods.length - 1 : null;
+  const share = new Map(projectEmployeesWithShare(group, projectName, mk, periodEndIso(mk, periodIdx)).map(x => [x.code, x]));
+  // Dùng ĐÚNG getTotals() — cùng 1 hàm mà trang "Danh sách NV OT" đang dùng để hiển thị — đảm bảo
+  // 2 nơi luôn ra cùng 1 con số, không tính lại bằng công thức khác dễ gây lệch.
   const totals = getTotals(mk, '__all__', periodIdx);
   let otNormal = 0, otNight = 0, nvCount = 0, overKpi = 0, overPay = 0;
   totals.forEach(t => {
-    if (!t.staffCode || !codes.has(t.staffCode)) return;
+    const sh = t.staffCode && share.get(t.staffCode); if (!sh) return;
     const night = Math.min(t.nightTotal || 0, t.total);
-    otNormal += (t.total - night);
-    otNight += night;
-    if (t.total > 0) nvCount++;
-    // % Giới hạn KPI = mốc 45h/tháng, % Giới hạn Chi trả = mốc 70h/tháng — đếm số NV vượt mỗi mốc.
-    if (t.total > 45) overKpi++;
-    if (t.total > 70) overPay++;
+    otNormal += (t.total - night) * sh.frac;
+    otNight += night * sh.frac;
+    if (t.total * sh.frac > 0) nvCount++;
+    // % Giới hạn KPI = mốc 45h/tháng, % Giới hạn Chi trả = mốc 70h/tháng — xét trên TỔNG OT của NV (cá nhân).
+    if (t.total > 45 && sh.frac > 0) overKpi++;
+    if (t.total > 70 && sh.frac > 0) overPay++;
   });
   return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount, overKpi, overPay };
 }
@@ -5458,12 +5538,12 @@ function getProjectOTStats(group, projectName, mk) {
 function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p || !mk || !DB[mk]) return { total: 0, nvCount: 0 };
-  const codes = new Set(projectEmployeesForMonth(group, proj, mk));
+  const share = new Map(projectEmployeesWithShare(group, proj, mk, periodEndIso(mk, periodIdx)).map(x => [x.code, x]));
   const totals = getTotals(mk, '__all__', periodIdx);
   let total = 0, nvCount = 0;
   totals.forEach(t => {
-    if (!t.staffCode || !codes.has(t.staffCode)) return;
-    const v = useDelta ? (t.deltaTotal||0) : t.total;
+    const sh = t.staffCode && share.get(t.staffCode); if (!sh) return;
+    const v = (useDelta ? (t.deltaTotal||0) : t.total) * sh.frac;
     total += v;
     if (v > 0) nvCount++;
   });
