@@ -126,7 +126,11 @@
     </button>
     <button class="nt mp-nav" data-page="manpower" onclick="goPage('manpower')" style="display:none">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <span class="nt-label"><span class="nt-vi">Manpower 🔒</span><span class="nt-en">Manpower</span></span>
+      <span class="nt-label"><span class="nt-vi">Manpower</span><span class="nt-en">Manpower</span></span>
+    </button>
+    <button class="nt" data-page="pudelivery" onclick="goPage('pudelivery')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      <span class="nt-label"><span class="nt-vi">PU Delivery</span><span class="nt-en">PU Delivery</span></span>
     </button>
 
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
@@ -367,7 +371,7 @@
         <option value="w45">Vượt mức 45 (45-70h)</option>
         <option value="o">Bình thường</option>
       </select>
-      <input type="text" id="nvSearch" placeholder="Tìm nhân viên..." oninput="renderEmployeeList()" style="width:160px">
+      <input type="text" id="nvSearch" placeholder="Tìm tên hoặc staff code..." oninput="renderEmployeeList()" style="width:210px">
     </div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:6px">💡 Bấm vào tên nhân viên để xem chi tiết OT theo từng ngày trong tháng. <i style="opacity:.75">/ Click an employee's name to see their daily OT breakdown for the month.</i></div>
     <div class="tbl-wrap">
@@ -894,6 +898,45 @@
   </div>
 </div>
 
+<div class="pg" id="pg-pudelivery">
+  <div class="page-title"><span>PU Delivery <span style="font-size:12px;color:var(--text2);font-weight:400">/ Theo dõi tiến độ giao hàng của nhà cung cấp</span></span></div>
+  <div id="puKpi" class="mp-kpi"></div>
+  <div class="card">
+    <div class="action-row" style="margin-bottom:10px">
+      <select id="puStatusFilter" onchange="renderPuDelivery()"><option value="all">Tất cả trạng thái</option></select>
+      <input type="text" id="puSearch" placeholder="Tìm sản phẩm, NCC, dự án, PIC..." oninput="renderPuDelivery()" style="width:260px">
+      <button class="btn btn-primary" onclick="openPuModal()">＋ Thêm</button>
+      <button class="btn" onclick="document.getElementById('puImport').click()">Nhập Excel</button>
+      <input type="file" id="puImport" accept=".xlsx,.xls,.csv" style="display:none" onchange="importPuExcel(this)">
+      <button class="btn" onclick="exportPuExcel()">Xuất Excel</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Cột "Lệch" = Ngày chốt cuối − Ngày yêu cầu giao hàng (đỏ = giao trễ hơn yêu cầu). Dữ liệu tự lưu và đồng bộ cho mọi người.</div>
+    <div class="tbl-wrap"><table><thead><tr><th>STT</th><th>Mô tả sản phẩm</th><th>Số lượng</th><th>Nhà cung cấp</th><th>Dự án / Dept</th><th>PIC</th><th>Ngày yêu cầu</th><th>Ngày dự kiến (Sup/PU)</th><th>Ngày chốt cuối</th><th>Lệch</th><th>Trạng thái</th><th>Ghi chú</th><th></th></tr></thead><tbody id="puBody"></tbody></table></div>
+  </div>
+</div>
+
+<div id="puModal" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface,#fff);border-radius:16px;padding:28px 30px 24px;max-width:760px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-size:20px;font-weight:800;margin-bottom:16px" id="puModalTitle">Thêm đơn hàng</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;font-size:13px">
+      <label style="grid-column:1/3">Mô tả sản phẩm<input id="puFDesc" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Số lượng<input id="puFQty" placeholder="VD: 50 bộ" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Nhà cung cấp (Supplier)<input id="puFSup" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Dự án / Dept yêu cầu<input id="puFProj" list="puProjList" style="width:100%;padding:9px 11px;margin-top:4px"><datalist id="puProjList"></datalist></label>
+      <label>PIC<input id="puFPic" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Ngày yêu cầu giao hàng (Dept/Dự án)<input type="date" id="puFReq" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Ngày giao dự kiến (Sup/PU)<input type="date" id="puFEta" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Ngày giao chốt cuối cùng<input type="date" id="puFFinal" style="width:100%;padding:9px 11px;margin-top:4px"></label>
+      <label>Trạng thái<select id="puFStatus" style="width:100%;padding:9px 11px;margin-top:4px"></select></label>
+      <label style="grid-column:1/3">Ghi chú (Meeting notes)<textarea id="puFNotes" rows="3" style="width:100%;padding:9px 11px;margin-top:4px;resize:vertical"></textarea></label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn" style="flex:1;padding:11px" onclick="closePuModal()">Huỷ</button>
+      <button class="btn btn-primary" style="flex:2;padding:11px" onclick="savePuModal()">💾 Lưu / Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="pg" id="pg-manpower">
   <div class="page-title"><span>Manpower <span style="font-size:12px;color:var(--text2);font-weight:400">/ Nhân sự theo dự án — HCM-EC</span></span></div>
   <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -903,8 +946,8 @@
   </div>
   <div id="mpKpi" class="mp-kpi"></div>
   <div class="card"><div class="card-title">1. Tổng quan: Nhân sự vs Kế hoạch / OT trên đầu người</div>
-    <div class="mp-two"><div><div class="mp-sub">Số người (thực tế vs kế hoạch)</div><div style="height:300px"><canvas id="cMpHead"></canvas></div></div>
-    <div><div class="mp-sub">OT / người (giờ) — vạch đỏ 45h</div><div style="height:300px"><canvas id="cMpOt"></canvas></div></div></div>
+    <div class="mp-two"><div><div class="mp-sub">Số người (thực tế vs kế hoạch)</div><div id="cMpHeadBox" style="height:300px"><canvas id="cMpHead"></canvas></div></div>
+    <div><div class="mp-sub">OT / người (giờ) — vạch đỏ 45h</div><div id="cMpOtBox" style="height:300px"><canvas id="cMpOt"></canvas></div></div></div>
     <div style="overflow:auto;margin-top:12px"><table id="mpPlanTable"></table></div>
     <div id="mpPlanNote" style="font-size:11.5px;color:var(--text2);margin-top:6px"></div>
   </div>
@@ -1158,6 +1201,19 @@
       <p>Cùng nội dung báo cáo trên, mở trực tiếp trên trình duyệt, dễ chia sẻ link nội bộ.</p>
       <button class="btn btn-primary" onclick="exportHtmlReport()" style="width:100%;justify-content:center">Xuất HTML<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Export HTML</span></button>
     </div>
+    <div class="report-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <h3>Biểu đồ so sánh phòng ban / dự án</h3>
+      <p>So sánh OT các phòng ban và dự án HCM-EC theo tháng hoặc quý (dùng tháng/quý chọn ở trên).</p>
+      <select id="reportCmpScope" style="width:100%;margin-bottom:8px"><option value="month">Theo tháng (6 tháng gần nhất)</option><option value="quarter">Theo quý (4 quý gần nhất)</option></select>
+      <div style="display:flex;gap:6px"><button class="btn btn-primary" onclick="exportPdfReport('compare')" style="flex:1;justify-content:center">PDF</button><button class="btn btn-primary" onclick="exportCompareHtml()" style="flex:1;justify-content:center">HTML</button><button class="btn btn-primary" onclick="exportCompareExcel()" style="flex:1;justify-content:center">Excel</button></div>
+    </div>
+    <div class="report-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <h3>Danh sách NV OT</h3>
+      <p>Xuất riêng danh sách nhân viên OT của tháng đã chọn (Excel), xếp Vượt 70h → 45-70h → Bình thường, từ lớn đến nhỏ.</p>
+      <button class="btn btn-primary" onclick="exportEmployeeOtExcel()" style="width:100%;justify-content:center">Xuất Excel<span style="font-weight:400;font-size:10.5px;opacity:.7"> / Export Excel</span></button>
+    </div>
   </div>
 </div>
 
@@ -1283,6 +1339,7 @@
 <script>window.CLOUD_ON = true;</script>
 <script src="js/app.js"></script>
 <script src="js/manpower.js"></script>
+<script src="js/pudelivery.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.71';
+const APP_VERSION = '2026.72';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1042,6 +1042,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'report') { populateReportSelectors(); }
   if (p === 'action') renderActionPlan();
   if (p === 'manpower' && typeof renderManpower === 'function') renderManpower();
+  if (p === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
@@ -2238,10 +2239,13 @@ function renderDashTable(totals, periods) {
   if (!periods) periods = activeMK ? buildPeriods(activeMK) : [];
   const rows = totals.filter(t => {
     if (fs !== 'all' && stOf(t.total) !== fs) return false;
-    if (q && !t.name.toLowerCase().includes(q)) return false;
+    if (q && !t.name.toLowerCase().includes(q) && !String(t.staffCode||'').toLowerCase().includes(q)) return false;
     if (empProjectFilter && !empProjectFilter.codes.includes(t.staffCode)) return false;
     return true;
   });
+  // Sắp xếp: Vượt mức (>70h) trên cùng → Vượt mức 45 (45-70h) → Bình thường; trong mỗi nhóm lớn → nhỏ
+  const stRank = t => { const k = stOf(t.total); return k === 'd' ? 0 : k === 'w45' ? 1 : 2; };
+  rows.sort((a, b) => stRank(a) - stRank(b) || b.total - a.total || String(a.name).localeCompare(String(b.name)));
   document.getElementById('dtHead').innerHTML =
     `<tr><th>Staff Code</th><th>Nhân viên <span style="font-weight:400;color:var(--text3)">/ Employee</span></th><th>Phòng ban <span style="font-weight:400;color:var(--text3)">/ Dept</span></th><th>OT bình thường <span style="font-weight:400;color:var(--text3)">/ Normal OT</span></th><th>OT sau 22h <span style="font-weight:400;color:var(--text3)">/ Night OT</span></th><th>Tổng OT luỹ kế <span style="font-weight:400;color:var(--text3)">/ Total OT</span></th><th>% Giới hạn KPI <span style="font-weight:400;color:var(--text3)">(45h)</span></th><th>% Giới hạn Chi trả <span style="font-weight:400;color:var(--text3)">(70h)</span></th><th>Trạng thái <span style="font-weight:400;color:var(--text3)">/ Status</span></th></tr>`;
   document.getElementById('dtBody').innerHTML = rows.map(t => {
@@ -3417,6 +3421,89 @@ function buildReportHtml(mode) {
   return html;
 }
 
+
+// ============================================================
+//  BÁO CÁO BỔ SUNG: (1) Biểu đồ so sánh phòng ban/dự án theo tháng/quý  (2) Danh sách NV OT (Excel)
+// ============================================================
+function reportCmpPeriods(scope, selMk, selQk) {
+  const keys = Object.keys(DB).sort();
+  if (scope === 'quarter') {
+    const qKeys = [...new Set(keys.map(quarterKeyOf))].sort();
+    let i = qKeys.indexOf(selQk); if (i < 0) i = qKeys.length - 1;
+    return qKeys.slice(Math.max(0, i - 3), i + 1).map(qk => ({ label: fmtQK(qk), mks: monthsInQuarterKey(qk).filter(m => DB[m]) }));
+  }
+  let i = keys.indexOf(selMk); if (i < 0) i = keys.length - 1;
+  return keys.slice(Math.max(0, i - 5), i + 1).map(mk => ({ label: fmtMK(mk), mks: [mk] }));
+}
+function reportOtOfDept(mks, d) { return Math.round(mks.reduce((s, mk) => s + getTotals(mk, d).reduce((a, t) => a + t.total, 0), 0) * 10) / 10; }
+function reportOtOfProj(mks, proj) {
+  return Math.round(mks.reduce((s, mk) => { const per = buildPeriods(mk); return s + getProjectOTForPeriod('HCM-EC', proj, mk, per.length ? per.length - 1 : null).total; }, 0) * 10) / 10;
+}
+const REPORT_CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;font-size:13px;color:#211F1C;background:#fff;padding:24px}
+.num{font-family:ui-monospace,monospace}.cover{text-align:center;padding:30px 0 20px;border-bottom:3px solid #2D6CDF;margin-bottom:24px}.cover h1{font-size:24px;font-weight:800}.cover p{font-size:13px;color:#666;margin-top:6px}
+.section{margin-bottom:28px;page-break-inside:avoid}.section-title{font-size:16px;font-weight:800;margin-bottom:4px;padding-bottom:6px;border-bottom:2px solid #E8EFFC}.section-sub{font-size:11.5px;color:#888;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px}th{text-align:left;background:#F3F5FA;padding:6px 8px;font-weight:700;color:#444;border-bottom:1px solid #E0E0E0}td{padding:5px 8px;border-bottom:1px solid #F0F0F0}.empty-note{color:#999;font-style:italic;padding:10px 0}`;
+function buildCompareReportHtml(mode) {
+  const scope = document.getElementById('reportCmpScope')?.value || 'month';
+  const selMk = document.getElementById('reportMonthSel')?.value || null;
+  const selQk = document.getElementById('reportQuarterSel')?.value || null;
+  const periods = reportCmpPeriods(scope, selMk, selQk);
+  const last = periods[periods.length - 1];
+  const depts = [...new Set(periods.flatMap(p => p.mks.flatMap(mk => Object.keys(DB[mk]?.depts || {}))))].sort();
+  const projs = projectsInGroup('HCM-EC').filter(p => p !== UNASSIGNED_PROJ).sort();
+  const deptRows = depts.map(d => ({ name: d, vals: periods.map(p => reportOtOfDept(p.mks, d)) }));
+  const projRows = projs.map(pr => ({ name: pr.replace(/^HCM[\s-]+/i, ''), vals: periods.map(p => reportOtOfProj(p.mks, pr)) }));
+  const tbl = rows => `<table><thead><tr><th></th>${periods.map(p => `<th style="text-align:right">${p.label}</th>`).join('')}<th style="text-align:right">Chênh (kỳ cuối vs kỳ trước)</th></tr></thead><tbody>` +
+    rows.map(r => { const n = r.vals.length, d = n > 1 ? Math.round((r.vals[n-1] - r.vals[n-2]) * 10) / 10 : null;
+      return `<tr><td><strong>${r.name}</strong></td>${r.vals.map(v => `<td class="num" style="text-align:right">${v}h</td>`).join('')}<td class="num" style="text-align:right;color:${d === null ? '#999' : d > 0 ? '#C0392B' : '#2E7D32'}">${d === null ? '—' : (d > 0 ? '+' : '') + d + 'h'}</td></tr>`; }).join('') + '</tbody></table>';
+  const bar = (rows, color) => buildSvgBarChart(rows.map(r => ({ name: r.name, value: r.vals[r.vals.length - 1] })).sort((a, b) => b.value - a.value), { color });
+  const what = scope === 'quarter' ? 'quý' : 'tháng';
+  const body = !last ? '<div class="empty-note">Chưa có dữ liệu.</div>' : `
+  <div class="section"><div class="section-title">1. So sánh OT giữa các phòng ban</div><div class="section-sub">Kỳ cuối: ${last.label} · ${periods.length} ${what} gần nhất</div>${bar(deptRows, '#7A5FD1')}${tbl(deptRows)}</div>
+  <div class="section"><div class="section-title">2. So sánh OT giữa các dự án (HCM-EC)</div><div class="section-sub">Kỳ cuối: ${last.label} · ${periods.length} ${what} gần nhất</div>${projRows.length ? bar(projRows, '#2D6CDF') + tbl(projRows) : '<div class="empty-note">Chưa có dự án trong Action Plan.</div>'}</div>`;
+  return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>So sánh OT theo ${what}</title><style>${REPORT_CSS}</style></head><body>
+  <div class="cover"><h1>SO SÁNH OT PHÒNG BAN / DỰ ÁN</h1><p>Theo ${what} · Xuất ngày ${new Date().toLocaleDateString('vi-VN')}</p></div>${body}
+  <script>${mode === 'pdf' ? 'requestAnimationFrame(function(){requestAnimationFrame(function(){window.__pdfReady=true;});});' : ''}</script></body></html>`;
+}
+function exportCompareHtml() {
+  if (!Object.keys(DB).length) { toast('Không có dữ liệu để xuất'); return; }
+  const blob = new Blob([buildCompareReportHtml(false)], { type: 'text/html' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `OT_SoSanh_${new Date().toISOString().slice(0,10)}.html`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  toast('Đã xuất biểu đồ so sánh (HTML)!');
+}
+function exportCompareExcel() {
+  if (!Object.keys(DB).length) { toast('Không có dữ liệu để xuất'); return; }
+  const scope = document.getElementById('reportCmpScope')?.value || 'month';
+  const periods = reportCmpPeriods(scope, document.getElementById('reportMonthSel')?.value, document.getElementById('reportQuarterSel')?.value);
+  const depts = [...new Set(periods.flatMap(p => p.mks.flatMap(mk => Object.keys(DB[mk]?.depts || {}))))].sort();
+  const projs = projectsInGroup('HCM-EC').filter(p => p !== UNASSIGNED_PROJ).sort();
+  const head = ['', ...periods.map(p => p.label)];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...depts.map(d => [d, ...periods.map(p => reportOtOfDept(p.mks, d))])]), 'Phòng ban');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...projs.map(pr => [pr, ...periods.map(p => reportOtOfProj(p.mks, pr))])]), 'Dự án HCM-EC');
+  XLSX.writeFile(wb, `OT_SoSanh_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Đã xuất so sánh (Excel)!');
+}
+// Danh sách NV OT riêng (Excel): tháng đang chọn ở báo cáo, sắp Vượt 70h → 45-70h → Bình thường, lớn → nhỏ
+function exportEmployeeOtExcel() {
+  const mk = document.getElementById('reportMonthSel')?.value;
+  if (!mk || !DB[mk]) { toast('Chưa có dữ liệu OT cho tháng này'); return; }
+  const per = buildPeriods(mk);
+  const rank = t => { const k = stOf(t.total); return k === 'd' ? 0 : k === 'w45' ? 1 : 2; };
+  const rows = getTotals(mk, '__all__', per.length ? per.length - 1 : null).filter(t => t.total > 0)
+    .sort((a, b) => rank(a) - rank(b) || b.total - a.total);
+  const label = { d: 'Vượt mức >70h', w45: 'Vượt mức 45 (45-70h)', o: 'Bình thường' };
+  const aoa = [['Staff Code', 'Nhân viên', 'Phòng ban', 'Dự án', 'OT bình thường (h)', 'OT sau 22h (h)', 'Tổng OT (h)', '% KPI 45h', '% Chi trả 70h', 'Trạng thái']];
+  rows.forEach(t => {
+    const night = Math.min(t.nightTotal || 0, t.total), pj = t.staffCode ? findEmployeeProject(t.staffCode, mk) : null;
+    aoa.push([t.staffCode || '', t.name, t.dept || '', pj && !pj.proj.startsWith('__') ? pj.proj : '', Math.round((t.total - night) * 10) / 10, night, t.total, Math.round(t.total / 45 * 100) + '%', Math.round(t.total / 70 * 100) + '%', label[stOf(t.total)] || '']);
+  });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'DS NV OT');
+  XLSX.writeFile(wb, `DS_NV_OT_${mk}.xlsx`);
+  toast(`Đã xuất ${rows.length} nhân viên OT (${fmtMK(mk)})`);
+}
+
 function exportHtmlReport() {
   const keys = Object.keys(DB).sort();
   if (!keys.length) { toast('Không có dữ liệu để xuất'); return; }
@@ -3430,7 +3517,7 @@ function exportHtmlReport() {
   toast('Đã xuất báo cáo HTML!');
 }
 
-async function exportPdfReport() {
+async function exportPdfReport(kind) {
   const keys = Object.keys(DB).sort();
   if (!keys.length) { toast('Không có dữ liệu để xuất'); return; }
 
@@ -3448,7 +3535,7 @@ async function exportPdfReport() {
   // — vốn không có dấu tiếng Việt; và hình/biểu đồ giữ đúng kích thước như khi xem trên web).
   let iframe = null;
   try {
-    const html = buildReportHtml('pdf');
+    const html = kind === 'compare' ? buildCompareReportHtml('pdf') : buildReportHtml('pdf');
 
     iframe = document.createElement('iframe');
     iframe.setAttribute('data-pdf-tmp', '1');
@@ -3525,7 +3612,7 @@ async function exportPdfReport() {
     }
 
     const dateStr = new Date().toISOString().slice(0,10);
-    pdf.save(`OT_Report_${dateStr}.pdf`);
+    pdf.save(kind === 'compare' ? `OT_SoSanh_${dateStr}.pdf` : `OT_Report_${dateStr}.pdf`);
     toast('Đã xuất PDF thành công!');
 
   } catch (err) {
@@ -4410,7 +4497,7 @@ function mergeHcPlan(local, sheet) {
   return out;
 }
 // ── Khoá module Manpower: true = chỉ Admin thấy. Muốn mở cho mọi người → đổi thành false (1 dòng duy nhất).
-const MANPOWER_ADMIN_ONLY = true;
+const MANPOWER_ADMIN_ONLY = false;
 function canSeeManpower() { return !MANPOWER_ADMIN_ONLY || isAdmin(); }
 const PROJ_MOVES_KEY = 'ot_manager_proj_moves_v1';
 let PROJ_MOVES = {};
@@ -5555,8 +5642,9 @@ function wlbXlsAllDepts() {
 function wlbXlsMonthsWithData() {
   const set = new Set();
   Object.values(WLB_XLS.employees).forEach(e => {
-    Object.keys(e.ot).forEach(m=>set.add(+m));
-    Object.keys(e.off).forEach(m=>set.add(+m));
+    // Chỉ tính tháng THỰC SỰ có số liệu (>0) — tháng để trống/0 trong Excel (VD T10-12) coi như chưa có data
+    Object.keys(e.ot).forEach(m=>{ if ((e.ot[m]||0) > 0) set.add(+m); });
+    Object.keys(e.off).forEach(m=>{ if ((e.off[m]||0) > 0) set.add(+m); });
   });
   return [...set].sort((a,b)=>a-b);
 }

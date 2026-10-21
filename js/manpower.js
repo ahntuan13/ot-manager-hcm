@@ -98,7 +98,10 @@ function renderManpower() {
   // ── 1. Overview charts
   const labels = agg.map(a => mpShort(a.p));
   const mk2 = (id, cfg) => { killChart(id); const el = document.getElementById(id); if (el) CH[id] = new Chart(el, cfg); };
-  const noGrid = { grid: { display: false }, ticks: { font: { size: 10 } } };
+  const noGrid = { grid: { display: false }, ticks: { font: { size: 10 }, autoSkip: false } };
+  // Chiều cao theo số dự án để hiện ĐỦ tên (không bị Chart.js tự ẩn bớt nhãn)
+  const hBox = Math.max(300, labels.length * 34 + 70);
+  ['cMpHeadBox', 'cMpOtBox'].forEach(i => { const b = document.getElementById(i); if (b) b.style.height = hBox + 'px'; });
   mk2('cMpHead', { type: 'bar', data: { labels, datasets: [
     { label: 'Thực tế', data: agg.map(a => mpR1(a.hc)), backgroundColor: MP_C.blue, maxBarThickness: 22 },
     { label: 'Kế hoạch', data: agg.map(a => planOf(a.p)), backgroundColor: '#c9ced6', maxBarThickness: 22 }] },
