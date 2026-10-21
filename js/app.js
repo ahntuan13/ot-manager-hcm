@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.75';
+const APP_VERSION = '2026.76';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5187,6 +5187,19 @@ function openStaffEditModal(group, proj, mk) {
   renderStaffEditEmployees();
   document.getElementById('staffEditModal').style.display = 'flex';
 }
+// Sửa NGÀY hiệu lực của lần chuyển gần nhất (NV đã được chuyển/thêm vào dự án nhưng ngày chưa đúng)
+function reDateMove(code, date) {
+  const mv = PROJ_MOVES[code]; if (!mv || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return false;
+  const ks = Object.keys(mv).sort(); if (!ks.length) return false;
+  const k = ks[ks.length - 1], e = mv[k];
+  if (moveEffIso(k, e) === date) return false;
+  const nk = companyMonthKeyOf(new Date(date + 'T00:00:00'));
+  delete mv[k]; mv[nk] = { ...e, date, at: Date.now() };
+  saveProjMoves();
+  return true;
+}
+function incomingMoveDate(code) { const mv = PROJ_MOVES[code] || {}; const ks = Object.keys(mv).sort(); if (!ks.length) return ''; const k = ks[ks.length - 1]; return moveEffIso(k, mv[k]); }
+const fmtIsoVN = iso => { const p = String(iso || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : '—'; };
 function defaultMoveDate() { return isoDate(cycleStartOf(nextCycleMk())); }
 function renderStaffEditEmployees() {
   if (!staffEditCtx) return;
@@ -5222,14 +5235,14 @@ function renderStaffEditEmployees() {
   const rowHtml = (code, isAdd, isIn) => {
     const chosen = staffEditMoves[code] || '';
     const pend = pendingMoveOf(code, mk);
-    const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtMK(incomingEff(code))} (${cycleStartLabel(incomingEff(code))})</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
+    const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtIsoVN(staffEditDates[code] || incomingMoveDate(code))}</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
     const ot = (!isIn && otBy[code] != null) ? `${Math.round(otBy[code]*10)/10}h` : '—';
     const isDel = staffEditDeletes.includes(code);
     const curMk = companyMonthInfo(new Date()).monthKey;
     const sel = viewOnly ? '' : (isDel
       ? `<span style="font-size:11px;color:#C0392B;font-weight:600">🗑 sẽ xoá (nghỉ việc) từ ${fmtMK(curMk)}</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditDeletes=staffEditDeletes.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
-      : isIn ? '' : isAdd
-      ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
+      : isIn ? `<label style="font-size:11px;color:var(--text2)" title="Sửa ngày bắt đầu tính OT cho dự án này">Ngày chuyển <input type="date" value="${staffEditDates[code] || incomingMoveDate(code)}" onchange="staffEditDates['${code}']=this.value;renderStaffEditEmployees()" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : isAdd
+      ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <label style="font-size:11px;color:var(--text2)">Ngày chuyển <input type="date" value="${staffEditDates[code] || ''}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
       : `<select style="font-size:11.5px;padding:3px 4px;max-width:190px;${chosen?'border-color:var(--accent);font-weight:600':''}" onchange="staffEditMoves['${code}']=this.value;if(!this.value){delete staffEditMoves['${code}'];delete staffEditDates['${code}'];}else if(!staffEditDates['${code}'])staffEditDates['${code}']=defaultMoveDate();renderStaffEditEmployees()">
            <option value="">Chuyển đến… (giữ nguyên)</option>
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
@@ -5276,7 +5289,12 @@ function saveStaffEditModal() {
     staffEditDeletes.forEach(code => { if (deleteEmployeeFromProjects(code)) { deleted++; lines.push(`${code} ${employeeNameByCode(code)} → xoá (nghỉ việc)`); delete staffEditMoves[code]; } });
   }
   Object.entries(staffEditMoves).forEach(([code, v]) => { const [g, ...r] = v.split('|'); if (moveEmployeeToProject(code, g, r.join('|'), { date: staffEditDates[code] })) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${labelOfProjKey(g + '::' + r.join('|'))}`); } });
-  staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${proj}`); } });
+  staffEditAdds.forEach(code => { if (moveEmployeeToProject(code, group, proj, { date: staffEditDates[code] })) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → ${proj}`); } });
+  // NV đã được thêm/chuyển vào dự án này từ trước → chỉ sửa lại NGÀY hiệu lực
+  Object.entries(staffEditDates).forEach(([code, d]) => {
+    if (staffEditMoves[code] || staffEditAdds.includes(code) || staffEditDeletes.includes(code)) return;
+    if (reDateMove(code, d)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → đổi ngày chuyển ${fmtIsoVN(d)}`); }
+  });
   if (moved + deleted) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} cập nhật nhân sự — ${proj}`,
     body: `${moved} chuyển${deleted ? `, ${deleted} xoá (nghỉ việc)` : ''}: ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
   moved += deleted;
