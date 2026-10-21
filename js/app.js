@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.73';
+const APP_VERSION = '2026.74';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1464,6 +1464,7 @@ function mapNewDept(v) {
   if (/^(HCM-EC|S-AD|S-ED|S-QC|S-PU|S-PD|S-AZ)$/.test(t)) return t;
   const m = NEW_DEPT_MAP.find(([re]) => re.test(t)); return m ? m[1] : null;
 }
+const HCM_ONLY_FILTER = true;
 function tryParseLongFormat(ws) {
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
   let h = -1;
@@ -1481,6 +1482,27 @@ function tryParseLongFormat(ws) {
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
   };
   const toHM = v => { if (v === null || v === undefined || v === '') return null; if (typeof v === 'number') return v; const m = /(\d{1,2}):(\d{2})/.exec(String(v)); return m ? `${m[1]}:${m[2]}` : null; };
+  // ── Lọc NV Hà Nội: công ty quản lý OT cho HCM → chỉ giữ NV HCM.
+  // NV HCM = mã nằm trong Action Plan, hoặc từng chấm công ở thiết bị "HCM ..."; NV Hà Nội = chỉ chấm ở thiết bị "HN ..."
+  // (hoặc chưa có chấm công nào mà mã bắt đầu bằng H). Đặt HCM_ONLY_FILTER = false để lấy cả Hà Nội.
+  const cDevIn = col(/tên thiết bị check in/), cDevOut = col(/tên thiết bị check out/);
+  const devs = {};
+  for (let r = h + 1; r < aoa.length; r++) {
+    const row = aoa[r]; if (!row) continue;
+    const c = String(row[cCode] || '').trim(); if (!c) continue;
+    (devs[c] = devs[c] || new Set());
+    [cDevIn, cDevOut].forEach(ci => { const d = ci >= 0 ? String(row[ci] || '').trim().toUpperCase() : ''; if (d) devs[c].add(/^HN\b/.test(d) ? 'HN' : /^HCM\b/.test(d) ? 'HCM' : 'OTHER'); });
+  }
+  const projMap = (typeof currentProjectMap === 'function') ? currentProjectMap() : {};
+  const isHanoi = c => {
+    if (!c) return false;
+    if (projMap[c]) return false;
+    const d = devs[c] || new Set();
+    if (d.has('HCM')) return false;
+    if (d.has('HN')) return true;
+    return /^H/i.test(c);
+  };
+  const hanoiSkipped = new Set();
   const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
   let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
   for (let r = h + 1; r < aoa.length; r++) {
@@ -1490,6 +1512,7 @@ function tryParseLongFormat(ws) {
     const dept = mapNewDept(row[cDept]);
     if (!dept) { skipped.add(String(row[cDept] || '').trim()); continue; }
     const staffCode = String(row[cCode] || '').trim();
+    if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
     const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
     if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
     let key = keyOf[staffCode];
@@ -1534,7 +1557,7 @@ function tryParseLongFormat(ws) {
     const mx = monthMaxIso[mk];
     if (mx && !DB[mk].snapshots.includes(mx)) { DB[mk].snapshots.push(mx); DB[mk].snapshots.sort(); }
   });
-  return { ok: true, cnt, months, lateMonths, skippedDepts: [...skipped] };
+  return { ok: true, cnt, months, lateMonths, skippedDepts: [...skipped], hanoiSkipped: hanoiSkipped.size };
 }
 
 // Process one file's binary content → returns {fileName, ok, cnt, months, lateMonths, error}
@@ -1611,6 +1634,8 @@ async function handleFile(inp) {
     `${totalCnt} dòng/ngày có OT`,
     `${mArr.length} tháng: ${mArr.map(fmtMK).join(', ')}`
   ];
+  const hn = okResults.reduce((a, r) => a + (r.hanoiSkipped || 0), 0);
+  if (hn) summaryParts.push(`Đã bỏ ${hn} NV Hà Nội (chỉ lấy NV HCM)`);
   if (allLateMonths.size) summaryParts.push('Đã tự động cập nhật dữ liệu Đi trễ');
   if (failResults.length) summaryParts.push(`Lỗi: ${failResults.map(r=>r.fileName).join(', ')}`);
   document.getElementById('upLog').textContent = summaryParts.join(' · ');
