@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.72';
+const APP_VERSION = '2026.73';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1450,11 +1450,100 @@ function tryParseSimpleFormat(ws) {
   return { ok:true, cnt, months, lateMonths: new Set() };
 }
 
+
+// ── Định dạng MỚI (hệ thống chấm công mới): "BÁO CÁO CHI TIẾT CHẤM CÔNG" — mỗi dòng = 1 NV × 1 ngày.
+// Cột: Mã nhân viên | Họ và tên | Phòng ban (tên tiếng Việt) | Ngày làm việc | Giờ vào | Giờ ra ("dd/mm/yyyy hh:mm").
+// Tên phòng ban được quy đổi về mã phòng (HCM-EC, S-ED...) bằng bảng NEW_DEPT_MAP bên dưới.
+// Phòng không có trong bảng (Tổng vụ, Tài chính kế toán, Ban điều hành, Quản lý hợp đồng) bị bỏ qua, giống cách lọc phòng cũ.
+const NEW_DEPT_MAP = [
+  [/quản lý dự án/i, 'HCM-EC'], [/thiết kế và dự toán/i, 'S-ED'], [/hành chính và nhân sự/i, 'S-AD'],
+  [/cung ứng/i, 'S-PU'], [/kỹ thuật và chất lượng/i, 'S-QC'], [/phát triển dự án/i, 'S-PD'], [/an toàn,? sức khỏe/i, 'S-AZ']
+];
+function mapNewDept(v) {
+  const t = String(v || '').trim();
+  if (/^(HCM-EC|S-AD|S-ED|S-QC|S-PU|S-PD|S-AZ)$/.test(t)) return t;
+  const m = NEW_DEPT_MAP.find(([re]) => re.test(t)); return m ? m[1] : null;
+}
+function tryParseLongFormat(ws) {
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  let h = -1;
+  for (let i = 0; i < Math.min(aoa.length, 15); i++) {
+    const t = (aoa[i] || []).map(c => String(c || '').toLowerCase());
+    if (t.some(c => /mã nhân viên/.test(c)) && t.some(c => /ngày làm việc/.test(c)) && t.some(c => /giờ vào/.test(c))) { h = i; break; }
+  }
+  if (h < 0) return false;
+  const hdr = aoa[h].map(c => String(c || '').toLowerCase());
+  const col = re => hdr.findIndex(c => re.test(c));
+  const cCode = col(/mã nhân viên/), cName = col(/họ và tên|họ tên/), cDept = col(/phòng ban/), cDate = col(/ngày làm việc/), cIn = col(/giờ vào/), cOut = col(/giờ ra/);
+  if (cName < 0 || cDept < 0 || cDate < 0 || cIn < 0 || cOut < 0) return false;
+  const toIso = v => {
+    if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 10); }
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
+  };
+  const toHM = v => { if (v === null || v === undefined || v === '') return null; if (typeof v === 'number') return v; const m = /(\d{1,2}):(\d{2})/.exec(String(v)); return m ? `${m[1]}:${m[2]}` : null; };
+  const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
+  let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
+  for (let r = h + 1; r < aoa.length; r++) {
+    const row = aoa[r]; if (!row) continue;
+    const name = String(row[cName] || '').trim(); const iso = toIso(row[cDate]);
+    if (!name || !iso) continue;
+    const dept = mapNewDept(row[cDept]);
+    if (!dept) { skipped.add(String(row[cDept] || '').trim()); continue; }
+    const staffCode = String(row[cCode] || '').trim();
+    const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
+    if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
+    let key = keyOf[staffCode];
+    if (!key) {
+      key = name;
+      const ex = DB[mk].employees[key];
+      if (ex && ex.staffCode && staffCode && ex.staffCode !== staffCode) key = `${name} (${staffCode})`;
+      keyOf[staffCode || name] = key;
+    }
+    const inV = toHM(row[cIn]), outV = toHM(row[cOut]);
+    const w = computeDayWorked(inV, outV, iso), quota = getDayQuota(iso);
+    const m = DB[mk];
+    if (!m.employees[key]) { m.employees[key] = { days: {}, quotaDays: {}, nightDays: {}, dept, staffCode }; m.names.push(key); }
+    const e = m.employees[key];
+    if (staffCode) e.staffCode = staffCode;
+    e.nightDays = e.nightDays || {}; e.quotaDays = e.quotaDays || {};
+    if (w.worked > 0) { e.days[iso] = Math.round(w.worked * 100) / 100; cnt++; } else delete e.days[iso];
+    e.quotaDays[iso] = quota;
+    if (w.night > 0) e.nightDays[iso] = Math.round(w.night * 100) / 100; else delete e.nightDays[iso];
+    e.dept = dept;
+    if (!m.depts[dept]) m.depts[dept] = [];
+    if (!m.depts[dept].includes(key)) m.depts[dept].push(key);
+    months.add(mk);
+    if (!monthMaxIso[mk] || iso > monthMaxIso[mk]) monthMaxIso[mk] = iso;
+    // Đi trễ (T2–T6, chỉ các phòng trong LATE_ALLOWED_DEPTS)
+    const dow = new Date(iso + 'T00:00:00').getDay();
+    if (typeof LATE_ALLOWED_DEPTS !== 'undefined' && LATE_ALLOWED_DEPTS.has(dept)) {
+      if (!LATE_DB[mk]) LATE_DB[mk] = { employees: {}, names: [], depts: {} };
+      const L = LATE_DB[mk];
+      if (!L.employees[key]) { L.employees[key] = { days: {}, dept, code: staffCode }; L.names.push(key); }
+      if (dow >= 1 && dow <= 5) { const lm = computeLateMinutes(inV); if (lm > 0) L.employees[key].days[iso] = lm; else delete L.employees[key].days[iso]; }
+      else delete L.employees[key].days[iso];
+      L.employees[key].dept = dept; if (staffCode) L.employees[key].code = staffCode;
+      if (!L.depts[dept]) L.depts[dept] = [];
+      if (!L.depts[dept].includes(key)) L.depts[dept].push(key);
+      lateMonths.add(mk);
+    }
+  }
+  if (!months.size) return false;
+  months.forEach(mk => {
+    if (!DB[mk].snapshots) DB[mk].snapshots = [];
+    const mx = monthMaxIso[mk];
+    if (mx && !DB[mk].snapshots.includes(mx)) { DB[mk].snapshots.push(mx); DB[mk].snapshots.sort(); }
+  });
+  return { ok: true, cnt, months, lateMonths, skippedDepts: [...skipped] };
+}
+
 // Process one file's binary content → returns {fileName, ok, cnt, months, lateMonths, error}
 function processOneFile(fileName, binaryStr) {
   try {
     const wb = XLSX.read(binaryStr, {type:'binary'});
     const ws = wb.Sheets[wb.SheetNames[0]];
+    const rL = tryParseLongFormat(ws);
+    if (rL) return { fileName, ...rL };
     const r1 = tryParseCheckinOutFormat(ws);
     if (r1) return { fileName, ...r1 };
     const r2 = tryParseSimpleFormat(ws);
