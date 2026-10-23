@@ -1,4 +1,4 @@
-# OT Manager HCM
+# HCM Management Dashboard (HCM-MD)
 
 Ứng dụng quản lý OT / Đi trễ / WLB — chạy hoàn toàn phía trình duyệt (client-side, không cần
 server backend riêng), dữ liệu đồng bộ qua Google Apps Script (Google Sheets) — giữ nguyên như
