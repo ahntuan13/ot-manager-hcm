@@ -28,7 +28,7 @@
   let pushTimer = null, saveTimer = null, loginMsg = '';
   const remote = {}; // id -> { j, ver }  (bản đã biết trên server)
   const GATE_PREFIXES_DELETE = ['ot_', 'late_', 'off_', 'proj_', 'mv_', 'hc_', 'pu_'];
-  const FORCE_PREFIXES = ['ot_', 'late_', 'off_', 'wlb', 'nt_']; // ghi đè thẳng (không kiểm tra phiên bản)
+  const FORCE_PREFIXES = ['ot_', 'late_', 'off_', 'wlb', 'nt_', 'pu_']; // ghi đè thẳng (không kiểm tra phiên bản)
 
   // ── Trạng thái hiển thị ở sidebar ───────────────────────────────
   function setStatus(kind, text) {

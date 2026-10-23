@@ -899,38 +899,55 @@
 </div>
 
 <div class="pg" id="pg-pudelivery">
-  <div class="page-title"><span>PU Delivery <span style="font-size:12px;color:var(--text2);font-weight:400">/ Theo dõi tiến độ giao hàng của nhà cung cấp</span></span></div>
+  <div class="page-title"><span>PU Delivery <span style="font-size:12px;color:var(--text2);font-weight:400">/ Tiến độ giao hàng thiết bị theo dự án (Equipment Order Record)</span></span></div>
   <div id="puKpi" class="mp-kpi"></div>
   <div class="card">
-    <div class="action-row" style="margin-bottom:10px">
+    <div class="action-row">
+      <select id="puProjFilter" onchange="renderPuDelivery()"><option value="__all__">Tất cả dự án</option></select>
       <select id="puStatusFilter" onchange="renderPuDelivery()"><option value="all">Tất cả trạng thái</option></select>
-      <input type="text" id="puSearch" placeholder="Tìm sản phẩm, NCC, dự án, PIC..." oninput="renderPuDelivery()" style="width:260px">
-      <button class="btn btn-primary" onclick="openPuModal()">＋ Thêm</button>
+      <input type="text" id="puSearch" placeholder="Tìm hàng hóa, NCC, PO, PM..." oninput="renderPuDelivery()" style="width:230px">
+      <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="puHideEmpty" checked onchange="renderPuDelivery()"> Ẩn dự án chưa có hàng</label>
       <button class="btn" onclick="document.getElementById('puImport').click()">Nhập Excel</button>
-      <input type="file" id="puImport" accept=".xlsx,.xls,.csv" style="display:none" onchange="importPuExcel(this)">
+      <input type="file" id="puImport" accept=".xlsx,.xlsm,.xls,.csv" style="display:none" onchange="importPuExcel(this)">
       <button class="btn" onclick="exportPuExcel()">Xuất Excel</button>
     </div>
-    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">Cột "Lệch" = Ngày chốt cuối − Ngày yêu cầu giao hàng (đỏ = giao trễ hơn yêu cầu). Dữ liệu tự lưu và đồng bộ cho mọi người.</div>
-    <div class="tbl-wrap"><table><thead><tr><th>STT</th><th>Mô tả sản phẩm</th><th>Số lượng</th><th>Nhà cung cấp</th><th>Dự án / Dept</th><th>PIC</th><th>Ngày yêu cầu</th><th>Ngày dự kiến (Sup/PU)</th><th>Ngày chốt cuối</th><th>Lệch</th><th>Trạng thái</th><th>Ghi chú</th><th></th></tr></thead><tbody id="puBody"></tbody></table></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6">Dự án lấy từ <b>Action Plan</b>; mỗi dự án hiện PM và danh sách hàng hóa. Trạng thái tự tính từ các ngày (Estimate / As contract / Desired / Actual) như file Excel gốc. Bấm tên dự án để mở/đóng. Nhập Excel sẽ thay thế danh sách đã nhập trước đó (chỉ Admin/Quản lý).</div>
   </div>
+  <div id="puSections"></div>
 </div>
 
 <div id="puModal" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px">
-  <div style="background:var(--surface,#fff);border-radius:16px;padding:28px 30px 24px;max-width:760px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
-    <div style="font-size:20px;font-weight:800;margin-bottom:16px" id="puModalTitle">Thêm đơn hàng</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;font-size:13px">
-      <label style="grid-column:1/3">Mô tả sản phẩm<input id="puFDesc" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Số lượng<input id="puFQty" placeholder="VD: 50 bộ" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Nhà cung cấp (Supplier)<input id="puFSup" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Dự án / Dept yêu cầu<input id="puFProj" list="puProjList" style="width:100%;padding:9px 11px;margin-top:4px"><datalist id="puProjList"></datalist></label>
-      <label>PIC<input id="puFPic" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Ngày yêu cầu giao hàng (Dept/Dự án)<input type="date" id="puFReq" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Ngày giao dự kiến (Sup/PU)<input type="date" id="puFEta" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Ngày giao chốt cuối cùng<input type="date" id="puFFinal" style="width:100%;padding:9px 11px;margin-top:4px"></label>
-      <label>Trạng thái<select id="puFStatus" style="width:100%;padding:9px 11px;margin-top:4px"></select></label>
-      <label style="grid-column:1/3">Ghi chú (Meeting notes)<textarea id="puFNotes" rows="3" style="width:100%;padding:9px 11px;margin-top:4px;resize:vertical"></textarea></label>
+  <div style="background:var(--surface,#fff);border-radius:16px;padding:26px 30px 22px;max-width:980px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-size:20px;font-weight:800;margin-bottom:14px" id="puModalTitle">Thêm hàng hóa</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 12px;font-size:12.5px">
+      <label style="grid-column:span 2">Dự án (Action Plan)<select id="puFProj" style="width:100%;padding:8px 10px;margin-top:3px"></select></label>
+      <label style="grid-column:span 1">PM<input type="text" id="puFPm" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Job No.<input type="text" id="puFJob" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 2">Supplier Name<input type="text" id="puFSup" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 2">Name of Items<input type="text" id="puFName" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Quotation No.<input type="text" id="puFQuote" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Origin Country<input type="text" id="puFOrigin" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Q'ty<input type="text" id="puFQty" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Unit<input type="text" id="puFUnit" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Code No.<input type="text" id="puFCode" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">PR No.<input type="text" id="puFPr" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">PR Approved Date<input type="date" id="puFPrDate" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">PO/CO No.<input type="text" id="puFPo" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Order Date — Plan<input type="date" id="puFOrdPlan" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Order Date — Actual<input type="date" id="puFOrdAct" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">PO/Contract Effective<input type="date" id="puFEff" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Advance Payment Date<input type="date" id="puFAdv" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Desired date on site (Site confirm)<input type="date" id="puFDesired" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Estimate — As contract<input type="date" id="puFE0" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">1st Change<input type="date" id="puFE1" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">2nd Change<input type="date" id="puFE2" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">3rd Change<input type="date" id="puFE3" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 2">Reason for schedule change<input type="text" id="puFReason" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 1">Actual date on site<input type="date" id="puFActual" style="width:100%;padding:8px 10px;margin-top:3px"></label>
+      <label style="grid-column:span 4">Remarks<textarea id="puFRemarks" rows="3" style="width:100%;padding:8px 10px;margin-top:3px;resize:vertical"></textarea></label>
     </div>
-    <div style="display:flex;gap:8px;margin-top:18px">
+    <div style="font-size:11.5px;color:var(--text2);margin-top:8px">Trạng thái tự tính từ các ngày ở trên.</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn" style="flex:1;padding:11px" onclick="closePuModal()">Huỷ</button>
       <button class="btn btn-primary" style="flex:2;padding:11px" onclick="savePuModal()">💾 Lưu / Save</button>
     </div>
