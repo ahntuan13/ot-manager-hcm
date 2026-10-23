@@ -908,6 +908,7 @@
       <select id="puProjFilter" onchange="renderPuDelivery()"><option value="__all__">Tất cả dự án</option></select>
       <select id="puStatusFilter" onchange="renderPuDelivery()"><option value="all">Tất cả trạng thái</option></select>
       <input type="text" id="puSearch" placeholder="Tìm hàng hóa, NCC, PO, PM..." oninput="renderPuDelivery()" style="width:230px">
+      <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="puShowDone" onchange="renderPuDelivery()"> Hiện hàng đã giao</label>
       <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="puHideEmpty" checked onchange="renderPuDelivery()"> Ẩn dự án chưa có hàng</label>
       <button class="btn" onclick="document.getElementById('puImport').click()">Nhập Excel</button>
       <input type="file" id="puImport" accept=".xlsx,.xlsm,.xls,.csv" style="display:none" onchange="importPuExcel(this)">
@@ -968,7 +969,7 @@
       <label style="grid-column:span 1">Actual date on site<input type="date" id="puFActual" style="width:100%;padding:8px 10px;margin-top:3px"></label>
       <label style="grid-column:span 4">Remarks<textarea id="puFRemarks" rows="3" style="width:100%;padding:8px 10px;margin-top:3px;resize:vertical"></textarea></label>
     </div>
-    <div style="font-size:11.5px;color:var(--text2);margin-top:8px">Trạng thái tự tính từ các ngày ở trên.</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12.5px"><b>Trạng thái:</b><span id="puFStatus"></span><span style="font-size:11.5px;color:var(--text2)">tự tính từ các ngày ở trên (nhập "Actual date on site" = đã giao → hàng tự ẩn khỏi danh sách dự án).</span></div>
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn" style="flex:1;padding:11px" onclick="closePuModal()">Huỷ</button>
       <button class="btn btn-primary" style="flex:2;padding:11px" onclick="savePuModal()">💾 Lưu / Save</button>
@@ -1363,6 +1364,35 @@
       <p style="margin-top:10px"><strong>Theo tháng:</strong> tính trực tiếp bằng dữ liệu Off Day + OT của đúng tháng đang chọn.</p>
       <p style="color:var(--text2);font-size:12px"><strong>Theo quý:</strong> cộng dồn 3 tháng của <strong>quý lịch, không chồng lấp</strong>: Q1 = T1–T3, Q2 = T4–T6, Q3 = T7–T9, Q4 = T10–T12. Ngưỡng: Q1–Q3 &gt; 10% là Đạt; Q4 &gt; 15% là Đạt.</p>
       <p style="margin-top:10px;color:var(--text2);font-size:12px">Dữ liệu Off Day cần được upload riêng ở mục <strong>Cài đặt → Upload file Off Day</strong> (khác với file chấm công OT) — WLB chỉ tính được cho tháng nào đã có cả 2 nguồn dữ liệu (OT + Off Day).</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title" style="margin-bottom:10px">🚚 PU Delivery — tiến độ giao hàng thiết bị <span style="font-size:11px;font-weight:400;color:var(--text2)">— theo file Equipment Order Record</span></div>
+    <div style="font-size:13px;line-height:1.7;color:var(--text)">
+      <p><strong>Trạng thái của mỗi hàng hóa được tự tính từ các cột ngày</strong> (không nhập tay):</p>
+      <p style="font-family:var(--font-mono);background:var(--bg2);padding:8px 10px;border-radius:6px;font-size:12px;margin:6px 0;line-height:1.8">
+        Ngày dự kiến giao = 3rd Change → 2nd Change → 1st Change → As contract (lấy ngày mới nhất có nhập)<br>
+        Còn lại = Ngày dự kiến giao − Hôm nay
+      </p>
+      <table style="border-collapse:collapse;font-size:12.5px;width:100%;margin:8px 0">
+        <tr style="background:var(--bg2)"><th style="text-align:left;padding:6px 10px">Trạng thái</th><th style="text-align:left;padding:6px 10px">Điều kiện (xét từ trên xuống)</th></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#2D6CDF">Đã giao</b></td><td style="padding:6px 10px">Có "Actual date on Site". <u>Hàng đã giao tự ẩn khỏi danh sách dự án</u> (coi như hoàn tất); vẫn tính trong số liệu, biểu đồ và xem được ở ô "Đã giao" hoặc tick "Hiện hàng đã giao".</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#8a8f98">Chờ NCC báo ngày giao</b></td><td style="padding:6px 10px">Chưa có ngày dự kiến, nhưng đã có Order Date (Plan).</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#7A5FD1">Thiếu kế hoạch đặt hàng</b></td><td style="padding:6px 10px">Chưa có ngày dự kiến, chưa có Order Date (Plan), và không có NCC kèm Desired date còn hiệu lực.</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#E8A33D">Sắp giao (7 ngày)</b></td><td style="padding:6px 10px">Còn lại ≤ 7 ngày (kể cả đã quá ngày dự kiến mà chưa giao).</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#2E7D32">Sắp giao (30 ngày)</b></td><td style="padding:6px 10px">Còn lại từ 8 đến 30 ngày.</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#6b7280">Đang sản xuất</b></td><td style="padding:6px 10px">Còn lại trên 30 ngày.</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#C0392B">Trễ tiến độ</b></td><td style="padding:6px 10px">Ngày dự kiến mới muộn hơn ngày "As contract" và lý do đổi lịch <u>không</u> phải do yêu cầu của PM (không chứa chữ "PM"). Ưu tiên hơn các trạng thái sắp giao/đang sản xuất.</td></tr>
+      </table>
+      <p style="color:var(--text2);font-size:12px"><strong>Hướng dẫn sử dụng:</strong></p>
+      <ul style="color:var(--text2);font-size:12px;margin:4px 0 0 18px;line-height:1.8">
+        <li>Dự án lấy từ Action Plan, mỗi dự án có PM và danh sách hàng hóa. Bấm tên dự án để mở/đóng; nút <b>✎ Dự án</b> sửa tên PM; <b>＋ Thêm dự án</b> tạo dự án riêng.</li>
+        <li><b>Nhập Excel</b> (Admin/Quản lý): nạp file Equipment Order Record, thay thế danh sách trước đó. Tên dự án trong Excel chưa khớp Action Plan nằm ở mục vàng "Chưa gán dự án" — chọn dự án tương ứng một lần, lần sau tự nhớ.</li>
+        <li><b>＋ Thêm hàng / ✎ Sửa:</b> nhập đủ các cột như Excel; ô <b>Trạng thái</b> trong form tự cập nhật ngay khi đổi ngày. Muốn đánh dấu đã giao: nhập "Actual date on Site".</li>
+        <li>Tên hàng hiển thị dạng nhãn màu theo trạng thái. Bấm các ô tổng hợp phía trên (Trễ tiến độ, Sắp giao…) để xem chi tiết từng hạng mục; bấm một dòng để sửa.</li>
+        <li>Biểu đồ "Tiến độ giao hàng thiết bị theo dự án" cho thấy số hàng theo từng trạng thái của mỗi dự án.</li>
+      </ul>
     </div>
   </div>
 </div>

@@ -119,7 +119,7 @@ function puMigrate() {
 let puOpen = {};
 function puCtl() {
   return { proj: document.getElementById('puProjFilter')?.value || '__all__', st: document.getElementById('puStatusFilter')?.value || 'all',
-    q: (document.getElementById('puSearch')?.value || '').toLowerCase().trim(), hideEmpty: document.getElementById('puHideEmpty')?.checked !== false };
+    q: (document.getElementById('puSearch')?.value || '').toLowerCase().trim(), hideEmpty: document.getElementById('puHideEmpty')?.checked !== false, showDone: !!document.getElementById('puShowDone')?.checked };
 }
 const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC báo ngày giao'], ['miss', 'Thiếu kế hoạch đặt hàng']];
 function puBadge(s) { return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(s.t)}</span>`; }
@@ -157,7 +157,7 @@ function renderPuDelivery() {
   if (kpi) kpi.innerHTML = `<div class="mk pu-tile" onclick="openPuDetail('all')" title="Bấm để xem chi tiết"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
     [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk pu-tile" onclick="openPuDetail('${k}')" title="Bấm để xem chi tiết"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
   renderPuChart(all);
-  const match = a => (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
+  const match = a => (c.showDone || c.st === 'done' || a.s.k !== 'done') && (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
   let html = '';
   // Dòng chưa gán được dự án Action Plan → gom theo tên dự án trong Excel, cho phép gán hàng loạt
   const orphans = all.filter(a => !a.proj && match(a));
@@ -268,6 +268,8 @@ function openPuModal(id, encProj) {
   sel.innerHTML = '<option value="">— Chưa gán —</option>' + puProjects().map(p => `<option value="${puEsc(p.p)}">${puEsc(p.p)}</option>`).join('');
   sel.value = puEditProj;
   if (!id && puEditProj && !document.getElementById('puFPm').value) document.getElementById('puFPm').value = puApPm(puEditProj);
+  Object.keys(PU_DATES).concat(['puFSup','puFReason']).forEach(el => { const e = document.getElementById(el); if (e) e.oninput = e.onchange = puModalStatus; });
+  puModalStatus();
   document.getElementById('puModalTitle').textContent = id ? 'Sửa hàng hóa' : 'Thêm hàng hóa';
   document.getElementById('puModal').style.display = 'flex';
 }
@@ -353,3 +355,13 @@ function openPuDetail(k) {
   document.getElementById('puDetail').style.display = 'flex';
 }
 function closePuDetail() { document.getElementById('puDetail').style.display = 'none'; }
+
+// Ô trạng thái trong form thêm/sửa: tính lại ngay khi đổi ngày
+function puModalStatus() {
+  const g = id => (document.getElementById(id)?.value || '').trim(), o = {};
+  Object.entries(PU_DATES).forEach(([el, f]) => { o[f] = g(el); });
+  o.supplier = g('puFSup'); o.reason = g('puFReason');
+  const s = puStatus(o), est = puEst(o), d = est ? puDaysBetween(puToday(), est) : null;
+  const e = document.getElementById('puFStatus');
+  if (e) e.innerHTML = puBadge(s) + (d !== null && s.k !== 'done' ? ` <span style="color:${d < 0 ? '#C0392B' : 'var(--text2)'};font-size:12px">${d < 0 ? 'quá ' + (-d) + ' ngày so với ngày dự kiến' : 'còn ' + d + ' ngày'}</span>` : '');
+}
