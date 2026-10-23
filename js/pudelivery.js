@@ -128,17 +128,17 @@ function puRow(x, no) {
   const s = puStatus(x), canDel = typeof isManager === 'function' && isManager();
   const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
-    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td style="font-weight:600;white-space:nowrap">${puEsc(x.name)}</td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
+    <td style="white-space:nowrap;text-align:center"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td>
+    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td title="${puEsc(s.t)}" style="font-weight:700;white-space:nowrap;background:${PU_STATUS_COLOR[s.k]};color:#fff">${puEsc(x.name)}</td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
     ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
     ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
-    <td>${puBadge(s)}</td><td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td>
-    <td style="white-space:nowrap"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td></tr>`;
+    <td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`;
 }
 const PU_HEAD = `<thead>
-  <tr><th rowspan="2">No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
-  <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2">PO/Contract Effective Date</th><th rowspan="2">Advance Payment Date</th><th rowspan="2">Desired date to be on site (SITE CONFIRM)</th>
-  <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2">Actual date on Site</th><th rowspan="2">Status</th><th rowspan="2">Remarks</th><th rowspan="2"></th></tr>
-  <tr><th>No.</th><th>Approved Date</th><th>Plan</th><th>Actual</th><th>As contract</th><th>1st Change</th><th>2nd Change</th><th>3rd Change</th></tr></thead>`;
+  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2">No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
+  <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2" class="pu-d">PO/Contract Effective Date</th><th rowspan="2" class="pu-d">Advance Payment Date</th><th rowspan="2" class="pu-d">Desired date to be on site (SITE CONFIRM)</th>
+  <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2" class="pu-d">Actual date on Site</th><th rowspan="2">Remarks</th></tr>
+  <tr><th>No.</th><th class="pu-d">Approved Date</th><th class="pu-d">Plan</th><th class="pu-d">Actual</th><th class="pu-d">As contract</th><th class="pu-d">1st Change</th><th class="pu-d">2nd Change</th><th class="pu-d">3rd Change</th></tr></thead>`;
 const puTable = rows => `<div class="pu-scroll"><table class="pu-tbl">${PU_HEAD}<tbody>${rows}</tbody></table></div>`;
 
 function renderPuDelivery() {
