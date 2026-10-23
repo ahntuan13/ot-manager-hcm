@@ -129,7 +129,7 @@ function puRow(x, no) {
   const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
     <td style="white-space:nowrap;text-align:center"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td>
-    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td title="${puEsc(s.t)}" style="font-weight:700;white-space:nowrap;background:${PU_STATUS_COLOR[s.k]};color:#fff">${puEsc(x.name)}</td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
+    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td title="${puEsc(s.t)}" style="white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(x.name)}</span></td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
     ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
     ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
     <td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`;
