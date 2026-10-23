@@ -576,3 +576,6 @@ body.cloud-on .legacy-sync{display:none!important}
 .pu-scroll::-webkit-scrollbar-thumb{background:#8a93a6;border-radius:10px;border:4px solid #e9ecf2;min-width:60px}
 .pu-scroll::-webkit-scrollbar-thumb:hover{background:#5d6678}
 .pu-tbl td{padding:6px 10px;border-bottom:1px solid var(--border2,#f0f0f0);border-right:1px solid var(--border2,#f3f3f3)}
+
+#puKpi .pu-tile{cursor:pointer;transition:box-shadow .15s,transform .15s}
+#puKpi .pu-tile:hover{box-shadow:0 4px 14px rgba(0,0,0,.12);transform:translateY(-1px)}

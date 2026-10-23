@@ -154,8 +154,8 @@ function renderPuDelivery() {
   const all = puItems().map(x => ({ x, proj: puProjOf(x), s: puStatus(x, today) }));
   const cnt = k => all.filter(a => a.s.k === k).length;
   const kpi = document.getElementById('puKpi');
-  if (kpi) kpi.innerHTML = `<div class="mk"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
-    [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
+  if (kpi) kpi.innerHTML = `<div class="mk pu-tile" onclick="openPuDetail('all')" title="Bấm để xem chi tiết"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
+    [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk pu-tile" onclick="openPuDetail('${k}')" title="Bấm để xem chi tiết"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
   renderPuChart(all);
   const match = a => (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
   let html = '';
@@ -334,3 +334,22 @@ function exportPuExcel() {
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Weekly Report');
   XLSX.writeFile(wb, `PU_Delivery_${puToday()}.xlsx`);
 }
+
+
+// ── Bấm ô KPI → danh sách chi tiết các hạng mục theo trạng thái ──
+function openPuDetail(k) {
+  const today = puToday(), lab = { all: 'Tổng hàng hóa', late: 'Trễ tiến độ', soon7: 'Sắp giao (7 ngày)', soon30: 'Sắp giao (30 ngày)', miss: 'Thiếu kế hoạch đặt hàng', done: 'Đã giao' };
+  const rows = puItems().map(x => ({ x, proj: puProjOf(x) || x.src || '(chưa gán)', s: puStatus(x, today) })).filter(a => k === 'all' || a.s.k === k)
+    .sort((a, b) => a.proj.localeCompare(b.proj) || (puEst(a.x) || '9').localeCompare(puEst(b.x) || '9'));
+  const col = k === 'all' ? '#1f2937' : PU_STATUS_COLOR[k];
+  document.getElementById('puDTitle').innerHTML = `<span style="color:${col}">${puEsc(lab[k])}</span> <span style="font-weight:400;font-size:13px;color:var(--text2)">· ${rows.length} hạng mục</span>`;
+  const T = v => `<td style="padding:6px 10px;white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="padding:6px 10px;text-align:center;white-space:nowrap">${puFmt(v)}</td>`;
+  const body = rows.map(a => { const x = a.x, est = puEst(x), d = est ? puDaysBetween(today, est) : null;
+    return `<tr style="border-top:1px solid var(--border2,#eee);cursor:pointer" onclick="closePuDetail();openPuModal('${x.id}')" title="Bấm để sửa">${T(a.proj)}${T(x.pm)}
+      <td style="padding:6px 10px;white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[a.s.k]}">${puEsc(x.name)}</span></td>
+      ${T(x.supplier)}${T(x.po)}${D(x.desired)}${D(est)}<td style="padding:6px 10px;text-align:center;white-space:nowrap;font-weight:700;color:${d !== null && d < 0 ? '#C0392B' : 'inherit'}">${d === null ? '' : d < 0 ? 'trễ ' + (-d) + ' ngày' : d + ' ngày'}</td>
+      <td style="padding:6px 10px;min-width:160px">${puEsc(x.reason)}</td><td style="padding:6px 10px;min-width:200px;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`; }).join('');
+  document.getElementById('puDBody').innerHTML = rows.length ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="background:var(--bg2,#f3f5fa);position:sticky;top:0">${['Dự án', 'PM', 'Hạng mục', 'Supplier', 'PO/CO No.', 'Desired date', 'Ngày dự kiến', 'Còn lại', 'Lý do đổi lịch', 'Remarks'].map(h => `<th style="padding:8px 10px;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>` : '<div style="padding:20px;color:var(--text2)">Không có hạng mục nào.</div>';
+  document.getElementById('puDetail').style.display = 'flex';
+}
+function closePuDetail() { document.getElementById('puDetail').style.display = 'none'; }

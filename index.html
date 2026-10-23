@@ -918,6 +918,12 @@
   <div id="puSections"></div>
 </div>
 
+<div id="puDetail" style="display:none;position:fixed;inset:0;z-index:9996;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closePuDetail()">
+  <div style="background:var(--surface,#fff);border-radius:16px;padding:22px 24px;max-width:1200px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:19px;font-weight:800" id="puDTitle"></div><button class="btn" onclick="closePuDetail()" style="padding:6px 12px">✕ Đóng</button></div>
+    <div id="puDBody" style="overflow:auto"></div>
+  </div>
+</div>
 <div id="puProjModal" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(20,24,30,0.5);align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--surface,#fff);border-radius:16px;padding:26px 30px 22px;max-width:520px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">
     <div style="font-size:20px;font-weight:800;margin-bottom:14px" id="puPTitle">Sửa dự án</div>
