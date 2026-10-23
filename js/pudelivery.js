@@ -323,20 +323,55 @@ async function importPuExcel(inp) {
   inp.value = '';
 }
 
-// ── Xuất Excel theo đúng mẫu (nhóm theo dự án) ──
+// ── Xuất Excel đúng mẫu file Equipment Order Record (nhập lại được bằng chính nút "Nhập Excel") ──
 function exportPuExcel() {
-  const aoa = [['DELIVERY SCHEDULE OF EQUIPMENTS'], [], ['No.', 'Supplier Name', 'Name of Items', 'Quotation No.', 'Origin Country', "Q'ty", 'Unit', 'Code No.', 'PR No.', 'PR Approved Date', 'PO/CO No.', 'Order Date (Plan)', 'Order Date (Actual)', 'PO/Contract Effective Date', 'Advance Payment Date', 'Desired date to be on site', 'Estimate date (As contract)', '1st Change', '2nd Change', '3rd Change', 'Reason for The Schedule Change', 'Actual date on Site', 'Status', 'Remarks']];
-  const all = puItems().map(x => ({ x, proj: puProjOf(x) || '(Chưa gán dự án)' }));
-  const groups = {}; all.forEach(a => (groups[a.proj] = groups[a.proj] || []).push(a.x));
-  Object.keys(groups).forEach(p => {
-    const pms = [...new Set(groups[p].map(x => x.pm ? x.pm + (x.disc ? ` (${x.disc})` : '') : '').filter(Boolean))];
-    const mp = puMeta(p) && puMeta(p).pm; aoa.push([`Project Name: ${p}${mp ? ' - ' + mp : pms.length ? ' - ' + pms.join(' / ') : puApPm(p) ? ' - ' + puApPm(p) : ''}`]);
-    groups[p].forEach((x, i) => aoa.push([x.no || i + 1, x.supplier, x.name, x.quote, x.origin, x.qty, x.unit, x.code, x.pr, puFmt(x.prDate), x.po, puFmt(x.ordPlan), puFmt(x.ordActual), puFmt(x.eff), puFmt(x.adv), puFmt(x.desired), puFmt(x.e0), puFmt(x.e1), puFmt(x.e2), puFmt(x.e3), x.reason, puFmt(x.actual), puStatus(x).t, x.remarks]));
+  const serial = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 + 25569 : null; };
+  const N = 24, blank = () => Array(N).fill(null);
+  const aoa = [], merges = [], dateCells = [];
+  const r0 = blank(); r0[0] = 'DELIVERY SCHEDULE OF EQUIPMENTS'; aoa.push(r0); aoa.push(blank());
+  const h1 = blank(), h2 = blank();
+  ['No.', 'Supplier Name', 'Name of Items', 'Quotation\nNo.', 'Origin\nCountry', "Q'ty", 'Unit', 'Code\nNo.'].forEach((t, i) => h1[i] = t);
+  h1[8] = 'PR'; h2[8] = 'No.'; h2[9] = 'Approved Date'; h1[10] = 'PO/CO No.'; h1[11] = 'Order Date'; h2[11] = 'Plan'; h2[12] = 'Actual';
+  h1[13] = 'PO/Contract Effective\nDate'; h1[14] = 'Advance Payment Date'; h1[15] = 'Desired date to\nbe on site\n(SITE COFIRM)';
+  h1[16] = 'Estimate date on Site (SUPPLIER CONFIRM)'; h2[16] = 'As contract'; h2[17] = '1st\nChange'; h2[18] = '2nd\nChange'; h2[19] = '3rd\nChange';
+  h1[20] = 'Reason for The\nSchedule Change'; h1[21] = 'Actual date on Site'; h1[22] = 'Status'; h1[23] = 'Remarks';
+  aoa.push(h1, h2);
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 16 } });
+  [0, 1, 2, 3, 4, 5, 6, 7, 10, 13, 14, 15, 20, 21, 22, 23].forEach(c => merges.push({ s: { r: 2, c }, e: { r: 3, c } }));
+  [[8, 9], [11, 12], [16, 19]].forEach(([a, b]) => merges.push({ s: { r: 2, c: a }, e: { r: 2, c: b } }));
+  const all = puItems().map(x => ({ x, proj: puProjOf(x) || '(Chưa gán dự án)' })).sort((m, n) => (m.x.ct || 0) - (n.x.ct || 0));
+  const groups = {}; all.forEach(a => { const k = a.proj + '\u0001' + (a.x.disc || ''); (groups[k] = groups[k] || { p: a.proj, disc: a.x.disc || '', rows: [] }).rows.push(a.x); });
+  const projIdx = new Map(puProjects().map((x, i) => [x.p, i]));
+  Object.values(groups).sort((m, n) => (projIdx.has(m.p) ? projIdx.get(m.p) : 9999) - (projIdx.has(n.p) ? projIdx.get(n.p) : 9999) || m.disc.localeCompare(n.disc)).forEach(({ p, disc, rows }) => {
+    let acc = null; // danh sách Job đang áp dụng trong khối hiện tại
+    rows.forEach((x, i) => {
+      const jl = String(x.job || '').split(',').map(puClean).filter(Boolean);
+      const ext = acc && acc.every((j, k) => jl[k] === j);
+      if (!ext || i === 0) {
+        const meta = puMeta(p), mp = (meta && meta.pm) || x.pm || puApPm(p) || '';
+        const pm = mp && !/^\s*(mr|mrs|ms)\b/i.test(mp) ? 'Mr. ' + mp : mp;
+        const pr = blank(); pr[0] = `Project Name: ${p}${disc ? ` (${disc})` : ''}${pm ? ' - ' + pm : ''}`; aoa.push(pr);
+        acc = [];
+      }
+      jl.slice(acc.length).forEach(j => { const jr = blank(); jr[0] = `Job No. : ${j}`; aoa.push(jr); });
+      acc = jl.length > acc.length ? jl : acc;
+      const r = blank(), st = puStatus(x);
+      const num = v => (v !== '' && v !== null && !isNaN(Number(v)) && String(v).trim() !== '') ? Number(v) : (v || null);
+      r[0] = x.no || i + 1; r[1] = x.supplier || null; r[2] = x.name || null; r[3] = x.quote || null; r[4] = x.origin || null; r[5] = num(x.qty); r[6] = x.unit || null; r[7] = x.code || null;
+      r[8] = x.pr || null; r[10] = x.po || null; r[20] = x.reason || null; r[22] = st.t; r[23] = x.remarks || null;
+      [[9, x.prDate], [11, x.ordPlan], [12, x.ordActual], [13, x.eff], [14, x.adv], [15, x.desired], [16, x.e0], [17, x.e1], [18, x.e2], [19, x.e3], [21, x.actual]].forEach(([c, v]) => { const sv = serial(v); if (sv !== null) { r[c] = sv; dateCells.push([aoa.length, c]); } });
+      aoa.push(r);
+    });
   });
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Weekly Report');
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  dateCells.forEach(([r, c]) => { const a = XLSX.utils.encode_cell({ r, c }); if (ws[a]) { ws[a].t = 'n'; ws[a].z = 'dd/mm/yyyy'; } });
+  ws['!merges'] = merges;
+  ws['!cols'] = [4, 20, 26, 14, 14, 6, 7, 11, 16, 12, 16, 12, 12, 14, 13, 15, 12, 10, 10, 10, 20, 12, 26, 34].map(w => ({ wch: w }));
+  ws['!rows'] = [{ hpt: 22 }, {}, { hpt: 30 }, { hpt: 30 }];
+  ws['!freeze'] = { xSplit: 3, ySplit: 4 }; ws['!views'] = [{ state: 'frozen', xSplit: 3, ySplit: 4 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Weekly Report');
   XLSX.writeFile(wb, `PU_Delivery_${puToday()}.xlsx`);
 }
-
 
 // ── Bấm ô KPI → danh sách chi tiết các hạng mục theo trạng thái ──
 function openPuDetail(k) {
