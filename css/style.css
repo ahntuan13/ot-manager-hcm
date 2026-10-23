@@ -560,3 +560,12 @@ body.cloud-on .legacy-sync{display:none!important}
 #staffEditEmpList select,#staffEditEmpList button{font-size:14px!important;padding:6px 10px!important}
 #staffEditEmpList>div{padding-top:10px!important;padding-bottom:10px!important}
 #staffEditEmpList select{min-width:300px;max-width:100%}
+
+/* PU Delivery: khối bảng cố định kích thước, cuộn ngang/dọc, tiêu đề dính trên */
+#pg-pudelivery{min-width:0;max-width:100%}
+#pg-pudelivery .card{min-width:0}
+.pu-scroll{overflow:auto;max-width:100%;max-height:520px;border:1px solid var(--border2,#e5e5e5);border-radius:8px}
+.pu-tbl{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px}
+.pu-tbl th{position:sticky;top:0;z-index:2;height:30px;line-height:16px;box-sizing:border-box;white-space:nowrap;background:var(--bg2,#f3f5fa);padding:7px 10px;text-align:center;min-width:70px;border-bottom:1px solid var(--border2,#e0e0e0);border-right:1px solid var(--border2,#e8e8e8)}
+.pu-tbl thead tr:nth-child(2) th{top:30px}
+.pu-tbl td{padding:6px 10px;border-bottom:1px solid var(--border2,#f0f0f0);border-right:1px solid var(--border2,#f3f3f3)}

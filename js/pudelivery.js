@@ -58,8 +58,15 @@ function puStatus(x, today) {
 }
 
 // ── Dự án lấy từ Action Plan ──
-function puProjects() {
+function puApProjects() {
   return Object.keys(PROJECTS_DB || {}).flatMap(g => Object.keys(PROJECTS_DB[g] || {}).filter(p => !p.startsWith('__') && p !== UNASSIGNED_PROJ).map(p => ({ g, p })));
+}
+// Dự án = Action Plan + dự án thêm riêng trong PU Delivery
+const puMeta = name => PU_DB['proj~' + name];
+function puProjects() {
+  const ap = puApProjects(), names = new Set(ap.map(x => x.p));
+  const custom = Object.values(PU_DB).filter(x => x && x.meta === 'proj' && x.custom && !names.has(x.name)).map(x => ({ g: '', p: x.name, custom: true }));
+  return [...ap, ...custom.sort((a, b) => a.p.localeCompare(b.p))];
 }
 function puApPm(proj) {
   for (const g of Object.keys(PROJECTS_DB || {})) {
@@ -118,26 +125,21 @@ const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soo
 function puBadge(s) { return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(s.t)}</span>`; }
 
 function puRow(x, no) {
-  const s = puStatus(x), est = puEst(x), canDel = typeof isManager === 'function' && isManager();
-  const chg = [['HĐ', x.e0], ['1st', x.e1], ['2nd', x.e2], ['3rd', x.e3]].filter(c => c[1]).map(c => `${c[0]} ${puFmtS(c[1])}`).join(' → ');
-  const dd = (est && x.desired) ? puDaysBetween(x.desired, est) : null;
-  const dl = dd === null ? '' : `<div style="font-size:10.5px;color:${dd > 0 ? '#C0392B' : '#2E7D32'}">${dd > 0 ? '+' : ''}${dd} ngày so với yêu cầu</div>`;
+  const s = puStatus(x), canDel = typeof isManager === 'function' && isManager();
+  const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
-    <td style="text-align:center;color:var(--text2)">${no}</td>
-    <td style="white-space:nowrap">${puEsc(x.supplier)}</td>
-    <td style="font-weight:600;min-width:170px">${puEsc(x.name)}${x.quote ? `<div style="font-size:10.5px;font-weight:400;color:var(--text3)">Quot. ${puEsc(x.quote)}</div>` : ''}</td>
-    <td style="white-space:nowrap">${puEsc(x.qty)} ${puEsc(x.unit)}</td>
-    <td style="font-size:11px;color:var(--text2)">${puEsc(x.po || '')}${x.pr ? `<div>${puEsc(x.pr)}</div>` : ''}</td>
-    <td style="font-size:11.5px;white-space:nowrap">${x.ordPlan ? `Plan ${puFmt(x.ordPlan)}` : ''}${x.ordActual ? `<div>Actual ${puFmt(x.ordActual)}</div>` : ''}</td>
-    <td style="white-space:nowrap">${puFmt(x.desired)}</td>
-    <td style="white-space:nowrap" title="${puEsc(chg)}"><b>${puFmt(est)}</b>${chg && (x.e1 || x.e2 || x.e3) ? `<div style="font-size:10.5px;color:var(--text3)">${puEsc(chg)}</div>` : ''}${dl}</td>
-    <td style="max-width:150px;font-size:11.5px;color:var(--text2)">${puEsc(x.reason)}</td>
-    <td style="white-space:nowrap">${puFmt(x.actual)}</td>
-    <td>${puBadge(s)}</td>
-    <td style="max-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td>
+    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td style="font-weight:600;white-space:nowrap">${puEsc(x.name)}</td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
+    ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
+    ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
+    <td>${puBadge(s)}</td><td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td>
     <td style="white-space:nowrap"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td></tr>`;
 }
-const PU_HEAD = '<thead><tr><th>No.</th><th>Supplier</th><th>Name of Items</th><th>Q\'ty</th><th>PO/CO · PR</th><th>Order</th><th>Desired on site</th><th>Estimate on site</th><th>Reason for change</th><th>Actual on site</th><th>Status</th><th>Remarks</th><th></th></tr></thead>';
+const PU_HEAD = `<thead>
+  <tr><th rowspan="2">No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
+  <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2">PO/Contract Effective Date</th><th rowspan="2">Advance Payment Date</th><th rowspan="2">Desired date to be on site (SITE CONFIRM)</th>
+  <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2">Actual date on Site</th><th rowspan="2">Status</th><th rowspan="2">Remarks</th><th rowspan="2"></th></tr>
+  <tr><th>No.</th><th>Approved Date</th><th>Plan</th><th>Actual</th><th>As contract</th><th>1st Change</th><th>2nd Change</th><th>3rd Change</th></tr></thead>`;
+const puTable = rows => `<div class="pu-scroll"><table class="pu-tbl">${PU_HEAD}<tbody>${rows}</tbody></table></div>`;
 
 function renderPuDelivery() {
   const host = document.getElementById('puSections'); if (!host) return;
@@ -154,6 +156,7 @@ function renderPuDelivery() {
   const kpi = document.getElementById('puKpi');
   if (kpi) kpi.innerHTML = `<div class="mk"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
     [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
+  renderPuChart(all);
   const match = a => (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
   let html = '';
   // Dòng chưa gán được dự án Action Plan → gom theo tên dự án trong Excel, cho phép gán hàng loạt
@@ -163,14 +166,14 @@ function renderPuDelivery() {
     html += `<div class="card" style="border-left:4px solid #E8A33D"><div class="card-title" style="margin-bottom:6px">⚠️ Chưa gán dự án Action Plan <span style="font-weight:400;font-size:11.5px;color:var(--text2)">— ${orphans.length} hàng. Chọn dự án tương ứng cho từng nhóm (lưu lại cho lần nhập sau).</span></div>` +
       Object.keys(bySrc).map(src => `<div style="margin:10px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${puEsc(src)}</b> <span style="color:var(--text2);font-size:11.5px">(${bySrc[src].length} hàng)</span>
         <select onchange="puAssignSrc('${encodeURIComponent(src)}', this.value)" style="padding:4px 8px"><option value="">Gán vào dự án…</option>${projs.map(x => `<option value="${puEsc(x.p)}">${puEsc(x.p)}</option>`).join('')}</select></div>
-        <div class="tbl-wrap"><table>${PU_HEAD}<tbody>${bySrc[src].map((a, i) => puRow(a.x, a.x.no || i + 1)).join('')}</tbody></table></div>`).join('') + '</div>';
+        ${puTable(bySrc[src].map((a, i) => puRow(a.x, a.x.no || i + 1)).join(''))}`).join('') + '</div>';
   }
   projs.filter(x => c.proj === '__all__' || x.p === c.proj).forEach(({ p }) => {
     const rows = all.filter(a => a.proj === p), shown = rows.filter(match);
     if (!rows.length && c.hideEmpty && c.proj === '__all__') return;
     if (rows.length && !shown.length && (c.st !== 'all' || c.q)) return;
     const pms = [...new Set(rows.map(a => a.x.pm ? (a.x.pm + (a.x.disc ? ` (${a.x.disc})` : '')) : '').filter(Boolean))];
-    const apPm = puApPm(p);
+    const apPm = puApPm(p), mt = puMeta(p);
     const jobs = [...new Set(rows.flatMap(a => String(a.x.job || '').split(',').map(puClean).filter(Boolean)))];
     const chips = PU_ST_LIST.map(([k, l]) => { const n = rows.filter(a => a.s.k === k).length; return n ? `<span style="font-size:11px;color:#fff;background:${PU_STATUS_COLOR[k]};padding:1px 8px;border-radius:999px" title="${l}">${n} ${l}</span>` : ''; }).join(' ');
     const open = puOpen[p] !== undefined ? puOpen[p] : (rows.length > 0 && (c.q || c.st !== 'all' || rows.some(a => ['late', 'soon7', 'miss'].includes(a.s.k))));
@@ -178,14 +181,72 @@ function renderPuDelivery() {
     html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(p)}')">
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
       <div style="font-size:15px;font-weight:800">${puEsc(p)}</div>
-      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(pms.length ? pms.join(', ') : (apPm || '—'))}</b>${jobs.length ? ` · Job: ${puEsc(jobs.join(', '))}` : ''}</div>
+      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—')))}</b>${jobs.length ? ` · Job: ${puEsc(jobs.join(', '))}` : ''}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>
-      <button class="btn" style="padding:3px 10px;margin-left:auto" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}')">＋ Thêm hàng</button></div>
-      ${open ? (shown.length ? `<div class="tbl-wrap" style="margin-top:10px"><table>${PU_HEAD}<tbody>${shown.map((a, i) => puRow(a.x, a.x.no || i + 1)).join('')}</tbody></table></div>` : '<div style="padding:10px;color:var(--text2);font-size:12px">Chưa có hàng hóa.</div>') : ''}</div>`;
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}')">＋ Thêm hàng</button></span></div>
+      ${open ? (shown.length ? `<div style="margin-top:10px">${puTable(shown.map((a, i) => puRow(a.x, a.x.no || i + 1)).join(''))}</div>` : '<div style="padding:10px;color:var(--text2);font-size:12px">Chưa có hàng hóa.</div>') : ''}</div>`;
   });
   host.innerHTML = html || '<div class="card" style="text-align:center;color:var(--text2)">Chưa có dữ liệu. Bấm "Nhập Excel" để nạp file Equipment Order Record, hoặc "＋ Thêm hàng" trong từng dự án.</div>';
 }
+
+// ── Thêm / sửa dự án (tên PM; dự án riêng của PU Delivery cho phép đổi tên / xoá) ──
+let puProjEdit = null;
+function openPuProj(encName) {
+  const name = encName ? decodeURIComponent(encName) : '';
+  const mt = name ? puMeta(name) : null, isAp = !!name && puApProjects().some(x => x.p === name);
+  puProjEdit = { name, isAp, isNew: !name };
+  document.getElementById('puPName').value = name; document.getElementById('puPName').disabled = isAp;
+  document.getElementById('puPPm').value = (mt && mt.pm) || (name ? puApPm(name) : '') || '';
+  document.getElementById('puPTitle').textContent = !name ? 'Thêm dự án' : 'Sửa dự án';
+  document.getElementById('puPNote').textContent = isAp ? 'Tên dự án lấy từ Action Plan nên không đổi ở đây; chỉ gán/sửa tên PM.' : (name ? 'Dự án riêng của PU Delivery (không có trong Action Plan).' : 'Dự án mới chỉ có trong PU Delivery. Dự án của Action Plan đã có sẵn, không cần thêm lại.');
+  const canDel = !!name && !isAp && typeof isManager === 'function' && isManager();
+  document.getElementById('puPDel').style.display = canDel ? '' : 'none';
+  document.getElementById('puProjModal').style.display = 'flex';
+}
+function closePuProj() { document.getElementById('puProjModal').style.display = 'none'; puProjEdit = null; }
+function savePuProj() {
+  if (!puProjEdit) return;
+  const name = document.getElementById('puPName').value.trim(), pm = document.getElementById('puPPm').value.trim();
+  if (!name) { toast('⚠️ Nhập tên dự án.'); return; }
+  const old = puProjEdit.name, now = Date.now();
+  if (puProjEdit.isNew && puProjects().some(x => x.p.toLowerCase() === name.toLowerCase())) { toast('⚠️ Dự án này đã có.'); return; }
+  if (old && !puProjEdit.isAp && old !== name) {
+    if (puProjects().some(x => x.p.toLowerCase() === name.toLowerCase())) { toast('⚠️ Tên này đã có dự án khác.'); return; }
+    delete PU_DB['proj~' + old];
+    Object.values(PU_DB).forEach(x => { if (x && !x.meta && x.proj === old) { x.proj = name; x.at = now; } if (x && x.meta === 'map' && x.proj === old) { x.proj = name; x.at = now; } });
+  }
+  PU_DB['proj~' + name] = { meta: 'proj', id: 'proj~' + name, name, pm, custom: !puProjEdit.isAp, at: now };
+  savePuDb(); closePuProj(); renderPuDelivery(); toast('💾 Đã lưu dự án.');
+}
+function deletePuProj() {
+  if (!puProjEdit || puProjEdit.isAp) return;
+  if (typeof requireManager === 'function' && !requireManager('xoá dự án PU Delivery')) return;
+  const n = puItems().filter(x => x.proj === puProjEdit.name).length;
+  if (!confirm(`Xoá dự án "${puProjEdit.name}"?${n ? `\n${n} hàng hóa trong dự án sẽ chuyển về mục "Chưa gán dự án".` : ''}`)) return;
+  delete PU_DB['proj~' + puProjEdit.name];
+  Object.values(PU_DB).forEach(x => { if (x && !x.meta && x.proj === puProjEdit.name) { x.proj = ''; x.at = Date.now(); } });
+  savePuDb(); closePuProj(); renderPuDelivery();
+}
+
+// ── Biểu đồ tiến độ giao hàng theo dự án (cột chồng theo trạng thái) ──
+function renderPuChart(all) {
+  const card = document.getElementById('puChartCard'), box = document.getElementById('puChartBox'), cv = document.getElementById('cPuProg');
+  if (!card || !cv || typeof Chart === 'undefined') return;
+  if (typeof killChart === 'function') killChart('cPuProg');
+  const groups = {}; all.forEach(a => { const k = a.proj || 'Chưa gán dự án'; (groups[k] = groups[k] || []).push(a); });
+  const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+  card.style.display = names.length ? '' : 'none'; if (!names.length) return;
+  box.style.height = Math.max(240, names.length * 34 + 90) + 'px';
+  const order = ['done', 'make', 'soon30', 'soon7', 'late', 'wait', 'miss'], label = Object.fromEntries(PU_ST_LIST);
+  const ds = order.map(k => ({ label: label[k], data: names.map(n => groups[n].filter(a => a.s.k === k).length), backgroundColor: PU_STATUS_COLOR[k], borderWidth: 0, borderDash: [], maxBarThickness: 24 }));
+  CH['cPuProg'] = new Chart(cv, { type: 'bar', data: { labels: names.map(n => n.replace(/^HCM[\s-]+/i, '') + ` (${groups[n].length})`), datasets: ds },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
+      scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(128,128,128,.12)' }, title: { display: true, text: 'Số hàng hóa', font: { size: 11 } } }, y: { stacked: true, grid: { display: false }, ticks: { autoSkip: false, font: { size: 11 } } } } },
+    plugins: [{ id: 'puVal', afterDatasetsDraw(c) { const g = c.ctx; g.save(); g.fillStyle = '#fff'; g.font = '600 10.5px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      c.data.datasets.forEach((d, i) => c.getDatasetMeta(i).data.forEach((el, j) => { const v = d.data[j]; if (v > 0 && el.width > 14) g.fillText(v, el.x - el.width / 2, el.y); })); g.restore(); } }] });
+}
+
 const puLast = {};
 function puToggle(encP) { const p = decodeURIComponent(encP); puOpen[p] = !puLast[p]; renderPuDelivery(); }
 function puAssignSrc(encSrc, proj) {
@@ -267,7 +328,7 @@ function exportPuExcel() {
   const groups = {}; all.forEach(a => (groups[a.proj] = groups[a.proj] || []).push(a.x));
   Object.keys(groups).forEach(p => {
     const pms = [...new Set(groups[p].map(x => x.pm ? x.pm + (x.disc ? ` (${x.disc})` : '') : '').filter(Boolean))];
-    aoa.push([`Project Name: ${p}${pms.length ? ' - ' + pms.join(' / ') : puApPm(p) ? ' - ' + puApPm(p) : ''}`]);
+    const mp = puMeta(p) && puMeta(p).pm; aoa.push([`Project Name: ${p}${mp ? ' - ' + mp : pms.length ? ' - ' + pms.join(' / ') : puApPm(p) ? ' - ' + puApPm(p) : ''}`]);
     groups[p].forEach((x, i) => aoa.push([x.no || i + 1, x.supplier, x.name, x.quote, x.origin, x.qty, x.unit, x.code, x.pr, puFmt(x.prDate), x.po, puFmt(x.ordPlan), puFmt(x.ordActual), puFmt(x.eff), puFmt(x.adv), puFmt(x.desired), puFmt(x.e0), puFmt(x.e1), puFmt(x.e2), puFmt(x.e3), x.reason, puFmt(x.actual), puStatus(x).t, x.remarks]));
   });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Weekly Report');
