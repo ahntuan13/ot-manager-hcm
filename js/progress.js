@@ -2,7 +2,7 @@
 //  TIẾN ĐỘ DỰ ÁN — lập tiến độ theo form MS Project (WBS nhiều cấp, Duration, Start/Finish, Predecessors FS/SS/FF/SF + lag, % hoàn thành)
 //  + biểu đồ Gantt, liên kết với PU Delivery (hàng về site hiện thành mốc trên Gantt).
 //  Mỗi dự án 1 doc Firestore "prog_<tên dự án>":  { name, start, tasks:[{u,lvl,name,dur,start,pred:[{u,t,lag}],pct,puLink,note}], at }
-//  Lịch: 7 ngày/tuần (đúng như file mẫu DnB — lịch AKI). Ngày bắt đầu/kết thúc của task có predecessor được TỰ TÍNH.
+//  Lịch: 7 ngày/tuần (đúng như file MS Project mẫu). Ngày bắt đầu/kết thúc của task có predecessor được TỰ TÍNH.
 // ============================================================
 const PROGRESS_ADMIN_ONLY = true;                       // true = chỉ Admin thấy; Quản lý/User thấy thông báo "đang xây dựng". Mở cho mọi người → đổi thành false.
 const canSeeProgress = () => !PROGRESS_ADMIN_ONLY || (typeof isAdmin === 'function' && isAdmin());
@@ -13,8 +13,6 @@ function loadProgDb() { try { const r = localStorage.getItem(PROG_KEY); if (r) P
 function saveProgDb() { try { localStorage.setItem(PROG_KEY, JSON.stringify(PROG_DB)); } catch (e) {} if (typeof cloudTouch === 'function') cloudTouch(); }
 loadProgDb();
 
-// Mẫu "Project schedule DnB" (đọc từ file MPP). [mức, tên, duration(ngày), ngày bắt đầu tính từ ngày khởi công (chỉ task chưa có predecessor), predecessors, liên kết PU]
-const PROG_TPL = [[0,"PROJECT NAME- MANE 11st (500M2)",117,null,"",0],[1,"PRE-CONSTRUCTION STAGE",87,null,"",0],[2,"LOA & Contract",45,null,"",0],[3,"Letter of Award",1,0,"",0],[3,"Approve final layout 2D by Client",6,null,"4",0],[3,"Approve final concept/ perspective 3D by Client",8,null,"5",0],[3,"Tender ID",6,null,"6",0],[3,"Tender MEP AKI",6,null,"6",0],[3,"Tender MEP Taikisha",2,null,"6",0],[3,"Submission drawing for Approval by Landlord & Fire authority",10,null,"7,8",0],[3,"Approve final scope and BOQ by Client",7,null,"10",0],[3,"AKI Contract signing",7,null,"11",0],[3,"Taikisha Contract signing",7,null,"11",0],[2,"Construction Documentation",49,null,"",0],[3,"Shop-drawings and Procurment",49,null,"",0],[4,"1st Approval (100% Longlead itesm, 60% Fitout, 60% Furniture, 80% MEPF)",9,null,"6,11",0],[4,"2nd Approval (100% Fitout + Furniture + MEPF, Poster-Graphic-Decal...)",10,null,"11",0],[4,"MEP AKI shop-drawings",7,null,"12,13",0],[4,"Fire-fighting systeam shop-drawings",7,null,"18SS",0],[4,"ID shop-drawings",7,null,"19SS",0],[4,"Build-in furniture shop drawings",7,null,"20SS",0],[4,"Buildin furnitue production",35,null,"21",0],[4,"HVAC Taikicha shop-drawing",21,null,"13",0],[1,"CONSTRUCTION STAGE PHASE 1",63,null,"",0],[2,"Phase 1 - Structural Fit-out & MEP Rough-in Works",31,null,"",0],[3,"Site handover",1,null,"11",0],[3,"Site Hoarding, Mobilization, Demolition, Setting Out & Material Handling",2,null,"26SS",0],[3,"Demolition (ceiling, floor, partition,...)",7,null,"26",0],[3,"Duct demilaition by Taikisha",5,null,"28SS+3d",0],[3,"Setting Out Inspection and Acceptance Report, Marking day",3,null,"29SS+3d",0],[3,"Duct installation by Taikisha",20,null,"29SS+4d",0],[3,"Floor Screeding Works",15,null,"30",0],[3,"Installation of Gypsum Stud Frame and First Side Gypsum Board",7,null,"32SS+7d",0],[3,"Electrical & Data Conduit Installation (Gypsum Walls, Ceiling and Floor)",8,null,"33SS+3d",0],[3,"Sanitary pipe",8,null,"34SS",0],[3,"Security & CCTV Conduit Installation (Gypsum Walls & Ceiling)",15,null,"30",0],[3,"Firefighting System Piping Relocation & New Installation (Ceiling)",8,null,"34SS",0],[3,"One-Side Gypsum Wall Inspection (Pre-Closure) (Buổi sáng)",2,null,"37FF",0],[3,"MEP Ceiling Inspection by Building Management (Pre-Closure)",1,null,"37FF",0],[3,"Installation of Gypsum Wall – Second Side",5,null,"38SS",0],[3,"Installation Vinyl or carpet",4,null,"40SS+3d",0],[2,"Phase 2 - Architectural Finishes & MEP Final Fixing",25,null,"",0],[3,"Installation of Gypsum Ceiling Framing",5,null,"40SS+3d",0],[3,"Joint Treatment, Putty & Painting Works (Wall & Ceiling)",4,null,"43SS+3d",0],[3,"Installation of Sub-Frame Support for (Veneer and Laminated Wall Finishes)",5,null,"40SS+3d",0],[3,"Installation of Aluminum Framing System for Glass Walls (Rails & Floor Hinges)",5,null,"44",0],[3,"Installation of Concealed Electrical and Data Cables",5,null,"44",0],[3,"Installation of AV, Security and CCTV Cables",5,null,"44",0],[3,"Installation of Gypsum Ceiling Tiles / Panels",5,null,"48SS+3d",0],[3,"Finishing Painting Works for Walls and Ceiling",4,null,"49",0],[3,"IT Room Early Handover for Client Setup",3,null,"50",0],[3,"Veneer, Laminated Wall & Wooden Door Installation",5,null,"45,46,47,48",0],[3,"Installation of Glass Partition and Glass Doors",4,null,"50SS+3d",0],[3,"Installation of Glass Boards and Colored Glass Panels",4,null,"50SS+3d",0],[3,"MEP Ceiling Devices Installation & Finishing (Diffuser Taikisha, Sprinkler,Smoke detector)",5,null,"34,50-2d",0],[3,"Decorative, Concealed LED & Spotlight Installation",5,null,"50-2d,34",0],[3,"Carpet/ Vinyl & Wooden Floor Installation",5,null,"56SS+3d",0],[3,"Installation long lead items related to fitout, MEP/FF equipment",0,null,"",1],[2,"Phase 3 - FF&E, Testing, Commissioning & Handover",12,null,"",0],[3,"Installation of Built-in Furniture and Fixed Joinery",7,null,"57SS+2d",0],[3,"Installation of Skirting Finishes",7,null,"60SS",0],[3,"Installation long lead items related furniture, loose, phonbooth...",0,null,"",1],[3,"Installation of Office Furniture and Workstation Partitions",7,null,"57SS+2d",0],[3,"Installation of Electrical and Data Devices (Outlets)",7,null,"60SS",0],[3,"Installation of Branding Elements (Logo, Graphics & Decals)",5,null,"60SS",0],[3,"Installation of Roller / Vertical Window Blinds",5,null,"60SS",0],[3,"Installation of Loose Furniture (Chairs & Sofas)",2,null,"60",0],[3,"System Testing, Commissioning and Operational Readiness",2,null,"60",0],[3,"Touch-Up Works before handover",2,null,"60",0],[3,"Final Cleaning & Deodorizing",2,null,"68",0],[3,"Fire Police Site Inspection (Pre-Practical Completion)",1,null,"70SS+1d",0],[3,"Practical Completion Inspection, Handover & Sign-off",1,null,"70",0],[1,"Office Go-Live",14,null,"",0],[2,"Office Move-in & Go-live",5,null,"",0],[3,"Client move-in coordination",2,null,"72",0],[3,"Office go-live support (Operation & training by AKI Design staff)",5,null,"75SS",0],[2,"Post-Handover Defect Management",6,null,"",0],[3,"Defect list issuance (post Practical Completion)",1,null,"72SS",0],[3,"Defect rectification and close-out",5,null,"78",0],[2,"Firefighting Acceptance – Final Authority Sign-off",14,null,"",0],[3,"Firefighting acceptance minute by Fire Police (Final step)",14,null,"71",0],[1,"Project Close-out",16,null,"",0],[2,"Final account statement",8,null,"72",0],[2,"As-built & O&M documents submission",16,null,"72",0]];
 
 // ── Tiện ích ngày (số nguyên = số ngày kể từ 1970-01-01, không lệch múi giờ) ──
 const pgN = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000) : NaN; };
@@ -144,7 +142,7 @@ function renderProgress() {
   h += `<div class="card"><div class="action-row">${edit ? `<button class="btn btn-primary" onclick="progNewProject()">＋ Lập tiến độ cho dự án</button>` : ''}
     <select id="progPick" onchange="progOpen(this.value)" style="min-width:260px"><option value="">— Chọn dự án để xem Gantt —</option>${names.map(n => `<option value="${pgEsc(n)}"${n === progSel ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--text2)">Trang này cho biết thời gian còn lại để hoàn thành từng dự án. Chọn dự án để xem chi tiết tiến độ.</span></div></div>`;
-  if (!names.length) h += `<div class="card" style="text-align:center;color:var(--text2);padding:30px">Chưa có dự án nào được lập tiến độ.${edit ? ' Bấm <b>＋ Lập tiến độ cho dự án</b> — có thể dùng ngay mẫu DnB (đọc từ file MS Project).' : ''}</div>`;
+  if (!names.length) h += `<div class="card" style="text-align:center;color:var(--text2);padding:30px">Chưa có dự án nào được lập tiến độ.${edit ? ' Bấm <b>＋ Lập tiến độ cho dự án</b> để bắt đầu.' : ''}</div>`;
   else h += `<div class="pg-cards">${sums.map(({ n, s }) => progCard(n, s)).join('')}</div>`;
   h += `<div id="progGantt">${progSel ? progGanttHtml(progSel) : ''}</div>`;
   box.innerHTML = h;
@@ -291,7 +289,7 @@ function progGanttHtml(name) {
           <svg class="pg-svg" style="left:${LW}px;width:${W}px;height:${totalH}px" width="${W}" height="${totalH}"><defs><marker id="pgar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0L6,3L0,6z" fill="#555"/></marker></defs><g fill="none" stroke="#555" stroke-width="1">${svg}</g></svg>
         </div>
       </div></div>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px">Lịch 7 ngày/tuần (theo file mẫu DnB). Ngày Start/Finish của công việc có Predecessor được tự tính; hàng PU thay đổi → mốc "hàng về site" tự dời theo.</div></div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:6px">Lịch 7 ngày/tuần (theo file MS Project mẫu). Ngày Start/Finish của công việc có Predecessor được tự tính; hàng PU thay đổi → mốc "hàng về site" tự dời theo.</div></div>`;
 }
 function progBar(t, c, x, pxd, late, done) {
   const w = Math.max(3, (c.f - c.s + 1) * pxd);
@@ -328,7 +326,7 @@ function progSetPct(i, v) {
 function progMkTask(lvl, name) { return { u: pgNewUid(), lvl, name: name || 'Công việc mới', dur: 1, start: '', pred: [], pct: 0 }; }
 function progInsert(i) {
   const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
-  const C = progCalc(pr), ref = pr.tasks[i]; const t = progMkTask(ref ? (C.end[i] > i + 1 ? ref.lvl + 1 : ref.lvl) : 1);
+  const C = progCalc(pr), ref = pr.tasks[i]; const t = progMkTask(ref ? (C.end[i] > i + 1 || ref.lvl === 0 ? ref.lvl + 1 : ref.lvl) : 1);
   t.start = pgIso(ref ? C[i].f + 1 : pgN(pr.start));
   pr.tasks.splice(C.end[i] || pr.tasks.length, 0, t); if (ref && C.end[i] > i + 1) { /* chèn cuối nhóm */ }
   const idx = pr.tasks.indexOf(t); progTouch(pr); progEdit(idx);
@@ -396,12 +394,6 @@ function progDelTask(i) {
 }
 
 // ── Tạo / xoá / đổi ngày khởi công ──
-function progBuildTpl(name, startIso) {
-  const P0 = pgN(startIso), tasks = PROG_TPL.map((r, i) => ({ u: pgNewUid(), lvl: r[0], name: i === 0 ? name : r[1], dur: r[2], start: r[3] != null ? pgIso(P0 + r[3]) : '', pred: [], pct: 0, puLink: r[5] ? true : undefined }));
-  const pr = { name, start: startIso, tasks, at: Date.now() };
-  PROG_TPL.forEach((r, i) => { tasks[i].pred = pgParsePred(r[4], pr, i); if (!tasks[i].puLink) delete tasks[i].puLink; });
-  return pr;
-}
 function progNewProject() {
   if (!canEditProgress()) return;
   const have = new Set(Object.keys(PROG_DB)), avail = (typeof puProjects === 'function' ? puProjects().map(x => x.p) : []).filter(p => !have.has(p));
@@ -410,9 +402,7 @@ function progNewProject() {
     <label>Dự án (Action Plan / PU Delivery)<select id="pgnProj">${avail.map(p => `<option>${pgEsc(p)}</option>`).join('')}<option value="__new__">＋ Dự án khác (nhập tên)…</option></select></label>
     <label id="pgnNameL" style="display:${avail.length ? 'none' : 'flex'}">Tên dự án<input id="pgnName" placeholder="Tên dự án"></label>
     <label>Ngày khởi công / bắt đầu<input id="pgnStart" type="date" value="${puToday()}"></label>
-    <label>Bắt đầu từ<select id="pgnTpl"><option value="tpl">Mẫu DnB (84 công việc — lấy từ file MS Project)</option><option value="blank">Tiến độ trống</option></select></label>
-    <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progCreate()">Tạo</button></div>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px">Mẫu DnB gồm các giai đoạn: Pre-construction (LOA &amp; hợp đồng, bản vẽ shop &amp; mua hàng), Construction Phase 1–3, Office Go-live, Bàn giao/Defect, PCCC nghiệm thu, Close-out. Có thể sửa/xoá/thêm sau khi tạo.</div></div>`;
+    <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progCreate()">Tạo</button></div></div>`;
   document.body.appendChild(ov);
   const sel = document.getElementById('pgnProj'); sel.onchange = () => { document.getElementById('pgnNameL').style.display = sel.value === '__new__' ? 'flex' : 'none'; };
 }
@@ -420,7 +410,7 @@ function progCreate() {
   const g = id => document.getElementById(id); let name = g('pgnProj').value; if (name === '__new__' || !name) name = (g('pgnName').value || '').trim();
   if (!name) { toast('⚠️ Chọn hoặc nhập tên dự án.'); return; } if (PROG_DB[name]) { toast('⚠️ Dự án này đã có tiến độ.'); return; }
   const st = g('pgnStart').value; if (isNaN(pgN(st))) { toast('⚠️ Chọn ngày bắt đầu.'); return; }
-  PROG_DB[name] = g('pgnTpl').value === 'tpl' ? progBuildTpl(name, st) : { name, start: st, tasks: [progMkTask(0, name)], at: Date.now() };
+  PROG_DB[name] = { name, start: st, tasks: [progMkTask(0, name)], at: Date.now() };
   progCloseModal(); progSel = name; saveProgDb(); renderProgress(); progOpen(name);
 }
 function progRename() {
