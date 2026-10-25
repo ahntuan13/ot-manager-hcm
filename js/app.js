@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.85';
+const APP_VERSION = '2026.86';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -49,7 +49,7 @@ function requireManager(actionLabel) {
 // ── Mật khẩu Admin — đặt sẵn 1 mật khẩu cụ thể (không phải mặc định kiểu ai cũng đoán được),
 // đổi lại trong Cài đặt bất cứ lúc nào nếu muốn.
 const ADMIN_PW_KEY = 'ot_manager_admin_pw_v1';
-function getAdminPassword() { return localStorage.getItem(ADMIN_PW_KEY) || 'OTHcm@2026'; }
+function getAdminPassword() { return localStorage.getItem(ADMIN_PW_KEY) || null; } // (cũ) không còn mật khẩu mặc định trong mã nguồn; đăng nhập thật dùng Firebase
 function setAdminPassword(newPw) { localStorage.setItem(ADMIN_PW_KEY, newPw); }
 function changeAdminPassword() {
   if (!requireAdmin('đổi mật khẩu Admin')) return;
@@ -131,7 +131,7 @@ function backToRoleMain() {
 function attemptAdminLogin() {
   const p = document.getElementById('adminPwInput').value;
   const errEl = document.getElementById('adminPwError');
-  if (p === getAdminPassword()) {
+  if (p && getAdminPassword() && p === getAdminPassword()) {
     enterAsRole('admin');
   } else {
     if (errEl) { errEl.style.display = 'block'; }
@@ -3745,7 +3745,7 @@ async function exportPdfReport(kind) {
 // ============================================================
 const SYNC_URL_KEY = 'ot_manager_sync_url';
 const AUTOSYNC_KEY = 'ot_manager_autosync';
-const DEFAULT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbzASugHHerHmMB1iDEmDbeGqv_V7rwZrvRbVeTfrBpl8JnwX6JEoeXMSIe_02dSA_Y/exec';
+const DEFAULT_SYNC_URL = ''; // (cũ) đã gỡ địa chỉ Google Apps Script khỏi mã nguồn công khai — dữ liệu nay chỉ lưu ở Firebase
 let SYNC_URL = '';
 let AUTO_SYNC = false;
 let lastSyncedAt = null;
@@ -4047,7 +4047,7 @@ async function syncSave() {
     // Gói chung OT (DB) + Đi trễ (LATE_DB) + Off Day + Dự án/Action Plan (PROJECTS_DB) vào 1
     // payload để Sheet luôn đồng bộ đủ cả — trước đây PROJECTS_DB chỉ lưu localStorage nên
     // máy khác mở lên không thấy được tên PM/lý do/duyệt do người khác đã điền.
-    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: WLB_XLS };
+    const payload = { ot: DB, late: LATE_DB, off: OFF_DB, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, wlbXls: WLB_XLS };
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -4146,7 +4146,7 @@ async function syncSaveActionPlanOnly() {
     const res = await fetch(SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, users: USERS_DB, adminPw: getAdminPassword(), wlbXls: sheetWlbXls } })
+      body: JSON.stringify({ action: 'save', data: { ot: sheetOt, late: sheetLate, off: sheetOff, projects: mergedProjects, projMoves: mergedMoves, notifs: mergedNotifs, hcPlan: mergedHcPlan, projectsTombstone: mergedTombstones, wlbXls: sheetWlbXls } })
     });
     let json;
     try { json = await res.json(); }

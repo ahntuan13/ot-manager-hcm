@@ -95,6 +95,7 @@
       if (prof.active === false) { loginMsg = 'Tài khoản đã bị khoá. Liên hệ Admin.'; await auth.signOut(); return; }
       const role = prof.role === 'admin' ? 'admin' : prof.role === 'sub' ? 'sub' : 'user';
       window.CLOUD_USER = { uid: user.uid, email: user.email, name: prof.name || user.email, role };
+      try { const last = localStorage.getItem('ot_last_uid'); if (last && last !== user.uid) wipeLocalData(); localStorage.setItem('ot_last_uid', user.uid); } catch (e) {}
       document.body.classList.add('cloud-on');
       enterAsRole(role, window.CLOUD_USER.name);
       watchMe(ref, role);
@@ -118,7 +119,18 @@
     if (unsubMe) { unsubMe(); unsubMe = null; }
     ready = false; cloudEmpty = false; Object.keys(remote).forEach(k => delete remote[k]);
   }
-  window.cloudLogout = async function () { try { await auth.signOut(); } catch (e) {} location.reload(); };
+  // Khoá dữ liệu lưu cục bộ trong trình duyệt (bản nháp của dữ liệu Cloud) — xoá khi đăng xuất để máy dùng chung không lộ dữ liệu.
+  const LOCAL_DATA_KEYS = ['ot_manager_v3', 'ot_manager_late_db_v1', 'ot_manager_off_db_v1', 'ot_manager_projects_db_v1', 'ot_manager_hc_plan_v1', 'ot_manager_proj_moves_v1',
+    'ot_manager_projects_tombstone_v1', 'ot_manager_dirty_plan_keys_v1', 'ot_manager_wlb_xls_v1', 'ot_manager_notifs_v1', 'ot_manager_pu_v2'];
+  function wipeLocalData() { LOCAL_DATA_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }
+  let saveFailed = false;
+  window.cloudLogout = async function () {
+    try { if (ready && window.CLOUD_USER) { clearTimeout(pushTimer); clearTimeout(saveTimer); await flush(false); } } catch (e) {}
+    if (saveFailed && !confirm('Còn thay đổi CHƯA lưu được lên Cloud. Đăng xuất bây giờ sẽ làm mất các thay đổi đó.\n\nVẫn đăng xuất?')) return;
+    try { await auth.signOut(); } catch (e) {}
+    wipeLocalData(); try { localStorage.removeItem('ot_last_uid'); } catch (e) {}
+    location.reload();
+  };
 
   // ── Dữ liệu cục bộ ⇄ các doc ───────────────────────────────────
   function desired() {
@@ -169,8 +181,20 @@
     return !deepEq(merged, theirs);
   }
 
+  // ── Chống chèn mã (XSS): dữ liệu người dùng nhập / nạp từ Excel được "vô hiệu" các ký tự nguy hiểm (< > " ` \ và &#...) trước khi lưu & khi tải về.
+  const SAN_MAP = { '<': '＜', '>': '＞', '"': '″', '`': 'ˋ', '\\': '＼' };
+  const SAN_RE = /[<>"`\\]|&(?=#|apos;)/gi, NEEDS_SAN = /[<>`]|\\["\\]|&(?:#|apos;)/i;
+  const sanStr = x => x.replace(SAN_RE, c => c === '&' ? '＆' : SAN_MAP[c]);
+  function sanDeep(v) {
+    if (typeof v === 'string') return sanStr(v);
+    if (Array.isArray(v)) return v.map(sanDeep);
+    if (v && typeof v === 'object') { const o = {}; Object.keys(v).forEach(k => { o[sanStr(k)] = sanDeep(v[k]); }); return o; }
+    return v;
+  }
+  window.sanitizeForDisplay = sanDeep;
   function applyDoc(id, data) {
     let obj; try { obj = JSON.parse(data.j); } catch (e) { return; }
+    if (NEEDS_SAN.test(data.j)) obj = sanDeep(obj);
     remote[id] = { j: data.j, ver: data.ver || 0 };
     if (id.startsWith('ot_')) DB[id.slice(3)] = obj;
     else if (id.startsWith('late_')) LATE_DB[id.slice(5)] = obj;
@@ -222,7 +246,7 @@
         snap.docs.forEach(d => applyDoc(d.id, d.data()));
         ensureShape();
       } finally { applying = false; }
-      ready = true; cloudEmpty = false; removeBanner();
+      ready = true; cloudEmpty = false; removeBanner(); setTimeout(backupReminder, 2500);
       persistLocal(); rerender(); setStatus('ok', 'Đã đồng bộ · ' + hhmm());
       return;
     }
@@ -291,25 +315,43 @@
         again = false;
         const d = desired(), ops = [];
         Object.keys(d).forEach(id => {
-          const j = JSON.stringify(d[id]);
+          let j = JSON.stringify(d[id]);
+          if (NEEDS_SAN.test(j)) { d[id] = sanDeep(d[id]); j = JSON.stringify(d[id]); }
           if (!remote[id] || remote[id].j !== j) ops.push({ id, j, force: isForce(id) });
         });
         Object.keys(remote).forEach(id => { if (!(id in d) && canDelete(id)) ops.push({ id, del: true, force: isForce(id) }); });
         if (ops.length) await commit(ops);
       } while (again);
-      setStatus('ok', 'Đã lưu · ' + hhmm());
+      saveFailed = false; setStatus('ok', 'Đã lưu · ' + hhmm());
       if (typeof apUnsynced !== 'undefined') apUnsynced = false;
       if (typeof DIRTY_PLAN_KEYS !== 'undefined') { DIRTY_PLAN_KEYS.clear(); try { saveDirtyPlanKeys(); } catch (e) {} }
       if (manual) toast('✅ Đã lưu — mọi người thấy ngay.');
     } catch (e) {
-      console.error(e); setStatus('err', 'Lỗi lưu — sẽ thử lại');
+      console.error(e); saveFailed = true; setStatus('err', 'Lỗi lưu — sẽ thử lại');
       toast('⚠️ Chưa lưu được: ' + (e && e.message || e));
       clearTimeout(pushTimer); pushTimer = setTimeout(() => flush(false), 15000);
     } finally { flushing = false; }
   }
   const payload = (id, j) => ({ j, ver: ((remote[id] && remote[id].ver) || 0) + 1, by: window.CLOUD_USER.uid, byName: window.CLOUD_USER.name, at: Date.now() });
 
+  // Lưu bản CŨ của dữ liệu trước khi bị ghi đè/xoá (vào collection 'log', chỉ Admin đọc) để khôi phục khi có sự cố.
+  const lastSnapAt = {}, SNAP_EVERY = 6 * 3600 * 1000, SNAP_MAX = 700000;
+  function snapshotOld(ops) {
+    try {
+      const now = Date.now(), list = ops.filter(o => !o.id.startsWith('nt_') && remote[o.id] && remote[o.id].j && remote[o.id].j.length <= SNAP_MAX && (o.del || now - (lastSnapAt[o.id] || 0) > SNAP_EVERY));
+      if (!list.length) return;
+      const batch = db.batch();
+      list.slice(0, 100).forEach(o => {
+        lastSnapAt[o.id] = now;
+        const ref = db.collection('log').doc();   // 'meta' nhẹ (có ts, hiện ở danh sách) + 'nội dung' nặng ở doc riêng (chỉ đọc khi khôi phục)
+        batch.set(ref, { kind: 'snap', ts: now, docId: o.id, oldVer: remote[o.id].ver || 0, del: !!o.del, size: remote[o.id].j.length, by: window.CLOUD_USER.name, uid: window.CLOUD_USER.uid });
+        batch.set(db.collection('log').doc(ref.id + '~j'), { kind: 'snapdata', j: remote[o.id].j, uid: window.CLOUD_USER.uid });
+      });
+      batch.commit().catch(() => {});
+    } catch (e) {}
+  }
   async function commit(ops) {
+    snapshotOld(ops);
     const forced = ops.filter(o => o.force), checked = ops.filter(o => !o.force);
     // 1) Ghi thẳng theo lô (OT/Đi trễ/Off/WLB/thông báo)
     let i = 0;
@@ -414,7 +456,36 @@
     a.download = `OT-backup-${tag || 'full'}-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
-  window.cloudBackup = function () { if (!isAdmin()) return; downloadBackup('full'); toast('Đã tải bản sao lưu JSON.'); };
+  window.cloudBackup = function () { if (!isAdmin()) return; downloadBackup('full'); try { localStorage.setItem('ot_last_backup', String(Date.now())); } catch (e) {} toast('Đã tải bản sao lưu JSON.'); renderCloudAdmin(); };
+  const lastBackup = () => { try { return +localStorage.getItem('ot_last_backup') || 0; } catch (e) { return 0; } };
+  const BACKUP_EVERY_DAYS = 7;
+  function backupReminder() {
+    if (!isAdmin()) return;
+    const lb = lastBackup(), days = lb ? Math.floor((Date.now() - lb) / 864e5) : null;
+    if (lb && days < BACKUP_EVERY_DAYS) return;
+    if ($('backupBanner')) return;
+    const b = document.createElement('div'); b.id = 'backupBanner';
+    b.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9000;max-width:340px;background:#fff8e1;border:1px solid #e0b100;color:#5a4500;border-radius:12px;padding:12px 14px;font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,.15)';
+    b.innerHTML = `<b>Nhắc sao lưu dữ liệu</b><div style="margin:4px 0 8px">${lb ? 'Đã ' + days + ' ngày chưa sao lưu.' : 'Chưa có bản sao lưu nào trên máy này.'} Nên tải bản sao lưu mỗi tuần.</div><button class="btn btn-primary" style="padding:5px 10px;font-size:12px" id="bkNow">⬇️ Tải ngay</button> <button class="btn" style="padding:5px 10px;font-size:12px" id="bkLater">Để sau</button>`;
+    document.body.appendChild(b);
+    $('bkNow').onclick = () => { window.cloudBackup(); b.remove(); };
+    $('bkLater').onclick = () => b.remove();
+  }
+  window.cloudRestoreSnap = async function (snapId) {
+    if (!isAdmin()) return;
+    try {
+      const sn = await db.collection('log').doc(snapId).get(); if (!sn.exists) { toast('Không thấy bản lưu.'); return; }
+      const d = sn.data(), jd = await db.collection('log').doc(snapId + '~j').get(); if (!jd.exists) { toast('Không thấy nội dung bản lưu.'); return; }
+      d.j = jd.data().j;
+      if (!confirm(`Khôi phục "${d.docId}" về bản lúc ${new Date(d.ts).toLocaleString('vi-VN')}?\nDữ liệu hiện tại của mục này sẽ bị thay bằng bản cũ (bản hiện tại vẫn được lưu lại để quay về nếu cần).`)) return;
+      const cur = remote[d.docId]; if (cur) snapshotOld([{ id: d.docId }]);
+      const pl = { j: d.j, ver: ((cur && cur.ver) || 0) + 1, by: window.CLOUD_USER.uid, byName: window.CLOUD_USER.name, at: Date.now() };
+      await db.collection('data').doc(d.docId).set(pl);
+      remote[d.docId] = { j: d.j, ver: pl.ver };
+      applying = true; try { applyDoc(d.docId, pl); ensureShape(); } finally { applying = false; }
+      persistLocal(); rerender(); toast('✅ Đã khôi phục.'); renderCloudAdmin();
+    } catch (e) { toast('⚠️ Không khôi phục được: ' + (e.message || e)); }
+  };
 
   // ── Setting (Admin): tài khoản, nhập/sao lưu, lịch sử ───────────
   const ROLE_LABEL = { admin: 'Admin', sub: 'Quản lý (Sub-admin)', user: 'User' };
@@ -422,11 +493,12 @@
     const box = $('cloudAdminArea'); if (!box) return;
     if (!isAdmin()) { box.innerHTML = ''; return; }
     box.innerHTML = '<div class="card cloud-card"><div class="card-title">👥 Tài khoản &amp; Cloud</div><div style="font-size:12px;color:var(--text2)">Đang tải…</div></div>';
-    let users = [], pend = [], logs = [];
+    let users = [], pend = [], logs = [], snaps = [];
     try {
       users = (await db.collection('users').get()).docs.map(d => ({ id: d.id, ...d.data() }));
       pend = (await db.collection('pending').get()).docs.map(d => ({ id: d.id, ...d.data() }));
       logs = (await db.collection('log').orderBy('at', 'desc').limit(40).get()).docs.map(d => d.data());
+      try { snaps = (await db.collection('log').orderBy('ts', 'desc').limit(30).get()).docs.map(d => ({ id: d.id, ...d.data() })); } catch (e) {}
     } catch (e) { box.innerHTML = `<div class="card cloud-card"><div style="color:var(--red);font-size:12.5px">Không tải được danh sách: ${esc(e.message)}</div></div>`; return; }
     users.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const me = window.CLOUD_USER.uid;
@@ -435,14 +507,14 @@
     <div class="card cloud-card ac-top ac-blue">
       <div class="card-title">👥 Tài khoản người dùng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Users</i></div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Mỗi người đăng nhập bằng email + mật khẩu riêng. Nhiều người dùng cùng lúc; mọi thay đổi tự lưu và hiện ngay cho người khác.</div>
-      ${pend.length ? `<div style="background:var(--accent-bg);border-radius:8px;padding:10px 12px;margin-bottom:10px"><b style="font-size:12.5px">Đang chờ duyệt (${pend.length})</b>${pend.map(p => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><span style="flex:1;min-width:160px">${esc(p.email)}</span><select id="pd_${p.id}"><option value="user">User</option><option value="sub">Quản lý (Sub-admin)</option></select><button class="btn btn-primary" style="padding:3px 10px;font-size:11px" onclick="cloudApprove('${p.id}','${esc(p.email)}')">Cấp quyền</button><button class="btn" style="padding:3px 10px;font-size:11px" onclick="cloudRejectPending('${p.id}')">Từ chối</button></div>`).join('')}</div>` : ''}
+      ${pend.length ? `<div style="background:var(--accent-bg);border-radius:8px;padding:10px 12px;margin-bottom:10px"><b style="font-size:12.5px">Đang chờ duyệt (${pend.length})</b>${pend.map(p => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><span style="flex:1;min-width:160px">${esc(p.email)}</span><select id="pd_${esc(p.id)}"><option value="user">User</option><option value="sub">Quản lý (Sub-admin)</option></select><button class="btn btn-primary" style="padding:3px 10px;font-size:11px" data-email="${esc(p.email)}" onclick="cloudApprove('${p.id}',this.dataset.email)">Cấp quyền</button><button class="btn" style="padding:3px 10px;font-size:11px" onclick="cloudRejectPending('${p.id}')">Từ chối</button></div>`).join('')}</div>` : ''}
       <div style="overflow:auto"><table><thead><tr><th>Tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${users.map(u => `<tr><td>${esc(u.name || '')}</td><td>${esc(u.email || '')}</td><td>${roleSel(u.id, u.role, u.id === me)}</td>
         <td>${u.active === false ? '<span style="color:var(--red)">Đã khoá</span>' : '<span style="color:var(--green)">Hoạt động</span>'}</td>
         <td style="white-space:nowrap"><button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudRename('${u.id}')">Đổi tên</button>
-        <button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudResetPw('${esc(u.email)}')">Gửi mail đặt lại MK</button>
+        <button class="btn" style="padding:3px 8px;font-size:11px" data-email="${esc(u.email)}" onclick="cloudResetPw(this.dataset.email)">Gửi mail đặt lại MK</button>
         ${u.id === me ? '' : `<button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudToggleActive('${u.id}',${u.active === false})">${u.active === false ? 'Mở khoá' : 'Khoá'}</button>
-        <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" onclick="cloudRemoveUser('${u.id}','${esc(u.email)}')">Gỡ quyền</button>`}</td></tr>`).join('')}
+        <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" data-email="${esc(u.email)}" onclick="cloudRemoveUser('${u.id}',this.dataset.email)">Gỡ quyền</button>`}</td></tr>`).join('')}
       </tbody></table></div>
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border2)"><b style="font-size:12.5px">+ Tạo tài khoản mới</b>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
@@ -456,6 +528,14 @@
     <div class="card cloud-card">
       <div class="card-title">💾 Sao lưu &amp; nhập dữ liệu<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Backup &amp; Import</i></div>
       <div class="action-row" style="gap:10px"><button class="btn btn-primary" onclick="cloudBackup()">⬇️ Tải bản sao lưu (JSON)</button><button class="btn" onclick="cloudImportSheet()">📥 Nhập lại từ Google Sheet cũ (ghi đè)</button></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:8px">Lần sao lưu gần nhất (trên máy này): <b>${lastBackup() ? new Date(lastBackup()).toLocaleString('vi-VN') : 'chưa có'}</b> — hệ thống nhắc Admin sao lưu mỗi ${BACKUP_EVERY_DAYS} ngày.</div>
+    </div>
+    <div class="card cloud-card">
+      <div class="card-title">♻️ Khôi phục dữ liệu cũ<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Restore previous versions</i></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Trước khi dữ liệu bị ghi đè hoặc xoá, hệ thống lưu lại bản cũ (tối đa 1 bản mỗi mục / 6 giờ / người). Chọn một bản để đưa dữ liệu về lúc đó.</div>
+      <div style="max-height:260px;overflow:auto"><table><thead><tr><th>Bản lúc</th><th>Mục dữ liệu</th><th>Người thao tác</th><th></th></tr></thead><tbody>
+      ${snaps.map(x => `<tr><td>${new Date(x.ts).toLocaleString('vi-VN')}</td><td style="font-size:11px">${esc(decodeURIComponent(String(x.docId).replace(/%(?![0-9A-F]{2})/g, '%25')))}${x.del ? ' <i>(bị xoá)</i>' : ''}</td><td>${esc(x.by)}</td><td><button class="btn" style="padding:3px 8px;font-size:11px" data-snap="${esc(x.id)}" onclick="cloudRestoreSnap(this.dataset.snap)">Khôi phục</button></td></tr>`).join('') || '<tr><td colspan="4" style="color:var(--text3)">Chưa có bản lưu nào.</td></tr>'}
+      </tbody></table></div>
     </div>
     <div class="card cloud-card">
       <div class="card-title">🕘 Lịch sử chỉnh sửa gần đây<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Edit history</i></div>
