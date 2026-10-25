@@ -27,7 +27,7 @@
   let ready = false, cloudEmpty = false, applying = false, flushing = false, again = false;
   let pushTimer = null, saveTimer = null, loginMsg = '';
   const remote = {}; // id -> { j, ver }  (bản đã biết trên server)
-  const GATE_PREFIXES_DELETE = ['ot_', 'late_', 'off_', 'proj_', 'mv_', 'hc_', 'pu_'];
+  const GATE_PREFIXES_DELETE = ['ot_', 'late_', 'off_', 'proj_', 'mv_', 'hc_', 'pu_', 'prog_'];
   const FORCE_PREFIXES = ['ot_', 'late_', 'off_', 'wlb', 'nt_', 'pu_']; // ghi đè thẳng (không kiểm tra phiên bản)
 
   // ── Trạng thái hiển thị ở sidebar ───────────────────────────────
@@ -121,7 +121,7 @@
   }
   // Khoá dữ liệu lưu cục bộ trong trình duyệt (bản nháp của dữ liệu Cloud) — xoá khi đăng xuất để máy dùng chung không lộ dữ liệu.
   const LOCAL_DATA_KEYS = ['ot_manager_v3', 'ot_manager_late_db_v1', 'ot_manager_off_db_v1', 'ot_manager_projects_db_v1', 'ot_manager_hc_plan_v1', 'ot_manager_proj_moves_v1',
-    'ot_manager_projects_tombstone_v1', 'ot_manager_dirty_plan_keys_v1', 'ot_manager_wlb_xls_v1', 'ot_manager_notifs_v1', 'ot_manager_pu_v2'];
+    'ot_manager_projects_tombstone_v1', 'ot_manager_dirty_plan_keys_v1', 'ot_manager_wlb_xls_v1', 'ot_manager_notifs_v1', 'ot_manager_pu_v2', 'ot_manager_prog_v1'];
   function wipeLocalData() { LOCAL_DATA_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }
   let saveFailed = false;
   window.cloudLogout = async function () {
@@ -144,6 +144,7 @@
     Object.keys(PROJ_MOVES || {}).forEach(c => { d['mv_' + enc(c)] = PROJ_MOVES[c]; });
     Object.keys(HC_PLAN || {}).forEach(k => { d['hc_' + enc(k)] = HC_PLAN[k]; });
     Object.keys(typeof PU_DB !== 'undefined' ? PU_DB : {}).forEach(k => { d['pu_' + enc(k)] = PU_DB[k]; });
+    Object.keys(typeof PROG_DB !== 'undefined' ? PROG_DB : {}).forEach(k => { d['prog_' + enc(k)] = PROG_DB[k]; });
     (NOTIFS_DB || []).forEach(n => { if (n && n.id) d['nt_' + enc(n.id)] = n; });
     return d;
   }
@@ -178,7 +179,7 @@
     }
     return mine;
   }
-  const MERGEABLE = /^(proj_|mv_|hc_|pu_)/;
+  const MERGEABLE = /^(proj_|mv_|hc_|pu_|prog_)/;
   // Áp bản của server nhưng GIỮ phần mình đang sửa dở (chưa kịp đẩy lên). Trả về true nếu còn phần của mình cần đẩy.
   function applyMerged(id, data, mineObj) {
     let base = null; try { base = remote[id] ? JSON.parse(remote[id].j) : null; } catch (e) {}
@@ -212,6 +213,7 @@
     else if (id.startsWith('mv_')) PROJ_MOVES[dec(id.slice(3))] = obj;
     else if (id.startsWith('hc_')) HC_PLAN[dec(id.slice(3))] = obj;
     else if (id.startsWith('pu_')) PU_DB[dec(id.slice(3))] = obj;
+    else if (id.startsWith('prog_')) PROG_DB[dec(id.slice(5))] = obj;
     else if (id.startsWith('nt_')) NOTIFS_DB = mergeNotifs(NOTIFS_DB, [obj]);
   }
   function removeDoc(id) {
@@ -225,10 +227,11 @@
     else if (id.startsWith('mv_')) delete PROJ_MOVES[dec(id.slice(3))];
     else if (id.startsWith('hc_')) delete HC_PLAN[dec(id.slice(3))];
     else if (id.startsWith('pu_')) delete PU_DB[dec(id.slice(3))];
+    else if (id.startsWith('prog_')) delete PROG_DB[dec(id.slice(5))];
   }
   function resetLocal(hasWlb) {
     DB = {}; LATE_DB = {}; OFF_DB = {};
-    PROJECTS_DB = { 'HCM-EC': {}, 'S-ED': {} }; PROJ_MOVES = {}; HC_PLAN = {}; PU_DB = {};
+    PROJECTS_DB = { 'HCM-EC': {}, 'S-ED': {} }; PROJ_MOVES = {}; HC_PLAN = {}; PU_DB = {}; PROG_DB = {};
     if (!hasWlb) WLB_XLS = { year: new Date().getFullYear(), employees: {} };
     Object.keys(remote).forEach(k => delete remote[k]);
   }
@@ -282,7 +285,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       applying = true;
-      try { saveDB(false); saveLateDB(); saveOffDB(); saveWlbXls(); saveProjectsDB(); saveProjMoves(); saveHcPlan(); savePuDb(); saveNotifs(); } catch (e) {} finally { applying = false; }
+      try { saveDB(false); saveLateDB(); saveOffDB(); saveWlbXls(); saveProjectsDB(); saveProjMoves(); saveHcPlan(); savePuDb(); if (typeof saveProgDb === 'function') saveProgDb(); saveNotifs(); } catch (e) {} finally { applying = false; }
     }, 600);
   }
   let rerenderTimer = null;
@@ -299,6 +302,7 @@
         if (id === 'action') renderActionPlan();
         else if (id === 'manpower' && typeof renderManpower === 'function') renderManpower();
         else if (id === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
+        else if (id === 'progress' && typeof renderProgress === 'function') renderProgress();
         else if (['dept', 'compare', 'late', 'wlb'].includes(id)) goSub(id);
         else if (id === 'settings') { renderSavedMonths(); }
       } catch (e) { console.warn(e); }
@@ -449,7 +453,7 @@
       if (p.ot) {
         DB = p.ot; LATE_DB = p.late || {}; OFF_DB = p.off || {};
         if (p.wlbXls && Object.keys(p.wlbXls.employees || {}).length) WLB_XLS = p.wlbXls;
-        PROJECTS_DB = p.projects || { 'HCM-EC': {}, 'S-ED': {} }; PROJ_MOVES = p.projMoves || {}; HC_PLAN = p.hcPlan || {}; PU_DB = p.pu || {};
+        PROJECTS_DB = p.projects || { 'HCM-EC': {}, 'S-ED': {} }; PROJ_MOVES = p.projMoves || {}; HC_PLAN = p.hcPlan || {}; PU_DB = p.pu || {}; PROG_DB = p.prog || {};
         if (p.notifs) NOTIFS_DB = mergeNotifs(NOTIFS_DB, p.notifs);
       } else { DB = p; }
       try { migrateOldFormat(); migrateOffDBKeys(); migrateUnassignedMoves(); } catch (e) {}
@@ -459,7 +463,7 @@
     } catch (e) { toast('⚠️ Không nhập được: ' + (e.message || e)); }
   };
   function downloadBackup(tag) {
-    const o = { exportedAt: new Date().toISOString(), ot: DB, late: LATE_DB, off: OFF_DB, wlbXls: WLB_XLS, projects: PROJECTS_DB, projMoves: PROJ_MOVES, hcPlan: HC_PLAN, pu: PU_DB, notifs: NOTIFS_DB };
+    const o = { exportedAt: new Date().toISOString(), ot: DB, late: LATE_DB, off: OFF_DB, wlbXls: WLB_XLS, projects: PROJECTS_DB, projMoves: PROJ_MOVES, hcPlan: HC_PLAN, pu: PU_DB, prog: typeof PROG_DB !== 'undefined' ? PROG_DB : {}, notifs: NOTIFS_DB };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(o)], { type: 'application/json' }));
     a.download = `OT-backup-${tag || 'full'}-${new Date().toISOString().slice(0, 10)}.json`;

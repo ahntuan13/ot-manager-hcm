@@ -133,6 +133,11 @@
       <span class="nt-label"><span class="nt-vi">PU Delivery</span><span class="nt-en">PU Delivery</span></span>
     </button>
 
+    <button class="nt" data-page="progress" onclick="goPage('progress')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h8"/><path d="M7 12h10"/><path d="M11 19h10"/><path d="M3 3v18"/></svg>
+      <span class="nt-label"><span class="nt-vi">Tiến độ dự án</span><span class="nt-en">Project Schedule</span></span>
+    </button>
+
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
     <button class="nt" data-page="report" onclick="goPage('report')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -977,6 +982,11 @@
   </div>
 </div>
 
+<div class="pg" id="pg-progress">
+  <div class="page-title"><span>Tiến độ dự án <span style="font-size:12px;color:var(--text2);font-weight:400">/ Project Schedule — lập tiến độ theo form MS Project, liên kết PU Delivery</span></span></div>
+  <div id="progBody"></div>
+</div>
+
 <div class="pg" id="pg-manpower">
   <div class="page-title"><span>Manpower <span style="font-size:12px;color:var(--text2);font-weight:400">/ Nhân sự theo dự án — HCM-EC</span></span></div>
   <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -1396,6 +1406,18 @@
       </ul>
     </div>
   </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title" style="margin-bottom:10px">📅 Tiến độ dự án — lập tiến độ theo form MS Project <span style="font-size:11px;font-weight:400;color:var(--text2)">— hiện chỉ Admin thấy</span></div>
+    <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
+      <li><b>Trang chính:</b> mỗi dự án một thẻ — <i>còn bao nhiêu ngày</i> đến ngày hoàn thành (xanh: bình thường, vàng: còn ≤ 14 ngày, đỏ: quá hạn), % hoàn thành thực tế so với % thời gian đã trôi (vạch đỏ), các giai đoạn, việc đang làm, số việc trễ hạn và tình hình hàng PU. Bấm thẻ (hoặc chọn dự án ở ô chọn) để mở biểu đồ Gantt của dự án đó.</li>
+      <li><b>Lập tiến độ:</b> "＋ Lập tiến độ cho dự án" → chọn dự án (lấy từ Action Plan/PU Delivery), ngày khởi công, rồi dùng <b>Mẫu DnB</b> (84 công việc đọc từ file MS Project: Pre-construction → Construction Phase 1–3 → Office Go-live → Defect → Nghiệm thu PCCC → Close-out) hoặc tiến độ trống.</li>
+      <li><b>Cột như MS Project:</b> ID · Task Name (nhiều cấp, bấm ▾ để thu gọn) · Duration · Start · Finish · % · Predecessors. Predecessors ghi như MS Project: <code>5</code> (FS), <code>6SS+3d</code> (cùng bắt đầu, trễ 3 ngày), <code>7FF-2d</code>, <code>8SF</code>.</li>
+      <li><b>Tự tính ngày:</b> việc có Predecessor thì Start/Finish tự tính (FS: bắt đầu ngày sau khi việc trước xong). Sửa Duration hoặc dời một việc → mọi việc sau dời theo. Dòng nhóm lấy từ ngày sớm nhất đến ngày muộn nhất của việc con; % nhóm tính theo Duration của việc con. Lịch 7 ngày/tuần như file mẫu.</li>
+      <li><b>Thanh Gantt:</b> xanh = công việc (phần tối = % xong), <span style="color:#2E7D32;font-weight:700">xanh lá</span> = đã xong, <span style="color:#C0392B;font-weight:700">đỏ</span> = đã quá hạn mà chưa xong, đen = nhóm, ◆ = mốc, vạch đỏ đứng = hôm nay, mũi tên = quan hệ Predecessor.</li>
+      <li><b>Liên kết PU Delivery:</b> cuối Gantt có nhóm "PU Delivery — hàng về site": mỗi hạng mục là một ◆ tại ngày dự kiến giao (hoặc ngày giao thực tế), màu theo trạng thái; vạch đỏ nối từ ngày "As contract" đến ngày dự kiến mới khi bị trễ. Công việc đánh dấu "🚚 Liên kết PU" (mẫu có sẵn 2 mốc long-lead) tự nhận ngày hàng cuối cùng về site; hàng PU trễ → mốc dời → các việc sau nó dời theo.</li>
+      <li><b>Nhập/Xuất:</b> ⬇ Excel (bảng tiến độ + PU), ⬇ MS Project XML (mở bằng MS Project), ⬆ Nhập XML/Excel (từ MS Project: <i>File → Save As → XML</i>). File .mpp không đọc trực tiếp trên web được — hãy lưu sang XML.</li>
+    </ul>
+  </div>
 </div>
 
 </div><!-- /appBody -->
@@ -1410,6 +1432,7 @@
 <script src="js/app.js"></script>
 <script src="js/manpower.js"></script>
 <script src="js/pudelivery.js"></script>
+<script src="js/progress.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

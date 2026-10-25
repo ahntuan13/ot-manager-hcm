@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.87';
+const APP_VERSION = '2026.88';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1043,6 +1043,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'action') renderActionPlan();
   if (p === 'manpower' && typeof renderManpower === 'function') renderManpower();
   if (p === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
+  if (p === 'progress' && typeof renderProgress === 'function') renderProgress();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
