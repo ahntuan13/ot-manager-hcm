@@ -31,8 +31,13 @@ service cloud.firestore {
     // Dữ liệu ứng dụng: mỗi doc là 1 phần nhỏ (tháng OT, 1 dự án, 1 nhân viên...).
     match /data/{id} {
       allow read: if active();
-      // File WLB chỉ Admin được ghi; còn lại mọi tài khoản đang hoạt động đều ghi được.
-      allow create, update, delete: if active() && (id != 'wlb' || isAdmin());
+      // Admin: ghi tất cả. Quản lý: ghi tất cả trừ file WLB.
+      // Người dùng: chỉ ghi Action Plan (proj_), PU Delivery (pu_), Tiến độ dự án (prog_) và thông báo (nt_).
+      allow create, update, delete: if active() && (
+        isAdmin()
+        || (isMgr() && id != 'wlb')
+        || id.matches('(proj_|pu_|prog_|nt_).*')
+      );
     }
 
     // Lịch sử chỉnh sửa: ai cũng ghi được (khi đang hoạt động), chỉ Admin xem.

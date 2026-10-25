@@ -148,6 +148,14 @@
     return d;
   }
   const isForce = id => FORCE_PREFIXES.some(p => id === p || id.startsWith(p));
+  // Quyền ghi theo vai trò (khớp firestore.rules): Quản lý/Admin ghi mọi thứ (wlb chỉ Admin); Người dùng chỉ ghi Action Plan (proj_), PU (pu_), Tiến độ dự án (prog_), thông báo (nt_).
+  const USER_WRITE = /^(proj_|pu_|prog_|nt_)/;
+  const canWrite = id => {
+    const r = window.CLOUD_USER && window.CLOUD_USER.role;
+    if (r === 'admin') return true;
+    if (id === 'wlb') return false;
+    return r === 'sub' || USER_WRITE.test(id);
+  };
   const canDelete = id => GATE_PREFIXES_DELETE.some(p => id.startsWith(p)) && (!/^(ot_|late_|off_)/.test(id) || isAdmin());
 
   // ── Ghép 3 chiều: base (bản đồng bộ gần nhất) · mine (bản đang sửa trên máy) · theirs (bản mới từ server).
@@ -320,7 +328,8 @@
           if (!remote[id] || remote[id].j !== j) ops.push({ id, j, force: isForce(id) });
         });
         Object.keys(remote).forEach(id => { if (!(id in d) && canDelete(id)) ops.push({ id, del: true, force: isForce(id) }); });
-        if (ops.length) await commit(ops);
+        const okOps = ops.filter(o => canWrite(o.id));   // không gửi thao tác vượt quyền (một thao tác bị từ chối sẽ làm hỏng cả lô)
+        if (okOps.length) await commit(okOps);
       } while (again);
       saveFailed = false; setStatus('ok', 'Đã lưu · ' + hhmm());
       if (typeof apUnsynced !== 'undefined') apUnsynced = false;
