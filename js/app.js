@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.98';
+const APP_VERSION = '2026.99';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -373,7 +373,7 @@ const barValueLabelsPlugin = {
         const val = dataset.data[i];
         if (val === null || val === undefined) return;
         if (val === 0 && !showZero) return;
-        const label = `${val}${suffix}`;
+        const label = suffix === 'h' ? fmtH(val) : `${val}${suffix}`;
 
         // For stacked bars: draw label INSIDE the segment (white text) if segment is tall/wide enough
         if (isStacked && !isHorizontal) {
@@ -464,7 +464,7 @@ Chart.register(deptGroupBandsPlugin);
 
 // Plugin vẽ NHÃN KÉO RA (leader line) cho biểu đồ tròn/doughnut — mỗi lát cắt có 1 đường thẳng
 // kéo từ mép lát cắt ra ngoài, kèm nhãn "Tên: giá trị" — dễ đọc hơn nhét chữ vào trong lát nhỏ.
-// Bật qua options.plugins.pieLeaderLabels = { formatLabel: (label, val, pct) => `${label}: ${val}h` }.
+// Bật qua options.plugins.pieLeaderLabels = { formatLabel: (label, val, pct) => `${label}: ${fmtH(val)}` }.
 const pieLeaderLabelsPlugin = {
   id: 'pieLeaderLabels',
   afterDraw(chart) {
@@ -535,7 +535,7 @@ const stackedTotalLabelPlugin = {
       const total = opts.totals[i];
       if (total === undefined || total === null) return;
       ctx.fillStyle = textColor;
-      ctx.fillText(`${total}h`, bar.x, bar.y - 5);
+      ctx.fillText(`${fmtH(total)}`, bar.x, bar.y - 5);
     });
     ctx.restore();
   }
@@ -877,12 +877,23 @@ function sumDaysInRange(daysObj, start, end) {
   }
   return sum;
 }
-// Total OT hours for an employee record — theo công thức mới: MAX(0, tổng giờ đã làm − tổng giờ tiêu chuẩn).
-function totalOf(e) {
-  const worked = Object.values(e.days || {}).reduce((a,b)=>a+b,0);
-  const quota = Object.values(e.quotaDays || {}).reduce((a,b)=>a+b,0);
-  return Math.max(0, worked - quota);
+// OT của 1 NGÀY = MAX(0, giờ làm − giờ chuẩn của ngày đó), chính xác tới phút. KHÔNG bù trừ giữa các ngày
+// (đi trễ/về sớm/nghỉ không làm giảm OT của ngày khác). Mọi tổng hợp (tuần/kỳ/biểu đồ/chi tiết NV) đều dùng hàm này.
+function dayOtH(worked, quota) { return Math.round(Math.max(0, (worked || 0) - (quota || 0)) * 60) / 60; }
+// Tổng OT của NV trong khoảng ngày [startIso, endIso] (bỏ trống = cả kỳ) — cộng OT từng ngày.
+function otSumRange(e, startIso, endIso) {
+  const d = e.days || {}, q = e.quotaDays || {}; let mins = 0;
+  for (const k in d) { if (startIso && k < startIso) continue; if (endIso && k > endIso) continue; mins += Math.round(dayOtH(d[k], q[k]) * 60); }
+  return mins / 60;
 }
+// Hiển thị giờ dạng "2h15p" (đúng tới phút). 0 → "0h"; tròn giờ → "2h".
+function fmtH(x) {
+  const n = Number(x); if (!isFinite(n)) return String(x);
+  const t = Math.round(Math.abs(n) * 60), h = Math.floor(t / 60), m = t % 60;
+  return (n < 0 && t ? '-' : '') + (m ? (h ? h + 'h' + String(m).padStart(2, '0') + 'p' : m + 'p') : h + 'h');
+}
+// Total OT for an employee record — cộng OT từng ngày (không bù trừ giữa các ngày).
+function totalOf(e) { return otSumRange(e); }
 // Tổng phần OT phát sinh SAU 22:00 (Night OT) — chỉ để theo dõi riêng, đã nằm sẵn trong totalOf() ở trên.
 function nightTotalOf(e) {
   return Object.values(e.nightDays || {}).reduce((a,b)=>a+b,0);
@@ -1161,15 +1172,11 @@ function getTotals(mk, deptFilter = '__all__', pIdx = null) {
       const days = e.days || {};
       const quotaDays = e.quotaDays || {};
       const nightDays = e.nightDays || {};
-      const workedUpTo = sumIso(days, startIso, endIso);
-      const quotaUpTo = sumIso(quotaDays, startIso, endIso);
-      const tot = Math.round(Math.max(0, workedUpTo - quotaUpTo)*10)/10;
-      const nightTot = Math.round(sumIso(nightDays, startIso, endIso)*10)/10;
+      const tot = otSumRange(e, startIso, endIso);
+      const nightTot = Math.round(sumIso(nightDays, startIso, endIso)*60)/60;
       // OT / Night PHÁT SINH RIÊNG trong đúng cửa sổ tuần (không trừ luỹ kế).
-      const workedWeek = sumIso(days, weekStartIso, weekEndIso);
-      const quotaWeek = sumIso(quotaDays, weekStartIso, weekEndIso);
-      const deltaTotal = Math.round(Math.max(0, workedWeek - quotaWeek)*10)/10;
-      const deltaNightTotal = Math.round(sumIso(nightDays, weekStartIso, weekEndIso)*10)/10;
+      const deltaTotal = otSumRange(e, weekStartIso, weekEndIso);
+      const deltaNightTotal = Math.round(sumIso(nightDays, weekStartIso, weekEndIso)*60)/60;
       return { name: n, dept: e.dept, staffCode: e.staffCode || '', total: tot, nightTotal: nightTot, deltaTotal, deltaNightTotal };
     });
 }
@@ -1257,17 +1264,17 @@ function computeDayWorked(inVal, outVal, iso) {
   const outM = timeToMinutes(outVal);
   if (inM === null || outM === null) return { worked: 0, night: 0 }; // thiếu 1 trong 2 → 0 giờ làm, đúng theo file gốc
 
-  const inR = Math.max(roundToHalfHourVBA(inM), WORKDAY_START); // khoá tối thiểu 8:00 — đến sớm hơn không tính
-  const outR = roundToHalfHourVBA(outM);
+  const inR = Math.max(inM, WORKDAY_START);   // khoá tối thiểu 8:00 — đến sớm hơn không tính. KHÔNG làm tròn: tính đúng từng phút
+  const outR = outM;
 
-  // Giờ đã làm = (giờ ra, tối đa 12h) − giờ vào  +  giờ ra − (13h hoặc giờ vào, cái nào muộn hơn)
+  // Giờ đã làm (phút) = [vào → 12:00] + [13:00 (hoặc giờ vào nếu muộn hơn) → ra]  (nghỉ trưa 12:00–13:00)
   const morning = Math.max(0, Math.min(12 * 60, outR) - inR);
   const afternoon = Math.max(0, outR - Math.max(13 * 60, inR));
-  const worked = (morning + afternoon) / 60;
+  const worked = Math.round((morning + afternoon) / 60 * 10000) / 10000;   // giờ (thập phân), chính xác tới phút
 
   // OT sau 22h — chỉ để theo dõi riêng (không trừ/cộng vào công thức chính ở trên).
   const NIGHT_START = 22 * 60;
-  const night = outR > NIGHT_START ? (outR - NIGHT_START) / 60 : 0;
+  const night = outR > NIGHT_START ? Math.round((outR - NIGHT_START) / 60 * 10000) / 10000 : 0;
 
   return { worked, night };
 }
@@ -1360,7 +1367,7 @@ function tryParseCheckinOutFormat(ws) {
       if (!DB[mk].employees[name].quotaDays) DB[mk].employees[name].quotaDays = {};
       // days[iso] giờ lưu GIỜ ĐÃ LÀM trong ngày (không phải OT trực tiếp nữa) — OT = tổng giờ làm − tổng quota cả kỳ.
       if (wResult.worked > 0) {
-        DB[mk].employees[name].days[dc.iso] = Math.round(wResult.worked*100)/100;
+        DB[mk].employees[name].days[dc.iso] = wResult.worked;
         cnt++;
       } else {
         delete DB[mk].employees[name].days[dc.iso];
@@ -1368,7 +1375,7 @@ function tryParseCheckinOutFormat(ws) {
       // Quota luôn được ghi nhận (kể cả ngày không đi làm) — đúng theo công thức gốc.
       DB[mk].employees[name].quotaDays[dc.iso] = quota;
       if (wResult.night > 0) {
-        DB[mk].employees[name].nightDays[dc.iso] = Math.round(wResult.night*100)/100;
+        DB[mk].employees[name].nightDays[dc.iso] = wResult.night;
       } else {
         delete DB[mk].employees[name].nightDays[dc.iso];
       }
@@ -1586,9 +1593,9 @@ function tryParseLongFormat(ws) {
     const e = m.employees[key];
     if (staffCode) e.staffCode = staffCode;
     e.nightDays = e.nightDays || {}; e.quotaDays = e.quotaDays || {};
-    if (w.worked > 0) { e.days[iso] = Math.round(w.worked * 100) / 100; cnt++; } else delete e.days[iso];
+    if (w.worked > 0) { e.days[iso] = w.worked; cnt++; } else delete e.days[iso];
     e.quotaDays[iso] = quota;
-    if (w.night > 0) e.nightDays[iso] = Math.round(w.night * 100) / 100; else delete e.nightDays[iso];
+    if (w.night > 0) e.nightDays[iso] = w.night; else delete e.nightDays[iso];
     e.dept = dept;
     if (!m.depts[dept]) m.depts[dept] = [];
     if (!m.depts[dept].includes(key)) m.depts[dept].push(key);
@@ -1851,7 +1858,7 @@ function renderDash() {
   const tots = totals.map(t => t.total);
   const over = totals.filter(t => t.total > 70).length;
   const nightNV = totals.filter(t => (t.nightTotal||0) > 0).length;
-  const nightTotalSum = Math.round(totals.reduce((s,t)=>s+(t.nightTotal||0),0)*10)/10;
+  const nightTotalSum = Math.round(totals.reduce((s,t)=>s+(t.nightTotal||0),0)*60)/60;
   const avg  = tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)/tots.length) : 0;
   const mx   = tots.length ? Math.max(...tots) : 0;
   const mxNV = nvLabel(totals.find(t => t.total === mx)) || '—';
@@ -1867,14 +1874,14 @@ function renderDash() {
   document.getElementById('dashMetrics').innerHTML = isWeek ? `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên${EN('Employees')}</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi${EN('tracked')}</div></div>
     <div class="mc ${overKpiWeek>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">NV OT trong tuần &gt; 45h${EN('NV OT &gt; 45h this week')}</div><div class="mv">${overKpiWeek}</div><div class="ms">vượt giới hạn KPI${EN('over KPI limit')}</div></div>
-    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần${EN('Night OT this week')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h${EN(`NV · total ${nightTotalSum}h`)}</div></div>
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần${EN('Avg OT this week')}</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
-    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần${EN('Highest OT this week')}</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>` : `
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h trong tuần${EN('Night OT this week')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${fmtH(nightTotalSum)}${EN(`NV · total ${fmtH(nightTotalSum)}`)}</div></div>
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT TB trong tuần${EN('Avg OT this week')}</div><div class="mv">${fmtH(avg)}</div><div class="ms">${periodSubLabel}</div></div>
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">NV có OT cao nhất trong tuần${EN('Highest OT this week')}</div><div class="mv">${fmtH(mx)}</div><div class="ms">${mxNV}</div></div>` : `
     <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div class="ml">Nhân viên${EN('Employees')}</div><div class="mv">${totals.length}</div><div class="ms">đang theo dõi${EN('tracked')}</div></div>
     <div class="mc red"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="ml">Vượt 70h${EN('Over 70h')}</div><div class="mv">${over}</div><div class="ms">cần xem lại${EN('needs review')}</div></div>
-    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h${EN('Night OT')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${nightTotalSum}h${EN(`NV · total ${nightTotalSum}h`)}</div></div>
-    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình${EN('Average OT')}</div><div class="mv">${avg}h</div><div class="ms">${periodSubLabel}</div></div>
-    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất${EN('Highest')}</div><div class="mv">${mx}h</div><div class="ms">${mxNV}</div></div>`;
+    <div class="mc ${nightNV>0?'amber':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div><div class="ml">OT sau 22h${EN('Night OT')}</div><div class="mv">${nightNV}</div><div class="ms">NV · tổng ${fmtH(nightTotalSum)}${EN(`NV · total ${fmtH(nightTotalSum)}`)}</div></div>
+    <div class="mc"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="ml">OT trung bình${EN('Average OT')}</div><div class="mv">${fmtH(avg)}</div><div class="ms">${periodSubLabel}</div></div>
+    <div class="mc ${stOf(mx)==='d'?'red':''}"><div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="ml">Cao nhất${EN('Highest')}</div><div class="mv">${fmtH(mx)}</div><div class="ms">${mxNV}</div></div>`;
 
   // Greeting header
   const now = new Date();
@@ -1955,7 +1962,7 @@ function renderDashLimitPctChart(totals, periodLabel) {
         tooltip:{ callbacks:{ label:c=>{
           const h = c.raw;
           const note = h>70 ? ' — vượt mức Chi trả (70h)' : ' — vượt mức KPI (45h)';
-          return ` ${h}h${note}`;
+          return ` ${fmtH(h)}${note}`;
         } } } },
       scales:{
         x:{ grid:{display:false}, ticks:{font:{size:10.5}, maxRotation:60, minRotation:60, autoSkip:false} },
@@ -2000,7 +2007,7 @@ function renderDashOverBarChart(totals) {
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
       plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: 'h' },
-        tooltip: { callbacks: { label: c => ` ${c.raw}h · ${over[c.dataIndex]?.name}` } } },
+        tooltip: { callbacks: { label: c => ` ${fmtH(c.raw)} · ${over[c.dataIndex]?.name}` } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
              suggestedMax: Math.ceil(Math.max(...over.map(t=>t.total)) * 1.15) },
@@ -2035,7 +2042,7 @@ function renderDashProjectBarChart(totals) {
     if (!projTotals[key]) projTotals[key] = 0;
     projTotals[key] += t.total;
   });
-  const entries = Object.entries(projTotals).map(([k,v]) => ({ key:k, total: Math.round(v*10)/10 }))
+  const entries = Object.entries(projTotals).map(([k,v]) => ({ key:k, total: Math.round(v*60)/60 }))
     .filter(e => e.total > 0).sort((a,b) => b.total - a.total);
 
   if (!entries.length) {
@@ -2055,7 +2062,7 @@ function renderDashProjectBarChart(totals) {
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
       plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: 'h' },
-        tooltip: { callbacks: { label: c => ` ${c.raw}h` } } },
+        tooltip: { callbacks: { label: c => ` ${fmtH(c.raw)}` } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
              suggestedMax: Math.ceil(Math.max(...entries.map(e=>e.total)) * 1.15) },
@@ -2083,7 +2090,7 @@ function getNightOtFrequency(mk, deptFilter, pIdx) {
       for (const iso in nightDays) {
         if (iso >= startIso && iso <= endIso) { count++; hours += nightDays[iso]; }
       }
-      return { name: n, dept: e.dept, staffCode: e.staffCode || '', count, hours: Math.round(hours*10)/10 };
+      return { name: n, dept: e.dept, staffCode: e.staffCode || '', count, hours: Math.round(hours*60)/60 };
     })
     .filter(x => x.count > 0);
 }
@@ -2108,7 +2115,7 @@ function renderNightOtFreqChart(deptFilter, periodIdx) {
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:36, top:4, bottom:4, left:4 } },
       plugins:{ legend:{display:false}, barValueLabels:{on:true,suffix:' ngày'},
-        tooltip:{ callbacks:{ label:c => ` ${rows[c.dataIndex].count} ngày · tổng ${rows[c.dataIndex].hours}h` } } },
+        tooltip:{ callbacks:{ label:c => ` ${rows[c.dataIndex].count} ngày · tổng ${fmtH(rows[c.dataIndex].hours)}` } } },
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:11}, stepSize:1},
             suggestedMax: Math.ceil(Math.max(...rows.map(r=>r.count)) * 1.25) },
@@ -2133,7 +2140,7 @@ function renderDashWarnList(totals) {
     return `<tr>
       <td style="font-family:var(--font-mono);font-size:11px;color:${c};font-weight:700">${t.staffCode||'—'}</td>
       <td style="font-weight:600;color:${c}">${t.name}${isWeek ? '' : ' <span class="late-dot" title="Vượt 70h OT"></span>'}</td>
-      <td style="font-family:var(--font-mono);font-weight:700;color:${c}">${t.total}h</td>
+      <td style="font-family:var(--font-mono);font-weight:700;color:${c}">${fmtH(t.total)}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="3" style="text-align:center;padding:14px;color:var(--text2)">${isWeek ? 'Chưa có dữ liệu OT trong tuần này' : 'Không có NV vượt mức trong kỳ này 🎉'}</td></tr>`;
 }
@@ -2156,7 +2163,7 @@ function renderDashDeptLineChart() {
   // để tránh 2 nơi tính ra 2 kết quả khác nhau cho cùng 1 tuần.
   const weeklyByDept = allDepts.map(d => periods.map((p,pi) => {
     const tots = getTotals(activeMK, d, pi).map(t=>t.deltaTotal);
-    return Math.round((tots.length ? tots.reduce((a,b)=>a+b,0) : 0)*10)/10;
+    return Math.round((tots.length ? tots.reduce((a,b)=>a+b,0) : 0)*60)/60;
   }));
 
   CH['cDashDeptLine'] = new Chart(document.getElementById('cDashDeptLine'), {
@@ -2175,7 +2182,7 @@ function renderDashDeptLineChart() {
       plugins:{ legend:{display:false},
         tooltip:{ callbacks:{
           title: items => periods[items[0].dataIndex]?.label || '',
-          label:c=>` ${c.dataset.label}: ${c.raw}h (tuần này)`
+          label:c=>` ${c.dataset.label}: ${fmtH(c.raw)} (tuần này)`
         } } },
       // Tách 2 trục: HCM-EC (số rất lớn, hàng nghìn h) dùng trục trái riêng; các phòng ban còn lại
       // (số nhỏ hơn nhiều — hàng chục/trăm h) dùng trục phải riêng với thang PHÓNG TO theo đúng dữ
@@ -2244,7 +2251,7 @@ function renderBarChart(totals, showAll = false) {
       layout:{ padding:{ top:24 } },
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{label:c=>` ${c.raw}h · ${displayList[c.dataIndex]?.name}`}},
+        tooltip:{callbacks:{label:c=>` ${fmtH(c.raw)} · ${displayList[c.dataIndex]?.name}`}},
         barValueLabels:{on:true, suffix:'h' }
       },
       scales:{
@@ -2289,8 +2296,8 @@ function renderMonthDonut(totals) {
     const g = groups.find(g => g.key === stOf(t.total));
     g.hours += t.total; g.count += 1;
   });
-  groups.forEach(g => g.hours = Math.round(g.hours*10)/10);
-  const grandTotal = Math.round(groups.reduce((a,g)=>a+g.hours,0)*10)/10;
+  groups.forEach(g => g.hours = Math.round(g.hours*60)/60);
+  const grandTotal = Math.round(groups.reduce((a,g)=>a+g.hours,0)*60)/60;
 
   CH['cBar'] = new Chart(chartEl, {
     type:'doughnut',
@@ -2313,7 +2320,7 @@ function renderMonthDonut(totals) {
         tooltip:{ callbacks:{ label:c => {
           const g = groups[c.dataIndex];
           const pct = grandTotal ? Math.round(g.hours/grandTotal*1000)/10 : 0;
-          return ` ${g.label}: ${g.hours}h (${pct}%) · ${g.count} NV`;
+          return ` ${g.label}: ${fmtH(g.hours)} (${pct}%) · ${g.count} NV`;
         }}},
         donutCenterText:{ total: grandTotal },
         donutSliceLabels:{ groups, grandTotal }
@@ -2335,7 +2342,7 @@ const donutCenterTextPlugin = {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = '700 22px "JetBrains Mono", ui-monospace, monospace';
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#1A1D29';
-    ctx.fillText(`${opts.total}h`, cx, cy-9);
+    ctx.fillText(`${fmtH(opts.total)}`, cx, cy-9);
     ctx.font = '600 10.5px "Inter", sans-serif';
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280';
     ctx.fillText('TỔNG OT CÔNG TY', cx, cy+13);
@@ -2367,7 +2374,7 @@ const donutSliceLabelsPlugin = {
       ctx.textBaseline = 'middle';
       ctx.font = '700 12px "JetBrains Mono", ui-monospace, monospace';
       ctx.fillStyle = g.color;
-      ctx.fillText(`${g.hours}h`, x, y-7);
+      ctx.fillText(`${fmtH(g.hours)}`, x, y-7);
       ctx.font = '500 10px "Inter", sans-serif';
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim() || '#6B7280';
       ctx.fillText(`${pct}% · ${g.count} NV`, x, y+7);
@@ -2400,7 +2407,7 @@ function renderTrendPeriodChart(deptFilter, periodIdx) {
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:44, top:10, bottom:4, left:4 } },
       plugins:{legend:{display:false}, barValueLabels:{on:true,suffix:'h'},
-        tooltip:{callbacks:{label:c=>` ${c.raw}h`}}},
+        tooltip:{callbacks:{label:c=>` ${fmtH(c.raw)}`}}},
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:11}},
             suggestedMax: Math.ceil(maxVal * 1.22) },
@@ -2444,7 +2451,7 @@ function renderDashTable(totals, periods) {
     // nếu quota đã "hấp thụ" hết OT tháng đó, phần giờ khuya thô cũng không còn được công nhận riêng).
     // Cách này đảm bảo LUÔN ĐÚNG: OT bình thường + OT sau 22h = Tổng OT luỹ kế (không còn lệch số).
     const night = Math.min(rawNight, t.total);
-    const normal = Math.round((t.total - night)*10)/10;
+    const normal = Math.round((t.total - night)*60)/60;
     const projInfo = t.staffCode ? findEmployeeProject(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : null;
     const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
     const mvTxt = t.staffCode ? midCycleMoveText(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : '';
@@ -2461,9 +2468,9 @@ function renderDashTable(totals, periods) {
         <span style="cursor:pointer;text-decoration:underline dotted" title="Bấm để xem chi tiết OT theo ngày" onclick="toggleEmpOtDetailRow('${rowKey}','${detailMk}','${nameEsc}')">${t.name}</span>${over ? ' <span class="late-dot" title="Vượt 70h OT"></span>' : ''}
       </td>
       <td style="color:var(--text2)" title="${deptDisplay}">${deptDisplay}</td>
-      <td style="color:var(--text2)">${normal}h</td>
-      <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?night+'h':'—'}</td>
-      <td style="${rc || 'font-weight:700'}">${t.total}h</td>
+      <td style="color:var(--text2)">${fmtH(normal)}</td>
+      <td style="${night>0?'font-weight:600;color:#6B4FA0':'color:var(--text3)'}">${night>0?fmtH(night):'—'}</td>
+      <td style="${rc || 'font-weight:700'}">${fmtH(t.total)}</td>
       <td><div style="font-size:10px;color:var(--text2)">${pctKpi}%</div>
           <div class="pb"><div class="pf" style="width:${Math.min(100,pctKpi)}%;background:${fcKpi}"></div></div></td>
       <td><div style="font-size:10px;color:var(--text2)">${pctPay}%</div>
@@ -2527,15 +2534,15 @@ function computeEmployeeDailyOt(mk, name) {
   Object.keys(days).sort().forEach(iso => {
     const worked = days[iso] || 0;
     const quota = quotaDays[iso] || 0;
-    const ot = Math.round(Math.max(0, worked - quota) * 10) / 10;
-    if (ot > 0) dailyOt.push({ iso, worked: Math.round(worked*10)/10, quota, ot });
+    const ot = dayOtH(worked, quota);
+    if (ot > 0) dailyOt.push({ iso, worked, quota, ot });
   });
-  const totalOt = Math.round(dailyOt.reduce((s,d)=>s+d.ot,0)*10)/10;
+  const totalOt = Math.round(dailyOt.reduce((s,d)=>s+Math.round(d.ot*60),0))/60;
   const weeklyOt = weekRanges.map(w => {
     if (!w.range) return null;
     const sIso = isoDate(w.range.start), eIso = isoDate(w.range.end);
     const sum = dailyOt.filter(d => d.iso >= sIso && d.iso <= eIso).reduce((s,d)=>s+d.ot,0);
-    return { label: w.label, ot: Math.round(sum*10)/10 };
+    return { label: w.label, ot: Math.round(sum*60)/60 };
   }).filter(w => w && w.ot > 0);
   return { name, staffCode: e.staffCode||'', dept: e.dept||'', dailyOt, totalOt, weeklyOt };
 }
@@ -2556,12 +2563,12 @@ function toggleEmpOtDetailRow(rowKey, mk, name) {
     }
     content.innerHTML = `
       ${emp.weeklyOt.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        ${emp.weeklyOt.map(w => `<span style="font-size:11px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">${w.label}: ${w.ot}h</span>`).join('')}
+        ${emp.weeklyOt.map(w => `<span style="font-size:11px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">${w.label}: ${fmtH(w.ot)}</span>`).join('')}
       </div>` : ''}
       <table style="font-size:12px"><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ làm</th><th>Quota</th><th>OT ngày đó</th></tr></thead>
       <tbody>${emp.dailyOt.map(d => {
         const dow = DOW_VI[new Date(d.iso+'T00:00:00').getDay()];
-        return `<tr><td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${dow}</td><td class="num">${d.worked}h</td><td class="num">${d.quota}h</td><td class="num" style="color:#C0392B;font-weight:700">${d.ot}h</td></tr>`;
+        return `<tr><td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${dow}</td><td class="num">${fmtH(d.worked)}</td><td class="num">${fmtH(d.quota)}</td><td class="num" style="color:#C0392B;font-weight:700">${fmtH(d.ot)}</td></tr>`;
       }).join('')}</tbody></table>`;
   }
 }
@@ -2627,7 +2634,7 @@ function renderDept() {
 
   const deptStats = depts.map((d,i) => {
     const tots = getTotals(mk, d, pIdx).map(t=>t.total);
-    const total = Math.round(tots.reduce((a,b)=>a+b,0)*10)/10;
+    const total = Math.round(tots.reduce((a,b)=>a+b,0)*60)/60;
     const over = tots.filter(t => t > 70).length;
     const ci   = allDepts.indexOf(d);
     return { name:d, nvCount: tots.length, total, over,
@@ -2644,7 +2651,7 @@ function renderDept() {
       <div class="ml" style="display:flex;align-items:center;gap:5px">
         <span style="width:9px;height:9px;border-radius:2px;background:${d.color};flex-shrink:0"></span>${d.name}
       </div>
-      <div class="mv">${d.total}h</div>
+      <div class="mv">${fmtH(d.total)}</div>
       <div class="ms">${d.nvCount} NV${deptTab==='week' ? '' : ` &middot; ${d.over} vượt 70h`}</div>
     </div>`).join('');
 
@@ -2658,7 +2665,7 @@ function renderDept() {
     data:{ labels: deptStats.map(d=>d.name),
            datasets:[{data:deptStats.map(d=>d.total), backgroundColor:deptStats.map(d=>d.color), borderWidth:0, borderRadius:5, label:'Tổng giờ OT'}]},
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:26,right:10,left:6,bottom:6}},
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw}h tổng luỹ kế`}}, barValueLabels:{on:true,suffix:'h'}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${fmtH(c.raw)} tổng luỹ kế`}}, barValueLabels:{on:true,suffix:'h'}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, suggestedMax: Math.ceil(deptAvgMax*1.18)}}}});
 
@@ -2711,7 +2718,7 @@ function renderDept() {
       <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
         <span style="width:10px;height:10px;border-radius:3px;background:${col};flex-shrink:0"></span>${dname}</span>${isEC ? projectExpandButtonHtml(boxIdD) : ''}</td>
       <td>${ds.nvCount}</td>
-      <td style="font-weight:700;font-family:var(--font-mono)">${ds.total}h</td>
+      <td style="font-weight:700;font-family:var(--font-mono)">${fmtH(ds.total)}</td>
       <td>${ds.over>0?`<span class="badge bd">${ds.over}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
       <td><button class="btn" onclick="goPage('employees','${dname}')" style="padding:3px 10px;font-size:11px">Chi tiết →</button></td></tr>`;
     if (isEC) {
@@ -2719,7 +2726,7 @@ function renderDept() {
       const useDeltaD = deptTab === 'week';
       const projRowsD = projectsInGroup('HCM-EC').sort().map(proj => {
         const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaD);
-        return { name: proj, display: s.total+'h', nv: s.nvCount };
+        return { name: proj, display: fmtH(s.total), nv: s.nvCount };
       });
       setTimeout(() => fillProjectBox(boxIdD, projRowsD, 'OT (h)'), 0);
     }
@@ -2858,7 +2865,7 @@ function renderCompareWeek() {
             const week = periods[items[0]?.datasetIndex]?.label || '';
             return dept ? `${dept} · ${week}` : week;
           },
-          label:c=>` ${c.dataset.label}: ${c.raw}h (phát sinh trong tuần)`
+          label:c=>` ${c.dataset.label}: ${fmtH(c.raw)} (phát sinh trong tuần)`
         }}
       },
       scales:{
@@ -2890,7 +2897,7 @@ function renderCompareWeek() {
         barValueLabels:{on:true, suffix:'' },
         tooltip:{callbacks:{
           title: items => periods[items[0].dataIndex]?.label || '',
-          label:c=>` ${c.dataset.label}: ${c.raw}h`
+          label:c=>` ${c.dataset.label}: ${fmtH(c.raw)}`
         }}
       },
       scales:{
@@ -2907,13 +2914,13 @@ function renderCompareWeek() {
     `<tr><th>Tuần<br><i style="font-weight:400;font-size:9.5px;opacity:.7">Week</i></th>${allDepts.map(d=>`<th>${d}${d==='HCM-EC'?projectExpandButtonHtml(weekBoxId):''}</th>`).join('')}<th>Tổng công ty</th></tr>`;
   const periodRowsHtml = periods.map((p,pi) => {
     const deptCells = deptWeekMatrix[pi].map(val =>
-      `<td style="font-family:var(--font-mono)">${val}h</td>`
+      `<td style="font-family:var(--font-mono)">${fmtH(val)}</td>`
     ).join('');
     const co = companyWeekTotal[pi];
     return `<tr>
       <td style="font-weight:600;white-space:nowrap">${p.label}</td>
       ${deptCells}
-      <td style="font-family:var(--font-mono);font-weight:600;color:var(--accent)">${co}h</td>
+      <td style="font-family:var(--font-mono);font-weight:600;color:var(--accent)">${fmtH(co)}</td>
     </tr>`;
   }).join('');
   document.getElementById('periodTBody').innerHTML = periodRowsHtml
@@ -2934,7 +2941,7 @@ function renderCompareWeek() {
       projEntriesW, 'h', '#6B4FA0');
     const projRowsW = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
-      return { name: proj, display: s.total+'h', nv: s.nvCount };
+      return { name: proj, display: fmtH(s.total), nv: s.nvCount };
     });
     setTimeout(() => fillProjectBox(weekBoxId, projRowsW, 'OT (h)'), 0);
   }
@@ -2947,7 +2954,7 @@ function renderCompareMonth() {
   const allDepts = getAllDepts();
   const totalByMk = keys.map(mk => {
     const tots = DB[mk].names.map(n => totalOf(DB[mk].employees[n]));
-    return Math.round(tots.reduce((a,b)=>a+b,0)*10)/10;
+    return Math.round(tots.reduce((a,b)=>a+b,0)*60)/60;
   });
   const monthLabels = keys.map(fmtMK);
 
@@ -2957,7 +2964,7 @@ function renderCompareMonth() {
       { label:'Tổng OT công ty', data:totalByMk, borderColor:'#2D6CDF', backgroundColor:'rgba(45,108,223,0.10)',
         tension:.35, borderWidth:2.5, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtH(c.raw)}`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, min:0,
                  max: Math.max(10, ...totalByMk) * 1.15}}}
@@ -2979,7 +2986,7 @@ function renderCompareMonth() {
   if (lbl) lbl.textContent = fmtMK(focusMk);
   const projData = allDepts.map(d => {
     const nvs = DB[focusMk].depts?.[d] || [];
-    return Math.round(nvs.reduce((s,n)=> s + (DB[focusMk].employees[n] ? totalOf(DB[focusMk].employees[n]) : 0), 0)*10)/10;
+    return Math.round(nvs.reduce((s,n)=> s + (DB[focusMk].employees[n] ? totalOf(DB[focusMk].employees[n]) : 0), 0)*60)/60;
   });
   const projCanvas = document.getElementById('cCmpProjPie');
   const projWrap = projCanvas?.parentElement;
@@ -2996,7 +3003,7 @@ function renderCompareMonth() {
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
       plugins:{ legend:{display:false}, barValueLabels:{on:true, suffix:'h' },
-        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtH(c.raw)}`}} },
       scales:{
         x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
         y:{ grid:{display:false}, ticks:{font:{size:11}} }
@@ -3010,7 +3017,7 @@ function renderCompareMonth() {
     const data = keys.map(mk => {
       const nvs  = DB[mk].depts?.[d] || [];
       const tots = nvs.map(n => (DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0));
-      return tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*10)/10 : 0;
+      return tots.length ? Math.round(tots.reduce((a,b)=>a+b,0)*60)/60 : 0;
     });
     return {
       label: d, data,
@@ -3027,7 +3034,7 @@ function renderCompareMonth() {
     type:'line',
     data:{ labels: monthLabels, datasets: deptDatasets },
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtH(c.raw)}`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               yBig:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, position:'left', min:0,
                  max: Math.max(10, ...bigVals, 0) * 1.15,
@@ -3091,14 +3098,14 @@ function renderCompareMonth() {
         <td>${dept}${expandBtnM}</td><td>${nvs.length}</td>
         <td><span class="badge bd">${tots.filter(t=>t>70).length}</span></td>
         <td><span class="badge bo">${tots.filter(t=>t<=70).length}</span></td>
-        <td style="font-weight:600;color:var(--accent)">${Math.round(tots.reduce((a,b)=>a+b,0)*10)/10}h</td></tr>`);
+        <td style="font-weight:600;color:var(--accent)">${fmtH(Math.round(tots.reduce((a,b)=>a+b,0)*60)/60)}</td></tr>`);
       if (dept === 'HCM-EC') {
         cmpRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxIdM}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`);
         const periodsM = buildPeriods(mk);
         const pIdxM = periodsM.length ? periodsM.length - 1 : null;
         const projRowsM = projectsInGroup('HCM-EC').sort().map(proj => {
           const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxM, false);
-          return { name: proj, display: s.total+'h', nv: s.nvCount };
+          return { name: proj, display: fmtH(s.total), nv: s.nvCount };
         });
         setTimeout(() => fillProjectBox(boxIdM, projRowsM, 'OT (h)'), 0);
       }
@@ -3157,7 +3164,7 @@ function renderCompareQuarter() {
       const tots = DB[mk].names.map(n => totalOf(DB[mk].employees[n]));
       return tots.reduce((a,b)=>a+b,0);
     });
-    return Math.round(monthlyTotals.reduce((a,b)=>a+b,0)*10)/10;
+    return Math.round(monthlyTotals.reduce((a,b)=>a+b,0)*60)/60;
   });
 
   killChart('cQtrTrend');
@@ -3167,7 +3174,7 @@ function renderCompareQuarter() {
       { label:'Tổng OT công ty', data:totalByQ, borderColor:'#2D6CDF', backgroundColor:'rgba(45,108,223,0.10)',
         tension:.35, borderWidth:2.5, pointRadius:5, fill:true }]},
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtH(c.raw)}`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               y:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}}}}});
 
@@ -3186,7 +3193,7 @@ function renderCompareQuarter() {
           const tots = nvs.map(n => (DB[mk].employees[n] ? totalOf(DB[mk].employees[n]) : 0));
           return tots.length ? tots.reduce((a,b)=>a+b,0) : null;
         }).filter(v => v !== null);
-        return monthlyTotals.length ? Math.round(monthlyTotals.reduce((a,b)=>a+b,0)*10)/10 : null;
+        return monthlyTotals.length ? Math.round(monthlyTotals.reduce((a,b)=>a+b,0)*60)/60 : null;
       }),
       borderColor: DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
       tension:.35, borderWidth: isBig?2.5:2, pointRadius: isBig?5:4, spanGaps:true,
@@ -3200,7 +3207,7 @@ function renderCompareQuarter() {
     type:'line',
     data:{ labels: qKeys.map(fmtQK), datasets: qtrDeptDatasets },
     options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}h`}}},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtH(c.raw)}`}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
               yBig:{grid:{color:'rgba(128,128,128,0.12)'},ticks:{font:{size:10}}, position:'left', min:0,
                  max: Math.max(10, ...qtrBigVals, 0) * 1.15,
@@ -3267,7 +3274,7 @@ function renderCompareQuarter() {
         <td>${dept}${expandBtnQ}</td><td>${entries}</td>
         <td><span class="badge bd">${overCount}</span></td>
         <td><span class="badge bo">${normalCount}</span></td>
-        <td style="font-weight:600;color:var(--accent)">${Math.round(totalSum*10)/10}h</td></tr>`);
+        <td style="font-weight:600;color:var(--accent)">${fmtH(Math.round(totalSum*60)/60)}</td></tr>`);
       if (dept === 'HCM-EC') {
         qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxIdQ}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`);
         const projRowsQ = projectsInGroup('HCM-EC').sort().map(proj => {
@@ -3278,7 +3285,7 @@ function renderCompareQuarter() {
             const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ, false);
             sum += s.total; nv = Math.max(nv, s.nvCount);
           });
-          return { name: proj, display: Math.round(sum*10)/10+'h', nv };
+          return { name: proj, display: fmtH(Math.round(sum*60)/60), nv };
         });
         setTimeout(() => fillProjectBox(boxIdQ, projRowsQ, 'OT (h)'), 0);
       }
@@ -3300,7 +3307,7 @@ function renderCompareQuarter() {
         const pIdxQ2 = periodsQ2.length ? periodsQ2.length - 1 : null;
         sum += getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ2, false).total;
       });
-      return { name: proj.replace(/^HCM\s+/i,''), value: Math.round(sum*10)/10 };
+      return { name: proj.replace(/^HCM\s+/i,''), value: Math.round(sum*60)/60 };
     }).filter(e => e.value > 0);
     renderGenericProjectBarChart(CH, killChart, 'cCmpProjQtr',
       document.getElementById('cCmpProjQtr'), document.getElementById('cCmpProjQtrEmpty'),
@@ -3323,7 +3330,7 @@ function renderSavedMonths() {
       const tots = m.names.map(n => totalOf(m.employees[n]));
       const depts = Object.keys(m.depts||{});
       return `<div class="month-list-item">
-        <span><strong>${fmtMK(mk)}</strong> &nbsp;—&nbsp; ${m.names.length} NV &middot; ${depts.length} phòng ban &middot; ${tots.reduce((a,b)=>a+b,0)}h OT tổng</span>
+        <span><strong>${fmtMK(mk)}</strong> &nbsp;—&nbsp; ${m.names.length} NV &middot; ${depts.length} phòng ban &middot; ${fmtH(tots.reduce((a,b)=>a+b,0))} OT tổng</span>
         <button class="btn btn-danger" onclick="deleteMonth('${mk}')" style="padding:4px 10px;font-size:11px">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
           Xóa
@@ -3362,10 +3369,10 @@ function exportAll() {
     const allD = Object.keys(DB[mk].depts||{}).sort();
     allD.forEach(dept => {
       const nvs  = DB[mk].depts[dept];
-      const tots = nvs.map(n=>Math.round(totalOf(DB[mk].employees[n])*10)/10);
+      const tots = nvs.map(n=>Math.round(totalOf(DB[mk].employees[n])*60)/60);
       sumRows.push([fmtMK(mk), dept, nvs.length,
         tots.filter(t=>t>70).length, tots.filter(t=>t<=70).length,
-        Math.round(tots.reduce((a,b)=>a+b,0)*10)/10]);
+        Math.round(tots.reduce((a,b)=>a+b,0)*60)/60]);
     });
   });
   const wsSum = XLSX.utils.aoa_to_sheet(sumRows);
@@ -3417,7 +3424,7 @@ function buildSvgBarChart(entries, opts) {
     return `
       <text x="0" y="${y + rowH/2 + 4}" font-size="11" fill="#444" font-family="Inter,sans-serif">${label}</text>
       <rect x="${labelW}" y="${y}" width="${barW}" height="${rowH}" rx="3" fill="${color}"/>
-      <text x="${labelW + barW + 6}" y="${y + rowH/2 + 4}" font-size="11" fill="#211F1C" font-family="'JetBrains Mono',monospace" font-weight="700">${e.value}${unit}</text>`;
+      <text x="${labelW + barW + 6}" y="${y + rowH/2 + 4}" font-size="11" fill="#211F1C" font-family="'JetBrains Mono',monospace" font-weight="700">${unit === 'h' ? fmtH(e.value) : e.value + unit}</text>`;
   }).join('');
   return `<svg viewBox="0 0 ${chartW} ${totalH}" width="100%" style="max-width:520px;display:block;margin:6px 0 12px">${rows}</svg>`;
 }
@@ -3431,7 +3438,7 @@ function buildReportHtml(mode) {
   const periods = selMk ? buildPeriods(selMk) : [];
   const totals = selMk ? getTotals(selMk, '__all__', periods.length ? periods.length-1 : null).sort((a,b)=>b.total-a.total) : [];
   const overCount = totals.filter(t=>t.total>70).length;
-  const avgOt = totals.length ? Math.round(totals.reduce((a,b)=>a+b.total,0)/totals.length*10)/10 : 0;
+  const avgOt = totals.length ? Math.round(totals.reduce((a,b)=>a+b.total,0)/totals.length*60)/60 : 0;
   const maxOt = totals.length ? totals[0].total : 0;
   const maxNv = totals.length ? totals[0].name : '—';
   const top15 = totals.slice(0, 15);
@@ -3442,7 +3449,7 @@ function buildReportHtml(mode) {
     const dtotals = getTotals(selMk, d).map(t=>t.total);
     return {
       name: d,
-      total: Math.round(dtotals.reduce((a,b)=>a+b,0)*10)/10,
+      total: Math.round(dtotals.reduce((a,b)=>a+b,0)*60)/60,
       nv: dtotals.length,
       over: dtotals.filter(t=>t>70).length
     };
@@ -3455,28 +3462,28 @@ function buildReportHtml(mode) {
   if (prevMk && DB[prevMk]) {
     Object.keys(DB[prevMk].depts||{}).forEach(d => {
       const dtotals = getTotals(prevMk, d).map(t=>t.total);
-      prevMap[d] = Math.round(dtotals.reduce((a,b)=>a+b,0)*10)/10;
+      prevMap[d] = Math.round(dtotals.reduce((a,b)=>a+b,0)*60)/60;
     });
   }
   const cmpRows = deptStats.map(d => {
     const prev = prevMap[d.name];
-    const diff = (prev !== undefined) ? Math.round((d.total - prev)*10)/10 : null;
+    const diff = (prev !== undefined) ? Math.round((d.total - prev)*60)/60 : null;
     return { ...d, prev: prev ?? null, diff };
   });
 
   // ═══ MỤC 4: WLB THEO QUÝ (cho quý selQk) ═══
   const qMksArr = selQk ? monthsInQuarterKey(selQk).filter(mk => DB[mk] || OFF_DB[mk] || Object.keys(WLB_XLS.employees||{}).length) : [];
   const wlbAllDepts = [...new Set(qMksArr.flatMap(mk => Object.keys(DB[mk]?.depts||{})))].sort();
-  const coOT_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOT(mk),0)*10)/10;
-  const coOff_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOff(mk),0)*10)/10;
+  const coOT_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOT(mk),0)*60)/60;
+  const coOff_q = Math.round(qMksArr.reduce((s,mk)=>s+getWlbCompanyOff(mk),0)*60)/60;
   const coWlb_q = wlbRatio(coOff_q, coOT_q);
   const deptWlb_q = wlbAllDepts.map(d => {
-    const ot = Math.round(qMksArr.reduce((s,mk)=>s+getTotalOT(mk,d),0)*10)/10;
-    const off = Math.round(qMksArr.reduce((s,mk)=>s+getOffDays(mk,d),0)*10)/10;
+    const ot = Math.round(qMksArr.reduce((s,mk)=>s+getTotalOT(mk,d),0)*60)/60;
+    const off = Math.round(qMksArr.reduce((s,mk)=>s+getOffDays(mk,d),0)*60)/60;
     return { name: d, ot, off, wlb: wlbRatio(off, ot) };
   });
 
-  const fmtDelta = (d) => d===null ? '—' : (d>0?'+':'')+d+'h';
+  const fmtDelta = (d) => d===null ? '—' : (d>0?'+':d<0?'':'')+fmtH(d);
   const deltaColor = (d) => d===null ? 'var(--text3)' : d>0 ? '#C0392B' : d<0 ? '#7A9468' : 'var(--text2)';
   // Ngưỡng WLB đúng theo quý đang chọn (dùng tháng CUỐI của quý làm mốc — khớp cách tính ở trang
   // WLB chính) — tránh trường hợp báo cáo xuất cho quý CŨ (trước tháng 9/2026) vẫn hiện sai ngưỡng
@@ -3528,13 +3535,13 @@ function buildReportHtml(mode) {
     <div class="kpi-row">
       <div class="kpi"><div class="l">Tổng nhân viên</div><div class="v">${totals.length}</div></div>
       <div class="kpi"><div class="l">NV vượt mức (&gt;70h)</div><div class="v" style="color:#C0392B">${overCount}</div></div>
-      <div class="kpi"><div class="l">OT trung bình</div><div class="v">${avgOt}h</div></div>
-      <div class="kpi"><div class="l">OT cao nhất</div><div class="v">${maxOt}h</div><div style="font-size:10px;color:#888">${maxNv}</div></div>
+      <div class="kpi"><div class="l">OT trung bình</div><div class="v">${fmtH(avgOt)}</div></div>
+      <div class="kpi"><div class="l">OT cao nhất</div><div class="v">${fmtH(maxOt)}</div><div style="font-size:10px;color:#888">${maxNv}</div></div>
     </div>
     <div style="font-size:12px;font-weight:700;color:#444;margin-bottom:2px">Top ${Math.min(10,top15.length)} nhân viên theo tổng OT</div>
     ${buildSvgBarChart(top15.slice(0,10).map(t=>({name:t.name, value:t.total})), {color:'#2D6CDF'})}
     <table><thead><tr><th>#</th><th>Nhân viên</th><th>Phòng ban</th><th>Tổng OT</th><th>Trạng thái</th></tr></thead>
-    <tbody>${top15.map((t,i)=>`<tr><td class="num">${i+1}</td><td>${t.name}</td><td>${t.dept||'—'}</td><td class="num">${t.total}h</td><td>${t.total>70?'<span class="badge bd">Vượt mức</span>':t.total>45?'<span class="badge bd" style="background:#FDF1DE;color:#B8790C">Vượt mức 45</span>':'<span class="badge bo">Bình thường</span>'}</td></tr>`).join('')}</tbody></table>
+    <tbody>${top15.map((t,i)=>`<tr><td class="num">${i+1}</td><td>${t.name}</td><td>${t.dept||'—'}</td><td class="num">${fmtH(t.total)}</td><td>${t.total>70?'<span class="badge bd">Vượt mức</span>':t.total>45?'<span class="badge bd" style="background:#FDF1DE;color:#B8790C">Vượt mức 45</span>':'<span class="badge bo">Bình thường</span>'}</td></tr>`).join('')}</tbody></table>
     <div style="font-size:10.5px;color:#999;margin-top:4px">Hiển thị top ${top15.length}/${totals.length} nhân viên theo tổng OT.</div>
     `}
   </div>
@@ -3545,7 +3552,7 @@ function buildReportHtml(mode) {
     ${!deptStats.length ? '<div class="empty-note">Không có dữ liệu phòng ban cho tháng này.</div>' : `
     ${buildSvgBarChart(deptStats.map(d=>({name:d.name, value:d.total})), {color:'#7A5FD1'})}
     <table><thead><tr><th>Phòng ban</th><th>Số NV</th><th>Tổng OT</th><th>NV vượt mức</th></tr></thead>
-    <tbody>${deptStats.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.nv}</td><td class="num">${d.total}h</td><td>${d.over>0?`<span class="badge bd">${d.over}</span>`:'—'}</td></tr>`).join('')}</tbody></table>
+    <tbody>${deptStats.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.nv}</td><td class="num">${fmtH(d.total)}</td><td>${d.over>0?`<span class="badge bd">${d.over}</span>`:'—'}</td></tr>`).join('')}</tbody></table>
     `}
   </div>
 
@@ -3555,7 +3562,7 @@ function buildReportHtml(mode) {
     ${!cmpRows.length ? '<div class="empty-note">Không có dữ liệu để so sánh.</div>' : `
     ${buildSvgBarChart(cmpRows.map(d=>({name:d.name, value:d.total})), {color:'#E8A33D'})}
     <table><thead><tr><th>Phòng ban</th><th>OT ${selMk?fmtMK(selMk):''}</th><th>OT ${prevMk?fmtMK(prevMk):'tháng trước'}</th><th>Chênh lệch</th></tr></thead>
-    <tbody>${cmpRows.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.total}h</td><td class="num">${d.prev===null?'—':d.prev+'h'}</td><td class="num" style="color:${deltaColor(d.diff)};font-weight:700">${fmtDelta(d.diff)}</td></tr>`).join('')}</tbody></table>
+    <tbody>${cmpRows.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${fmtH(d.total)}</td><td class="num">${d.prev===null?'—':fmtH(d.prev)}</td><td class="num" style="color:${deltaColor(d.diff)};font-weight:700">${fmtDelta(d.diff)}</td></tr>`).join('')}</tbody></table>
     `}
   </div>
 
@@ -3564,14 +3571,14 @@ function buildReportHtml(mode) {
     <div class="section-sub">${selQk ? fmtQK(selQk) : 'Chưa chọn quý'}</div>
     ${!selQk || !qMksArr.length ? '<div class="empty-note">Không có dữ liệu WLB cho quý này.</div>' : `
     <div class="kpi-row">
-      <div class="kpi"><div class="l">Tổng OT (toàn công ty)</div><div class="v">${coOT_q}h</div></div>
-      <div class="kpi"><div class="l">Tổng Off (toàn công ty)</div><div class="v">${coOff_q}h</div></div>
+      <div class="kpi"><div class="l">Tổng OT (toàn công ty)</div><div class="v">${fmtH(coOT_q)}</div></div>
+      <div class="kpi"><div class="l">Tổng Off (toàn công ty)</div><div class="v">${fmtH(coOff_q)}</div></div>
       <div class="kpi"><div class="l">WLB toàn công ty</div><div class="v" style="color:${wlbColorR(coWlb_q)}">${coWlb_q===null?'—':coWlb_q+'%'}</div></div>
     </div>
     <div style="font-size:12px;font-weight:700;color:#444;margin-bottom:2px">WLB theo phòng ban (%)</div>
     ${buildSvgBarChart(deptWlb_q.filter(d=>d.wlb!==null).map(d=>({name:d.name, value:d.wlb})), {color:'#2E7D32', unit:'%'})}
     <table><thead><tr><th>Phòng ban</th><th>Tổng OT</th><th>Tổng Off</th><th>WLB</th><th>Kết quả</th></tr></thead>
-    <tbody>${deptWlb_q.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${d.ot}h</td><td class="num">${d.off}h</td><td class="num" style="color:${wlbColorR(d.wlb)};font-weight:700">${d.wlb===null?'—':d.wlb+'%'}</td><td>${wlbBadgeR(d.wlb)}</td></tr>`).join('')}</tbody></table>
+    <tbody>${deptWlb_q.map(d=>`<tr><td><strong>${d.name}</strong></td><td class="num">${fmtH(d.ot)}</td><td class="num">${fmtH(d.off)}</td><td class="num" style="color:${wlbColorR(d.wlb)};font-weight:700">${d.wlb===null?'—':d.wlb+'%'}</td><td>${wlbBadgeR(d.wlb)}</td></tr>`).join('')}</tbody></table>
     <div style="font-size:10.5px;color:#999;margin-top:6px">Ngưỡng: &gt;${reportWlbThreshold} = Đạt, ≤${reportWlbThreshold} = Không đạt. Các tháng trong quý: ${qMksArr.map(fmtMK).join(', ')}.</div>
     `}
   </div>
@@ -3636,7 +3643,7 @@ function buildCompareReportHtml(mode) {
   const projRows = projs.map(pr => ({ name: pr.replace(/^HCM[\s-]+/i, ''), vals: periods.map(p => reportOtOfProj(p.mks, pr)) }));
   const tbl = rows => `<table><thead><tr><th></th>${periods.map(p => `<th style="text-align:right">${p.label}</th>`).join('')}<th style="text-align:right">Chênh (kỳ cuối vs kỳ trước)</th></tr></thead><tbody>` +
     rows.map(r => { const n = r.vals.length, d = n > 1 ? Math.round((r.vals[n-1] - r.vals[n-2]) * 10) / 10 : null;
-      return `<tr><td><strong>${r.name}</strong></td>${r.vals.map(v => `<td class="num" style="text-align:right">${v}h</td>`).join('')}<td class="num" style="text-align:right;color:${d === null ? '#999' : d > 0 ? '#C0392B' : '#2E7D32'}">${d === null ? '—' : (d > 0 ? '+' : '') + d + 'h'}</td></tr>`; }).join('') + '</tbody></table>';
+      return `<tr><td><strong>${r.name}</strong></td>${r.vals.map(v => `<td class="num" style="text-align:right">${fmtH(v)}</td>`).join('')}<td class="num" style="text-align:right;color:${d === null ? '#999' : d > 0 ? '#C0392B' : '#2E7D32'}">${d === null ? '—' : (d > 0 ? '+' : '') + d + 'h'}</td></tr>`; }).join('') + '</tbody></table>';
   const bar = (rows, color) => buildSvgBarChart(rows.map(r => ({ name: r.name, value: r.vals[r.vals.length - 1] })).sort((a, b) => b.value - a.value), { color });
   const what = scope === 'quarter' ? 'quý' : 'tháng';
   const body = !last ? '<div class="empty-note">Chưa có dữ liệu.</div>' : `
@@ -4761,12 +4768,7 @@ function empRecByCode(mk, code) {
   for (const n of m.names) { const e = m.employees[n]; if (e && e.staffCode === code) return e; }
   return null;
 }
-const cumOtTo = (e, startIso, toIso) => {
-  let w = 0, q = 0;
-  for (const k in (e.days || {})) if (k >= startIso && k <= toIso) w += e.days[k];
-  for (const k in (e.quotaDays || {})) if (k >= startIso && k <= toIso) q += e.quotaDays[k];
-  return Math.max(0, w - q);
-};
+const cumOtTo = (e, startIso, toIso) => otSumRange(e, startIso, toIso);
 // Ngày cuối của kỳ đang xét (hết tuần đang xem / hết kỳ)
 function periodEndIso(mk, periodIdx) {
   const per = buildPeriods(mk);
@@ -5302,7 +5304,7 @@ function renderStaffEditEmployees() {
     const chosen = staffEditMoves[code] || '';
     const pend = pendingMoveOf(code, mk);
     const pendTxt = isIn ? `<span style="color:var(--green);font-size:10.5px;font-weight:600">✔ vào dự án này, tính OT từ ${fmtIsoVN(staffEditDates[code] || incomingMoveDate(code))}</span>` : (pend ? `<span style="color:#B8730F;font-size:10.5px">→ ${labelOfProjKey(pend.key)} từ ${fmtMK(pend.mk)}</span>` : '');
-    const ot = (!isIn && otBy[code] != null) ? `${Math.round(otBy[code]*10)/10}h` : '—';
+    const ot = (!isIn && otBy[code] != null) ? `${fmtH(Math.round(otBy[code]*60)/60)}` : '—';
     const isDel = staffEditDeletes.includes(code);
     const curMk = companyMonthInfo(new Date()).monthKey;
     const sel = viewOnly ? '' : (isDel
@@ -5440,8 +5442,8 @@ function buildActionPlanTable(group, tbodyId, mk) {
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
       <td>${projNameCellHtml(group, proj, mk)}</td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
-        OT thường: <strong>${stats.otNormal}h</strong><br>
-        OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
+        OT thường: <strong>${fmtH(stats.otNormal)}</strong><br>
+        OT đêm: <strong style="color:#C0392B">${fmtH(stats.otNight)}</strong><br>
         Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')" title="Bấm để xem đúng ${stats.nvCount} NV này ở Danh sách NV OT">${stats.nvCount}</strong> người<br>
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
@@ -5486,8 +5488,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
     <td style="text-align:center;color:var(--text2)">1</td>
     <td><div style="font-weight:600">S-ED (tất cả)</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">Tự động lấy từ Danh sách NV OT</div></td>
     <td style="font-size:12px;line-height:1.8;white-space:nowrap">
-      OT thường: <strong>${Math.round((otNormal)*10)/10}h</strong><br>
-      OT đêm: <strong style="color:#C0392B">${Math.round(otNight*10)/10}h</strong><br>
+      OT thường: <strong>${fmtH(Math.round((otNormal)*60)/60)}</strong><br>
+      OT đêm: <strong style="color:#C0392B">${fmtH(Math.round(otNight*60)/60)}</strong><br>
       Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployeesByCodes('${JSON.stringify(codes).replace(/"/g,'&quot;')}','S-ED','${mk}')">${nvCount}</strong> người<br>
       <span style="color:${overKpiSed>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${overKpiSed}</strong> NV</span><br>
       <span style="color:${overPaySed>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${overPaySed}</strong> NV</span>
@@ -5510,8 +5512,8 @@ function buildActionPlanTableSED(tbodyId, mk) {
       <td style="text-align:center;color:var(--text2)">${idx+2}</td>
       <td>${projNameCellHtml(group, proj, mk)}</td>
       <td style="font-size:12px;line-height:1.8;white-space:nowrap">
-        OT thường: <strong>${stats.otNormal}h</strong><br>
-        OT đêm: <strong style="color:#C0392B">${stats.otNight}h</strong><br>
+        OT thường: <strong>${fmtH(stats.otNormal)}</strong><br>
+        OT đêm: <strong style="color:#C0392B">${fmtH(stats.otNight)}</strong><br>
         Số NV OT: <strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${group}','${projEsc}','${mk}')">${stats.nvCount}</strong> người<br>
         <span style="color:${stats.overKpi>0?'#E8A33D':'var(--text3)'}">Vượt KPI (45h): <strong>${stats.overKpi}</strong> NV</span><br>
         <span style="color:${stats.overPay>0?'#C0392B':'var(--text3)'}">Vượt Chi trả (70h): <strong>${stats.overPay}</strong> NV</span>
@@ -5611,7 +5613,7 @@ function getProjectOTStats(group, projectName, mk) {
     if (t.total > 45 && sh.frac > 0) overKpi++;
     if (t.total > 70 && sh.frac > 0) overPay++;
   });
-  return { otNormal: Math.round(otNormal*10)/10, otNight: Math.round(otNight*10)/10, nvCount, overKpi, overPay };
+  return { otNormal: Math.round(otNormal*60)/60, otNight: Math.round(otNight*60)/60, nvCount, overKpi, overPay };
 }
 // ============================================================
 //  PHÂN TÍCH THEO DỰ ÁN (dùng chung cho WLB / So sánh OT / OT phòng ban)
@@ -5631,7 +5633,7 @@ function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
     total += v;
     if (v > 0) nvCount++;
   });
-  return { total: Math.round(total*10)/10, nvCount };
+  return { total: Math.round(total*60)/60, nvCount };
 }
 // WLB (off÷OT) của 1 dự án cho ĐÚNG 1 tháng dương lịch (monthNum 1-12) — lấy từ WLB_XLS
 // (nguồn nhân sự), vì Off Day chỉ có ở đó, không có trong DB chấm công hàng ngày.
@@ -5661,7 +5663,7 @@ function getProjectWlbForMonth(group, proj, monthNum) {
   if (proj === WLB_REMAIN_PROJ) {
     let ot = 0, off = 0; const set = new Set(wlbRemainCodes(monthNum));
     Object.values(WLB_XLS.employees || {}).forEach(e => { if (set.has(e.code)) { ot += (e.ot[monthNum]||0); off += (e.off[monthNum]||0); } });
-    return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+    return { ot: Math.round(ot*60)/60, off: Math.round(off*60)/60, wlb: wlbRatio(off, ot) };
   }
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
@@ -5672,7 +5674,7 @@ function getProjectWlbForMonth(group, proj, monthNum) {
     ot += (e.ot[monthNum] || 0);
     off += (e.off[monthNum] || 0);
   });
-  return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+  return { ot: Math.round(ot*60)/60, off: Math.round(off*60)/60, wlb: wlbRatio(off, ot) };
 }
 // WLB của 1 dự án cho 1 NHÓM THÁNG (quý chồng lấp) — cộng dồn OT + Off trước rồi mới chia,
 // đúng công thức Excel (không phải trung bình cộng của từng tháng riêng lẻ).
@@ -5680,7 +5682,7 @@ function getProjectWlbForMonths(group, proj, monthNums) {
   if (proj === WLB_REMAIN_PROJ) {
     let ot = 0, off = 0;
     monthNums.forEach(m => { const r = getProjectWlbForMonth(group, proj, m); ot += r.ot; off += r.off; });
-    return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+    return { ot: Math.round(ot*60)/60, off: Math.round(off*60)/60, wlb: wlbRatio(off, ot) };
   }
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p) return { ot: 0, off: 0, wlb: null };
@@ -5690,7 +5692,7 @@ function getProjectWlbForMonths(group, proj, monthNums) {
   Object.values(WLB_XLS.employees || {}).forEach(e => {
     monthNums.forEach(m => { if (e.code && empByMonth[m].has(e.code)) { ot += (e.ot[m]||0); off += (e.off[m]||0); } });
   });
-  return { ot: Math.round(ot*10)/10, off: Math.round(off*10)/10, wlb: wlbRatio(off, ot) };
+  return { ot: Math.round(ot*60)/60, off: Math.round(off*60)/60, wlb: wlbRatio(off, ot) };
 }
 
 // ── UI: nút "▾ Xem theo dự án" — bấm vào hiện bảng mini liệt kê từng dự án HCM-EC + giá trị.
@@ -5979,7 +5981,7 @@ function getOffDays(mk, deptFilter) {
   // cách tính cũ (Off Day theo tháng dương lịch nhưng OT theo chu kỳ lương 16→15).
   const monthNum = parseInt(String(mk).split('-')[1], 10);
   if (Object.keys(WLB_XLS.employees).length && wlbXlsMonthsWithData().includes(monthNum)) {
-    return Math.round(wlbXlsTotalOff(monthNum, deptFilter)*10)/10;
+    return Math.round(wlbXlsTotalOff(monthNum, deptFilter)*60)/60;
   }
   const m = OFF_DB[mk]; if (!m) return 0;
   const names = (deptFilter && deptFilter !== '__all__') ? (m.depts[deptFilter] || []) : m.names;
@@ -5993,7 +5995,7 @@ function getTotalOT(mk, deptFilter) {
   // Ưu tiên OT từ file Excel WLB (cùng nguồn với Off Day, cùng tháng dương lịch) nếu đã upload.
   const monthNum = parseInt(String(mk).split('-')[1], 10);
   if (Object.keys(WLB_XLS.employees).length && wlbXlsMonthsWithData().includes(monthNum)) {
-    return Math.round(wlbXlsTotalOT(monthNum, deptFilter)*10)/10;
+    return Math.round(wlbXlsTotalOT(monthNum, deptFilter)*60)/60;
   }
   if (!DB[mk]) return 0;
   // Ưu tiên getTotals (theo period/snapshot) khi có; nếu tháng chưa có snapshot thì
@@ -6075,7 +6077,7 @@ const WLB_LOW_OT_THRESHOLD = 10;
 function wlbDisplayWithWarn(v, ot) {
   const base = wlbDisplay(v);
   if (ot !== undefined && ot !== null && ot < WLB_LOW_OT_THRESHOLD && v !== null) {
-    return `${base} <span title="OT quá thấp (${ot}h) — số liệu không đại diện" style="cursor:help;color:var(--amber)">⚠️</span>`;
+    return `${base} <span title="OT quá thấp (${fmtH(ot)}) — số liệu không đại diện" style="cursor:help;color:var(--amber)">⚠️</span>`;
   }
   return base;
 }
@@ -6131,7 +6133,7 @@ function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
     const q = searchTerm.trim().toLowerCase();
     if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || (r.code||'').toLowerCase().includes(q));
   }
-  rows.forEach(r => { r.wlb = wlbRatio(r.off, r.ot); r.ot = Math.round(r.ot*10)/10; r.off = Math.round(r.off*10)/10; });
+  rows.forEach(r => { r.wlb = wlbRatio(r.off, r.ot); r.ot = Math.round(r.ot*60)/60; r.off = Math.round(r.off*60)/60; });
   rows.sort((a,b) => {
     if (a.wlb===null && b.wlb===null) return a.name.localeCompare(b.name);
     if (a.wlb===null) return 1;
@@ -6148,7 +6150,7 @@ function renderEmployeeWlbTable(theadId, tbodyId, rows, refMk) {
     <td style="font-family:var(--font-mono);font-size:11px;color:var(--text2)">${r.code||'—'}</td>
     <td style="font-weight:500">${r.name}</td>
     <td style="color:var(--text2)">${r.dept||'—'}</td>
-    <td style="font-family:var(--font-mono)">${r.ot}h</td>
+    <td style="font-family:var(--font-mono)">${fmtH(r.ot)}</td>
     <td style="font-family:var(--font-mono)">${r.off}</td>
     <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(r.wlb, refMk)}" title="${r.ot===0 ? 'Không có OT trong kỳ này nên không tính được tỷ lệ WLB (chia cho 0)' : ''}">${r.ot===0?'N/A':wlbDisplay(r.wlb)}</td>
     <td>${r.ot===0 ? '<span style="color:var(--text3);font-size:11.5px" title="NV không phát sinh OT trong kỳ này — không có cơ sở để đánh giá WLB">— (không có OT)</span>' : wlbBadge(r.wlb, refMk)}</td></tr>`).join('') ||
@@ -6269,10 +6271,10 @@ function renderWlb() {
       : '';
     document.getElementById('wlbMetrics').innerHTML = !selMk ? '' : !hasOffForMonth ? `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">—</div><div class="ms">Chưa có Off Day tháng này</div></div>
-      <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
+      <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${fmtH(totalOT)}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc amber"><div class="ml">WLB = off ÷ OT</div><div class="mv">—</div><div class="ms">⚠️ Chưa có Off Day cho ${fmtMK(selMk)}${otherOffHint}</div></div>` : `
       <div class="mc"><div class="ml">Ngày nghỉ (off)</div><div class="mv">${totalOff}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
-      <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${totalOT}h</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
+      <div class="mc"><div class="ml">Tổng OT</div><div class="mv">${fmtH(totalOT)}</div><div class="ms">${fmtMK(selMk)} · toàn công ty</div></div>
       <div class="mc ${ok?'green':'red'}"><div class="ml">WLB = off ÷ OT</div><div class="mv">${wlbDisplayWithWarn(ratio, totalOT)}</div><div class="ms">${ok?`✅ Đạt (>${getWlbThreshold(selMk)}%)`:`⚠️ Không đạt (≤${getWlbThreshold(selMk)}%)`}</div></div>`;
 
     // ── Cột ngang: Tổng OT từng phòng ban — thay doughnut hay bị trắng ──
@@ -6295,7 +6297,7 @@ function renderWlb() {
         options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
           layout:{ padding:{ right:48, top:4, bottom:4, left:4 } },
           plugins:{ legend:{display:false}, barValueLabels:{on:true, suffix:'h' },
-            tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}h`}} },
+            tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtH(c.raw)}`}} },
           scales:{
             x:{ grid:{color:'rgba(128,128,128,0.12)'}, ticks:{font:{size:10}}, min:0, max: projMax * 1.15 },
             y:{ grid:{display:false}, ticks:{font:{size:11}} }
@@ -6431,7 +6433,7 @@ function renderWlb() {
         rows.push(`<tr style="background:var(--bg2)">
           <td style="font-weight:600${mk===selMk?';color:var(--accent)':''}">${fmtMK(mk)}${mk===selMk?' ◀':''}</td>
           <td style="font-weight:600">🏢 Toàn công ty</td>
-          <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
+          <td style="font-family:var(--font-mono);font-weight:700">${fmtH(coOT)}</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mk)}">${wlbDisplayWithWarn(v, coOT)}</td>
           <td>${wlbBadge(v,mk)}</td></tr>`);
@@ -6446,7 +6448,7 @@ function renderWlb() {
         rows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${fmtMK(mk)}</td>
           <td>${d}${expandBtn}</td>
-          <td style="font-family:var(--font-mono)">${ot}h</td>
+          <td style="font-family:var(--font-mono)">${fmtH(ot)}</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mk)}">${wlbDisplayWithWarn(v, ot)}</td>
           <td>${wlbBadge(v,mk)}</td></tr>`);
@@ -6609,7 +6611,7 @@ function renderWlb() {
         qRows.push(`<tr style="background:var(--bg2)">
           <td style="font-weight:600${qk===selQk?';color:var(--accent)':''}">${qLabel[qk]}${qk===selQk?' ◀':''}</td>
           <td style="font-weight:600">🏢 Toàn công ty</td>
-          <td style="font-family:var(--font-mono);font-weight:700">${coOT}h</td>
+          <td style="font-family:var(--font-mono);font-weight:700">${fmtH(coOT)}</td>
           <td style="font-family:var(--font-mono);font-weight:700">${coOff}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mks[mks.length-1])}">${wlbDisplayWithWarn(v, coOT)}</td>
           <td>${wlbBadge(v,mks[mks.length-1])}</td></tr>`);
@@ -6625,7 +6627,7 @@ function renderWlb() {
         qRows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${qLabel[qk]}</td>
           <td>${d}${expandBtn}</td>
-          <td style="font-family:var(--font-mono)">${ot}h</td>
+          <td style="font-family:var(--font-mono)">${fmtH(ot)}</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mks[mks.length-1])}">${wlbDisplayWithWarn(v, ot)}</td>
           <td>${wlbBadge(v,mks[mks.length-1])}</td></tr>`);
