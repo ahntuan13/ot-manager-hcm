@@ -567,10 +567,10 @@
     let u = {}; try { const qs = await db.collection('users').get(); const d = qs.docs.find(x => x.id === uid); u = d ? d.data() : {}; } catch (e) { toast('⚠️ ' + e.message); return; }
     const cur = Array.isArray(u.pages) ? u.pages : null, keys = (typeof PAGE_KEYS !== 'undefined') ? PAGE_KEYS : [];
     const m = document.createElement('div'); m.className = 'cloud-modal'; m.id = 'pagesModal';
-    m.innerHTML = `<div style="max-width:440px"><div style="font-size:16px;font-weight:800;margin-bottom:2px">Mục được xem</div><div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(u.name || '')} · ${esc(u.email || '')}</div>
+    m.innerHTML = `<div class="pg-perm"><div style="font-size:18px;font-weight:800;margin-bottom:2px">Mục được xem</div><div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(u.name || '')} · ${esc(u.email || '')}</div>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px"><input type="radio" name="pgMode" value="def" ${cur ? '' : 'checked'}> Mặc định theo vai trò (${ROLE_LABEL[u.role] || u.role})</label>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:8px"><input type="radio" name="pgMode" value="sel" ${cur ? 'checked' : ''}> Chỉ các mục được chọn:</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:10px">${keys.map(k => `<label style="font-size:12.5px"><input type="checkbox" class="pgCk" value="${k[0]}" ${cur && cur.includes(k[0]) ? 'checked' : ''}> ${k[1]}</label>`).join('')}</div>
+      <div class="pg-perm-grid">${keys.map(k => `<label><input type="checkbox" class="pgCk" value="${k[0]}" ${cur && cur.includes(k[0]) ? 'checked' : ''}> ${k[1]}</label>`).join('')}</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Giới hạn mục hiển thị/vào được. Quyền ghi dữ liệu vẫn theo vai trò. Mục Tuyển dụng cần được chọn ở đây (với vai trò User) mới vào và tạo link ứng viên được. Cài đặt chỉ Admin.</div>
       <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="cloudSavePages('${uid}')">Lưu</button><button class="btn" onclick="document.getElementById('pagesModal').remove()">Huỷ</button></div></div>`;
     document.body.appendChild(m);
