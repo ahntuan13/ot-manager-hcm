@@ -824,3 +824,17 @@ body.prog-solo .main-panel { padding: 0 !important; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page-bg: #0D1015; --bg2: #1B212C; --bg3: #212834; --border: rgba(255,255,255,.08); --border2: rgba(255,255,255,.15); --accent: #4C9AF2; --accent-bg: #1F2E4D; } }
 
 .th-title .th-en{font-size:14px;font-weight:500;color:var(--text2);margin-left:8px;letter-spacing:0}
+
+/* Header: khung thông báo + khung chào/ngày giờ — cùng cao, thẳng hàng */
+.th-right { align-items: stretch !important; gap: 12px; }
+.th-right .icon-row { align-self: center; }
+.th-notif, .th-greet { box-sizing: border-box; height: 58px; display: flex; align-items: center; border-radius: 14px; }
+.th-greet { flex-direction: column; justify-content: center; align-items: flex-start; padding: 0 18px !important; }
+.th-notif { gap: 10px; padding: 0 16px; width: 300px; background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--accent); box-shadow: 0 1px 2px rgba(15,36,66,.04); cursor: pointer; }
+.th-notif[hidden] { display: none; }
+.th-notif:hover { background: var(--bg2); }
+.th-notif .ni { font-size: 18px; line-height: 1; }
+.th-notif .nb { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; text-align: left; }
+.th-notif .nb b { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.th-notif .nb span { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) { .th-notif { width: auto; max-width: 220px; } }

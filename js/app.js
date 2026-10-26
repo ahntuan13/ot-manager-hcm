@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.96';
+const APP_VERSION = '2026.97';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -7347,9 +7347,13 @@ function notifRefresh() {
   const list = notifList(), unread = list.filter(notifIsUnread);
   const badge = document.getElementById('notifBadge');
   if (badge) { badge.hidden = !unread.length; badge.textContent = unread.length > 99 ? '99+' : String(unread.length); }
+  const tn = document.getElementById('thNotif');
+  if (tn) {
+    tn.hidden = !unread.length;
+    if (unread.length) tn.innerHTML = `<span class="ni">🔔</span><div class="nb"><b>Bạn có ${unread.length} thông báo chưa đọc</b><span>${notifEsc(unread.slice(0, 2).map(n => n.title).join(' · '))}</span></div>`;
+  }
   if (notifSeen === null) {
     notifSeen = new Set(list.map(n => n.id + '@' + n.at));
-    if (unread.length) notifPop({ ic: '🔔', title: `Bạn có ${unread.length} thông báo chưa đọc`, body: unread.slice(0, 3).map(n => n.title).join(' · '), sum: true });
   } else {
     const fresh = list.filter(n => !notifSeen.has(n.id + '@' + n.at));
     fresh.forEach(n => notifSeen.add(n.id + '@' + n.at));
