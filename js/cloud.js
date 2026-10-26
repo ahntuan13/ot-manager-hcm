@@ -257,7 +257,7 @@
         snap.docs.forEach(d => applyDoc(d.id, d.data()));
         ensureShape();
       } finally { applying = false; }
-      ready = true; cloudEmpty = false; removeBanner(); setTimeout(backupReminder, 2500);
+      ready = true; cloudEmpty = false; removeBanner(); setTimeout(backupReminder, 2500); setTimeout(() => { try { if (typeof progBoot === 'function') progBoot(); } catch (e) {} }, 300);
       persistLocal(); rerender(); setStatus('ok', 'Đã đồng bộ · ' + hhmm());
       return;
     }

@@ -1409,13 +1409,13 @@
   <div class="card" style="margin-top:14px">
     <div class="card-title" style="margin-bottom:10px">📅 Tiến độ dự án — lập tiến độ theo form MS Project <span style="font-size:11px;font-weight:400;color:var(--text2)">— hiện chỉ Admin thấy</span></div>
     <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
-      <li><b>Trang chính:</b> mỗi dự án một thẻ — <i>còn bao nhiêu ngày</i> đến ngày hoàn thành (xanh: bình thường, vàng: còn ≤ 14 ngày, đỏ: quá hạn), % hoàn thành thực tế so với % thời gian đã trôi (vạch đỏ), các giai đoạn, việc đang làm, số việc trễ hạn và tình hình hàng PU. Bấm thẻ (hoặc chọn dự án ở ô chọn) để mở biểu đồ Gantt của dự án đó.</li>
+      <li><b>Trang chính:</b> mỗi dự án một thẻ như trang quản lý đa dự án: ngày bắt đầu/kết thúc, thời gian, <i>tình trạng</i> (Đúng tiến độ / Rủi ro / Chậm trễ / Quá hạn / Hoàn thành — so % thực tế với % kế hoạch theo thời gian), vòng tròn số ngày còn lại, thanh <i>tiến độ kế hoạch</i> (xanh) và <i>thực tế</i> (cam), các giai đoạn, số việc trễ, hàng PU. Bấm thẻ để mở dự án ở <b>tab trình duyệt mới</b> (rộng, thoáng); gửi link tab đó cho người khác cũng mở thẳng dự án.</li><li><b>7 giao diện trong dự án:</b> Tổng quan (biểu đồ trạng thái, tiến độ theo giai đoạn, việc trễ/sắp tới, hoạt động, PU cần chú ý) · Danh sách (WBS có người thực hiện, ngày KH/TT, khối lượng, trạng thái) · Tiến độ (Gantt) · Bảng (Kanban, kéo thả đổi trạng thái) · Nguồn lực (số việc mỗi người theo tuần, tô đậm khi quá tải) · Lịch biểu (tháng) · Giao hàng PU.</li><li><b>Cập nhật tiến độ:</b> ✎ ở mỗi việc → kéo thanh %, chọn trạng thái (tự động/tạm dừng), ghi chú, người thực hiện, khối lượng (đã làm/dự toán → % tự tính). Ngày bắt đầu/kết thúc thực tế tự ghi khi % &gt; 0 / = 100, và mọi cập nhật được lưu vào lịch sử.</li>
       <li><b>Lập tiến độ:</b> "＋ Lập tiến độ cho dự án" → chọn dự án (lấy từ Action Plan/PU Delivery) và ngày khởi công, rồi thêm từng giai đoạn/công việc (＋), đặt Duration và Predecessors. Có thể nhập sẵn từ MS Project (XML) hoặc Excel.</li>
       <li><b>Cột như MS Project:</b> ID · Task Name (nhiều cấp, bấm ▾ để thu gọn) · Duration · Start · Finish · % · Predecessors. Predecessors ghi như MS Project: <code>5</code> (FS), <code>6SS+3d</code> (cùng bắt đầu, trễ 3 ngày), <code>7FF-2d</code>, <code>8SF</code>.</li>
       <li><b>Tự tính ngày:</b> việc có Predecessor thì Start/Finish tự tính (FS: bắt đầu ngày sau khi việc trước xong). Sửa Duration hoặc dời một việc → mọi việc sau dời theo. Dòng nhóm lấy từ ngày sớm nhất đến ngày muộn nhất của việc con; % nhóm tính theo Duration của việc con. Lịch 7 ngày/tuần như file mẫu.</li>
       <li><b>Thanh Gantt:</b> xanh = công việc (phần tối = % xong), <span style="color:#2E7D32;font-weight:700">xanh lá</span> = đã xong, <span style="color:#C0392B;font-weight:700">đỏ</span> = đã quá hạn mà chưa xong, đen = nhóm, ◆ = mốc, vạch đỏ đứng = hôm nay, mũi tên = quan hệ Predecessor.</li>
       <li><b>Liên kết PU Delivery:</b> cuối Gantt có nhóm "PU Delivery — hàng về site": mỗi hạng mục là một ◆ tại ngày dự kiến giao (hoặc ngày giao thực tế), màu theo trạng thái; vạch đỏ nối từ ngày "As contract" đến ngày dự kiến mới khi bị trễ. Công việc đánh dấu "🚚 Liên kết PU" tự nhận ngày hàng cuối cùng về site; hàng PU trễ → mốc dời → các việc sau nó dời theo.</li>
-      <li><b>Nhập/Xuất:</b> ⬇ Excel (bảng tiến độ + PU), ⬇ MS Project XML (mở bằng MS Project), ⬆ Nhập XML/Excel (từ MS Project: <i>File → Save As → XML</i>). File .mpp không đọc trực tiếp trên web được — hãy lưu sang XML.</li>
+      <li><b>Nhập/Xuất:</b> ⬇ Excel (bảng tiến độ + PU), ⬇ MS Project XML (mở bằng MS Project), ⬆ Nhập XML/Excel + ⬇ File mẫu Excel (từ MS Project: <i>File → Save As → XML</i>). File .mpp không đọc trực tiếp trên web được — hãy lưu sang XML.</li>
     </ul>
   </div>
 </div>
@@ -1433,6 +1433,7 @@
 <script src="js/manpower.js"></script>
 <script src="js/pudelivery.js"></script>
 <script src="js/progress.js"></script>
+<script src="js/progress-views.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

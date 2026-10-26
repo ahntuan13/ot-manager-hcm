@@ -64,19 +64,19 @@ function progCalc(pr) {
   const P0 = pgN(pr.start) || pgToday();
   const end = T.map((t, i) => { let j = i + 1; while (j < n && T[j].lvl > t.lvl) j++; return j; });
   const C = new Array(n), st = new Array(n).fill(0);
-  const puInfo = T.some(t => t.puLink) ? pgPuInfo(pr.name) : null;
+  const puInfo = T.some(t => t.puLink) ? pgPuInfo(pr.name) : null, TD = pgToday();
   function calc(i) {
     if (st[i] === 2) return C[i];
     if (st[i] === 1) return C[i] || { s: P0, f: P0, dur: 0, pct: 0, sum: false, cyc: true };   // vòng lặp predecessor → bỏ qua
     st[i] = 1; const t = T[i], sum = end[i] > i + 1;
     if (sum) {
-      let s = Infinity, f = -Infinity, w = 0, pw = 0;
+      let s = Infinity, f = -Infinity, w = 0, pw = 0, pp = 0;
       for (let j = i + 1; j < end[i]; j++) {
         const c = calc(j); if (c.nodata) continue;   // mốc PU chưa có hàng → không kéo giãn nhóm
         s = Math.min(s, c.s); f = Math.max(f, c.f);
-        if (!c.sum) { const wt = Math.max(c.dur, 0); w += wt; pw += wt * c.pct; }
+        if (!c.sum) { const wt = Math.max(c.dur, 0); w += wt; pw += wt * c.pct; pp += wt * c.plan; }
       }
-      C[i] = { s, f, dur: f - s + 1, pct: w ? Math.round(pw / w) : 0, sum: true };
+      C[i] = { s, f, dur: f - s + 1, pct: w ? Math.round(pw / w) : 0, plan: w ? pp / w : (TD >= s ? 1 : 0), sum: true };
     } else {
       const dur = Math.max(0, Math.round(+t.dur || 0)), span = Math.max(dur, 1);
       let s = -Infinity;
@@ -88,7 +88,7 @@ function progCalc(pr) {
       });
       if (s === -Infinity) { const m = pgN(t.start); s = isNaN(m) ? P0 : m; }
       if (t.puLink && puInfo && !isNaN(puInfo.date) && puInfo.date > s) s = puInfo.date;   // hàng về site muộn hơn kế hoạch → mốc bị đẩy theo PU
-      C[i] = { s, f: s + span - 1, dur, pct: Math.max(0, Math.min(100, +t.pct || 0)), sum: false, ms: dur === 0, nodata: !!(t.puLink && !(t.pred || []).length && puInfo && isNaN(puInfo.date)) };
+      C[i] = { s, f: s + span - 1, dur, plan: dur > 0 ? Math.max(0, Math.min(1, (TD - s + 1) / dur)) : (TD >= s ? 1 : 0), pct: Math.max(0, Math.min(100, +t.pct || 0)), sum: false, ms: dur === 0, nodata: !!(t.puLink && !(t.pred || []).length && puInfo && isNaN(puInfo.date)) };
     }
     st[i] = 2; return C[i];
   }
@@ -96,84 +96,195 @@ function progCalc(pr) {
   C.end = end; C.idx = idx; return C;
 }
 
+// ── Trạng thái công việc ──
+const PG_ST = { wait: ['Chưa bắt đầu', '#8fa3c4'], run: ['Đang thực hiện', '#2D6CDF'], done: ['Hoàn thành', '#2E7D32'], late: ['Trễ', '#C0392B'], hold: ['Tạm dừng', '#8a8f98'] };
+function progStat(t, c, today) {
+  if (c.pct >= 100) return 'done'; if (t.hold) return 'hold'; if (c.f < today) return 'late';
+  if (c.pct > 0) return 'run'; if (c.s < today) return 'late'; return c.s <= today ? 'run' : 'wait';
+}
+const PG_COL = { run: '#2E7D32', near: '#E8A33D', over: '#C0392B', wait: '#2D6CDF', done: '#6b7280' };
+// Sức khoẻ dự án: so % thực tế với % kế hoạch (theo thời gian) — như "Tiến độ kế hoạch / thực tế" của FastWork
+function progHealth(sm) {
+  if (sm.k === 'done') return ['Hoàn thành', '#6b7280', 'done'];
+  if (sm.k === 'wait') return ['Chưa bắt đầu', '#2D6CDF', 'wait'];
+  if (sm.k === 'over') return ['Quá hạn', '#C0392B', 'late'];
+  const gap = sm.plan - sm.root.pct;
+  if (gap > 15) return ['Chậm trễ', '#C0392B', 'late'];
+  if (gap > 5) return ['Rủi ro', '#E8A33D', 'risk'];
+  return ['Đúng tiến độ', '#2E7D32', 'ok'];
+}
+
 // ── Chỉ số tổng quan 1 dự án ──
 function progSummary(pr) {
-  const C = progCalc(pr), today = pgToday(), root = C[0] || { s: today, f: today, pct: 0 };
+  const C = progCalc(pr), today = pgToday(), root = C[0] || { s: today, f: today, pct: 0, plan: 0 };
   const total = root.f - root.s + 1, elapsed = Math.max(0, Math.min(total, today - root.s + 1));
-  const exp = total > 0 ? Math.round(elapsed * 100 / total) : 0;
+  const exp = total > 0 ? Math.round(elapsed * 100 / total) : 0, plan = Math.round((root.plan || 0) * 100);
   let k = 'run', label = '';
   const remain = root.f - today;
   if (root.pct >= 100) { k = 'done'; label = 'Hoàn thành'; }
   else if (today < root.s) { k = 'wait'; label = 'Bắt đầu sau ' + (root.s - today) + ' ngày'; }
   else if (remain < 0) { k = 'over'; label = 'Quá hạn ' + (-remain) + ' ngày'; }
   else { k = remain <= 14 ? 'near' : 'run'; label = 'Còn ' + (remain + 1) + ' ngày'; }
-  const cur = [], overdue = [];
-  pr.tasks.forEach((t, i) => { const c = C[i]; if (c.sum || c.dur === 0 && t.puLink) return; if (c.pct < 100 && c.f < today) overdue.push(i); else if (c.pct < 100 && c.s <= today && today <= c.f) cur.push(i); });
+  const cur = [], overdue = [], cnt = { wait: 0, run: 0, done: 0, late: 0, hold: 0 };
+  pr.tasks.forEach((t, i) => {
+    const c = C[i]; if (c.sum || c.nodata) return;
+    const st = progStat(t, c, today); cnt[st]++;
+    if (st === 'late') overdue.push(i); else if (st === 'run') cur.push(i);
+  });
   const stages = []; pr.tasks.forEach((t, i) => { if (t.lvl === 1) stages.push(i); });
-  return { C, root, remain, total, exp, k, label, cur, overdue, stages, pu: pgPuInfo(pr.name) };
+  const sm = { C, root, remain, total, exp, plan, k, label, cur, overdue, cnt, stages, pu: pgPuInfo(pr.name) };
+  sm.health = progHealth(sm); return sm;
+}
+// Cập nhật tiến độ 1 việc: tự ghi ngày thực tế + nhật ký (như hộp "Cập nhật tiến độ" của FastWork)
+function progApply(pr, i, o) {
+  const t = pr.tasks[i], old = t.pct || 0, today = typeof puToday === 'function' ? puToday() : pgIso(pgToday());
+  if (o.pct != null) t.pct = Math.max(0, Math.min(100, Math.round(+o.pct) || 0));
+  if (o.hold != null) t.hold = !!o.hold; if (!t.hold) delete t.hold;
+  if (t.pct > 0 && !t.as) t.as = today;
+  if (t.pct >= 100 && !t.af) t.af = today; if (t.pct < 100 && o.pct != null && old >= 100) t.af = '';
+  if (o.pct != null && t.pct === 0 && old > 0) t.as = '';
+  if ((o.pct != null && t.pct !== old) || o.note) {
+    (t.log = t.log || []).push({ at: Date.now(), by: (window.CLOUD_USER && window.CLOUD_USER.name) || 'Admin', pct: t.pct, hold: !!t.hold, note: String(o.note || '').slice(0, 200) });
+    if (t.log.length > 20) t.log.splice(0, t.log.length - 20);
+  }
 }
 
 // ── Trạng thái giao diện ──
-let progSel = '', progZoom = 'day', progCompact = (typeof innerWidth !== 'undefined' && innerWidth < 1700), progShowPu = true, progPuOpen = null;
+const pgHash = () => { const m = /[#&]prog=([^&]+)/.exec(location.hash || ''); try { return m ? decodeURIComponent(m[1]) : ''; } catch (e) { return ''; } };
+let progSel = '', progView = 'dash', progZoom = 'day', progCompact = (typeof innerWidth !== 'undefined' && innerWidth < 1700), progShowPu = true, progPuOpen = null;
+let progSolo = !!pgHash(), progQ = '', progFilter = 'all', progSort = 'remain', progStF = 'all', progCalM = '';
 const progCollapsed = new Set();
-const PG_COL = { run: '#2E7D32', near: '#E8A33D', over: '#C0392B', wait: '#2D6CDF', done: '#6b7280' };
+if (progSolo && document.body) document.body.classList.add('prog-solo');
+document.addEventListener('DOMContentLoaded', () => { if (pgHash()) document.body.classList.add('prog-solo'); });
+const PG_VIEWS = [['dash', '📊 Tổng quan'], ['list', '📋 Danh sách'], ['gantt', '📅 Tiến độ (Gantt)'], ['kanban', '🗂 Bảng'], ['res', '👥 Nguồn lực'], ['cal', '🗓 Lịch biểu'], ['pu', '🚚 Giao hàng PU']];
+
+// Gọi sau khi dữ liệu Cloud tải xong: nếu tab được mở bằng đường dẫn #prog=<tên dự án> thì vào thẳng dự án đó.
+function progBoot() {
+  const n = pgHash(); if (!n) return;
+  document.body.classList.add('prog-solo'); progSolo = true; progCompact = innerWidth < 1280;
+  if (!canSeeProgress()) { goPage('progress'); return; }
+  if (PROG_DB[n]) { progSel = n; document.title = n + ' — Tiến độ'; } else toast('⚠️ Không thấy tiến độ của dự án "' + n + '".');
+  goPage('progress');
+}
+function progOpenTab(name) {
+  if (!PROG_DB[name]) return;
+  const url = location.href.split('#')[0] + '#prog=' + encodeURIComponent(name);
+  const w = window.open(url, '_blank');
+  if (!w) { progSel = name; progSolo = true; document.body.classList.add('prog-solo'); renderProgress(); }   // trình duyệt chặn cửa sổ mới → mở ngay trong trang
+}
+function progBack() {
+  if (window.opener && pgHash()) { window.close(); if (!window.closed) return; }
+  history.replaceState(null, '', location.pathname + location.search); progSolo = false; progSel = ''; document.body.classList.remove('prog-solo'); document.title = 'HCM-MD'; renderProgress();
+}
+function progSwitch(name) { progSel = PROG_DB[name] ? name : ''; if (pgHash()) history.replaceState(null, '', '#prog=' + encodeURIComponent(name)); document.title = name + ' — Tiến độ'; progPuOpen = null; renderProgress(); }
+function progSetView(v) { progView = v; renderProgress(); }
 
 function renderProgress() {
   const box = document.getElementById('progBody'); if (!box) return;
+  document.body.classList.toggle('prog-solo', progSolo && canSeeProgress());
   if (!canSeeProgress()) {
     box.innerHTML = `<div class="card" style="text-align:center;padding:60px 20px"><div style="font-size:46px">🚧</div><div style="font-size:18px;font-weight:800;margin:8px 0 4px">Tính năng này đang được xây dựng</div><div style="color:var(--text2);font-size:13px">Tiến độ dự án sẽ sớm được mở cho Quản lý và Người dùng.<br><i>This feature is under construction.</i></div></div>`;
     return;
   }
   if (progSel && !PROG_DB[progSel]) progSel = '';
-  const names = Object.keys(PROG_DB).sort();
-  const sums = names.map(n => ({ n, s: progSummary(PROG_DB[n]) }));
-  const ord = { over: 0, near: 1, run: 2, wait: 3, done: 4 };
-  sums.sort((a, b) => ord[a.s.k] - ord[b.s.k] || a.s.remain - b.s.remain);
-  const cnt = k => sums.filter(x => x.s.k === k).length;
-  const lateTasks = sums.reduce((a, x) => a + x.s.overdue.length, 0), puLate = sums.reduce((a, x) => a + x.s.pu.late, 0);
-  const edit = canEditProgress();
-  let h = `<div class="mp-kpi">
-    <div class="mk"><b>${names.length}</b><span>Dự án có tiến độ</span></div>
-    <div class="mk"><b style="color:${PG_COL.run}">${cnt('run') + cnt('near')}</b><span>Đang thực hiện</span></div>
-    <div class="mk"><b style="color:${PG_COL.over}">${cnt('over')}</b><span>Quá hạn hoàn thành</span></div>
-    <div class="mk"><b style="color:${PG_COL.near}">${cnt('near')}</b><span>Còn ≤ 14 ngày</span></div>
-    <div class="mk"><b style="color:${PG_COL.over}">${lateTasks}</b><span>Công việc trễ hạn</span></div>
-    <div class="mk"><b style="color:${PG_COL.over}">${puLate}</b><span>Hàng PU trễ tiến độ</span></div></div>`;
-  h += `<div class="card"><div class="action-row">${edit ? `<button class="btn btn-primary" onclick="progNewProject()">＋ Lập tiến độ cho dự án</button>` : ''}
-    <select id="progPick" onchange="progOpen(this.value)" style="min-width:260px"><option value="">— Chọn dự án để xem Gantt —</option>${names.map(n => `<option value="${pgEsc(n)}"${n === progSel ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
-    <span style="font-size:12px;color:var(--text2)">Trang này cho biết thời gian còn lại để hoàn thành từng dự án. Chọn dự án để xem chi tiết tiến độ.</span></div></div>`;
-  if (!names.length) h += `<div class="card" style="text-align:center;color:var(--text2);padding:30px">Chưa có dự án nào được lập tiến độ.${edit ? ' Bấm <b>＋ Lập tiến độ cho dự án</b> để bắt đầu.' : ''}</div>`;
-  else h += `<div class="pg-cards">${sums.map(({ n, s }) => progCard(n, s)).join('')}</div>`;
-  h += `<div id="progGantt">${progSel ? progGanttHtml(progSel) : ''}</div>`;
-  box.innerHTML = h;
-  if (progSel) progAfterGantt();
+  if (progSolo && progSel) { progDestroyCharts(); box.innerHTML = progSoloHtml(progSel); progAfterView(); return; }
+  progSolo = false; document.body.classList.remove('prog-solo');
+  box.innerHTML = progMainHtml();
 }
 
+// ── Trang chính: thẻ từng dự án (giống "Quản lý tiến độ đa dự án") ──
+function progMainHtml() {
+  const names = Object.keys(PROG_DB).sort(), edit = canEditProgress();
+  let sums = names.map(n => ({ n, s: progSummary(PROG_DB[n]) }));
+  const cnt = k => sums.filter(x => x.s.health[2] === k).length;
+  const lateTasks = sums.reduce((a, x) => a + x.s.overdue.length, 0), puLate = sums.reduce((a, x) => a + x.s.pu.late, 0);
+  const q = progQ.trim().toLowerCase();
+  let list = sums.filter(x => (progFilter === 'all' || x.s.health[2] === progFilter) && (!q || x.n.toLowerCase().includes(q)));
+  const ord = { late: 0, risk: 1, ok: 2, wait: 3, done: 4 };
+  list.sort((a, b) => progSort === 'name' ? a.n.localeCompare(b.n) : progSort === 'health' ? ord[a.s.health[2]] - ord[b.s.health[2]] || a.s.remain - b.s.remain : (a.s.k === 'done') - (b.s.k === 'done') || a.s.remain - b.s.remain);
+  let h = `<div class="mp-kpi">
+    <div class="mk"><b>${names.length}</b><span>Dự án có tiến độ</span></div>
+    <div class="mk"><b style="color:#2E7D32">${cnt('ok')}</b><span>Đúng tiến độ</span></div>
+    <div class="mk"><b style="color:#E8A33D">${cnt('risk')}</b><span>Rủi ro</span></div>
+    <div class="mk"><b style="color:#C0392B">${cnt('late')}</b><span>Chậm trễ / quá hạn</span></div>
+    <div class="mk"><b style="color:#C0392B">${lateTasks}</b><span>Công việc trễ hạn</span></div>
+    <div class="mk"><b style="color:#C0392B">${puLate}</b><span>Hàng PU trễ tiến độ</span></div></div>`;
+  h += `<div class="card"><div class="action-row">${edit ? `<button class="btn btn-primary" onclick="progNewProject()">＋ Lập tiến độ cho dự án</button>` : ''}
+    <input type="text" placeholder="Tìm dự án…" value="${pgEsc(progQ)}" oninput="progQ=this.value;progRerenderCards(this)" style="width:200px">
+    <select onchange="progFilter=this.value;renderProgress()"><option value="all">Tất cả tình trạng</option><option value="late"${progFilter === 'late' ? ' selected' : ''}>Chậm trễ / quá hạn</option><option value="risk"${progFilter === 'risk' ? ' selected' : ''}>Rủi ro</option><option value="ok"${progFilter === 'ok' ? ' selected' : ''}>Đúng tiến độ</option><option value="wait"${progFilter === 'wait' ? ' selected' : ''}>Chưa bắt đầu</option><option value="done"${progFilter === 'done' ? ' selected' : ''}>Hoàn thành</option></select>
+    <select onchange="progSort=this.value;renderProgress()"><option value="remain">Sắp xếp: còn ít ngày nhất</option><option value="health"${progSort === 'health' ? ' selected' : ''}>Sắp xếp: chậm nhất</option><option value="name"${progSort === 'name' ? ' selected' : ''}>Sắp xếp: tên dự án</option></select>
+    <span style="font-size:12px;color:var(--text2)">Bấm vào dự án để mở trong tab mới.</span></div></div>`;
+  if (!names.length) h += `<div class="card" style="text-align:center;color:var(--text2);padding:30px">Chưa có dự án nào được lập tiến độ.${edit ? ' Bấm <b>＋ Lập tiến độ cho dự án</b> để bắt đầu.' : ''}</div>`;
+  else h += `<div class="pg-pcs" id="progCards">${list.map(({ n, s }) => progCard(n, s)).join('') || '<div class="card" style="color:var(--text2)">Không có dự án phù hợp.</div>'}</div>`;
+  return h;
+}
+function progRerenderCards(inp) {   // gõ tìm kiếm: chỉ vẽ lại phần thẻ, giữ nguyên ô đang gõ
+  const box = document.getElementById('progBody'); if (!box) return;
+  const pos = inp.selectionStart; renderProgress(); const ni = box.querySelector('input[type=text]'); if (ni) { ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (e) {} }
+}
+function pgDonut(pct, col, big, small) {
+  const r = 38, C = 2 * Math.PI * r, d = Math.max(0, Math.min(100, pct)) * C / 100;
+  return `<div class="pg-donut"><svg viewBox="0 0 96 96" width="104" height="104"><circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="9"/><circle cx="48" cy="48" r="${r}" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${d} ${C}" transform="rotate(-90 48 48)"/></svg><div><b>${big}</b><span>${small}</span></div></div>`;
+}
 function progCard(n, s) {
-  const pr = PROG_DB[n], col = PG_COL[s.k], root = s.root, pm = typeof puApPm === 'function' ? puApPm(n) : '';
-  const span = Math.max(1, root.f - root.s + 1), today = pgToday(), tp = Math.max(0, Math.min(100, (today - root.s) * 100 / span));
-  const lanes = s.stages.slice(0, 6).map(i => {
+  const pr = PROG_DB[n], root = s.root, hl = s.health, pm = (pr.pm || (typeof puApPm === 'function' ? puApPm(n) : '')) || '';
+  const span = Math.max(1, root.f - root.s + 1), today = pgToday();
+  const lanes = s.stages.slice(0, 5).map(i => {
     const c = s.C[i], l = (c.s - root.s) * 100 / span, w = Math.max(1.5, (c.f - c.s + 1) * 100 / span);
     return `<div class="pg-lane" title="${pgEsc(pr.tasks[i].name)} · ${pgFmt(c.s)} → ${pgFmt(c.f)} · ${c.pct}%"><span class="pg-lane-n">${pgEsc(pr.tasks[i].name)}</span><div class="pg-lane-t"><i style="left:${l}%;width:${w}%"><b style="width:${c.pct}%"></b></i></div></div>`;
   }).join('');
-  const cur = s.cur.slice(0, 3).map(i => `<li>${pgEsc(pr.tasks[i].name)} <i>${s.C[i].pct}%</i></li>`).join('');
-  const p = s.pu;
+  const p = s.pu, cn = s.cnt;
   const pu = p.total ? `<span class="pg-chip" style="${p.late ? 'background:#fdecea;color:#C0392B' : ''}">🚚 PU ${p.done}/${p.total} đã giao${p.late ? ' · ' + p.late + ' trễ' : ''}${p.soon7 ? ' · ' + p.soon7 + ' sắp giao' : ''}</span>` : '';
-  return `<div class="pg-card" data-p="${pgEsc(n)}" onclick="progOpen(this.dataset.p)" style="border-top:4px solid ${col}">
-    <div class="pg-ct"><b>${pgEsc(n)}</b>${pm ? `<span>PM: ${pgEsc(pm)}</span>` : ''}</div>
-    <div class="pg-big" style="color:${col}">${pgEsc(s.label)}</div>
-    <div class="pg-dates">${pgFmt(root.s)} → ${pgFmt(root.f)} · ${s.total} ngày</div>
-    <div class="pg-bar" title="Thực tế ${root.pct}% · Theo thời gian ${s.exp}%"><i style="width:${root.pct}%;background:${col}"></i><u style="left:${tp}%"></u></div>
-    <div class="pg-pct"><b>${root.pct}%</b> hoàn thành <span>· theo kế hoạch thời gian: ${Math.min(100, s.exp)}%</span></div>
-    <div class="pg-lanes">${lanes}</div>
-    ${cur ? `<div class="pg-cur">Đang thực hiện:<ul>${cur}</ul></div>` : ''}
-    <div class="pg-chips">${s.overdue.length ? `<span class="pg-chip" style="background:#fdecea;color:#C0392B">⚠ ${s.overdue.length} việc trễ hạn</span>` : ''}${pu}</div></div>`;
+  const updated = pr.at ? new Date(pr.at) : null, pad = x => String(x).padStart(2, '0');
+  return `<div class="pg-pc" data-p="${pgEsc(n)}" onclick="progOpenTab(this.dataset.p)" title="Bấm để mở trong tab mới">
+    <div class="pg-pc-l">
+      <div class="pg-pc-t"><b>${pgEsc(n)}</b><span class="pg-open">↗ Mở tab mới</span></div>
+      <div class="pg-pc-sub"><i style="background:${hl[1]}"></i>${pgEsc(hl[0])}${pm ? ` · PM: ${pgEsc(pm)}` : ''}${pr.code ? ` · Mã: ${pgEsc(pr.code)}` : ''}</div>
+      <div class="pg-pc-f">
+        <div><u>Bắt đầu</u><em style="background:#e3edff;color:#2D6CDF">${pgFmt(root.s)}</em></div>
+        <div><u>Kết thúc</u><em style="background:#fde3e3;color:#C0392B">${pgFmt(root.f)}</em></div>
+        <div><u>Thời gian</u><em>${s.total} ngày</em></div>
+        <div><u>Tình trạng</u><em style="background:${hl[1]}22;color:${hl[1]}">${pgEsc(hl[0])}</em></div>
+      </div>
+      <div class="pg-lanes">${lanes}</div>
+      <div class="pg-chips"><span class="pg-chip">Việc: ${cn.done}/${cn.wait + cn.run + cn.done + cn.late + cn.hold} xong</span>${cn.run ? `<span class="pg-chip" style="background:#e3edff;color:#2D6CDF">${cn.run} đang làm</span>` : ''}${cn.late ? `<span class="pg-chip" style="background:#fdecea;color:#C0392B">⚠ ${cn.late} trễ hạn</span>` : ''}${pu}</div>
+      ${updated ? `<div class="pg-pc-up">Cập nhật lúc ${pad(updated.getHours())}:${pad(updated.getMinutes())} ${pad(updated.getDate())}/${pad(updated.getMonth() + 1)}/${updated.getFullYear()}</div>` : ''}
+    </div>
+    <div class="pg-pc-r">
+      ${pgDonut(root.pct, hl[1], s.k === 'done' ? '✔' : (s.k === 'over' ? s.remain : s.k === 'wait' ? '—' : s.remain + 1), s.k === 'done' ? 'xong' : s.k === 'over' ? 'ngày trễ' : s.k === 'wait' ? 'chưa bắt đầu' : 'ngày còn lại')}
+      <div class="pg-2bar"><div><span>Tiến độ kế hoạch</span><b>${s.plan}%</b></div><div class="pg-bb"><i style="width:${s.plan}%;background:#2D6CDF"></i></div>
+        <div><span>Tiến độ thực tế</span><b>${root.pct}%</b></div><div class="pg-bb"><i style="width:${root.pct}%;background:#F0A020"></i></div></div>
+    </div></div>`;
 }
 
-function progOpen(name) {
-  progSel = PROG_DB[name] ? name : ''; progPuOpen = null; renderProgress();
-  if (progSel) setTimeout(() => { const g = document.getElementById('progGantt'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30);
+// ── Trang dự án (mở ở tab riêng): thanh tiêu đề + các giao diện ──
+function progSoloHtml(name) {
+  const pr = PROG_DB[name], sm = progSummary(pr), hl = sm.health, names = Object.keys(PROG_DB).sort(), edit = canEditProgress();
+  const tabs = PG_VIEWS.map(([k, l]) => `<button class="pg-tab${progView === k ? ' on' : ''}" onclick="progSetView('${k}')">${l}</button>`).join('');
+  let body = '';
+  try {
+    body = progView === 'list' ? progViewList(name, sm) : progView === 'gantt' ? progGanttHtml(name) : progView === 'kanban' ? progViewKanban(name, sm)
+      : progView === 'res' ? progViewRes(name, sm) : progView === 'cal' ? progViewCal(name, sm) : progView === 'pu' ? progViewPu(name, sm) : progViewDash(name, sm);
+  } catch (e) { console.error(e); body = '<div class="card">Lỗi hiển thị: ' + pgEsc(e.message || e) + '</div>'; }
+  return `<div class="pg-solo">
+    <div class="pg-solo-h">
+      <button class="btn" onclick="progBack()">← ${pgHash() ? 'Đóng tab' : 'Danh sách dự án'}</button>
+      <div class="pg-solo-t"><b>${pgEsc(name)}</b><span class="pg-badge" style="background:${hl[1]}22;color:${hl[1]}">${pgEsc(hl[0])}</span><span class="pg-solo-d">${pgFmt(sm.root.s)} → ${pgFmt(sm.root.f)} · ${pgEsc(sm.label)} · ${sm.root.pct}% (kế hoạch ${sm.plan}%)</span></div>
+      <select onchange="progSwitch(this.value)" title="Đổi sang dự án khác">${names.map(n => `<option value="${pgEsc(n)}"${n === name ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
+      <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ XML</button>
+      ${edit ? `<label class="btn" style="cursor:pointer">⬆ Nhập<input type="file" accept=".xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
+    </div>
+    <div class="pg-tabs">${tabs}</div>
+    <div id="progView">${body}</div></div>`;
 }
+function progProjInfo() {
+  const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
+  const pm = prompt('Quản lý dự án (PM):', pr.pm || (typeof puApPm === 'function' ? puApPm(progSel) : '')); if (pm === null) return;
+  const code = prompt('Mã dự án:', pr.code || ''); if (code === null) return;
+  pr.pm = pm.trim(); pr.code = code.trim(); progTouch(pr);
+}
+function progOpen(name) { progSwitch(name); }
+
 
 // ── Gantt ──
 const PG_RH = 26;
@@ -200,7 +311,7 @@ function progGanttHtml(name) {
   minN -= 3; maxN += 10;
   const pxd = progZoom === 'day' ? 24 : progZoom === 'week' ? 9 : 3, days = maxN - minN + 1, W = days * pxd;
   const X = n => (n - minN) * pxd;
-  const cols = progCompact ? { id: 34, nm: 300, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, du: 58, st: 82, fn: 82, pc: 50, pd: 78, ac: edit ? 56 : 0 };
+  const cols = progCompact ? { id: 34, nm: 300, wh: 0, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, wh: 110, du: 58, st: 82, fn: 82, pc: 50, pd: 78, ac: edit ? 56 : 0 };
   const LW = Object.values(cols).reduce((a, b) => a + b, 0), HH = 46;
   const nrows = vis.length + (puRows.length ? 1 + (puExpanded ? puRows.length : 0) : 0), H = nrows * PG_RH;
   // header
@@ -224,14 +335,14 @@ function progGanttHtml(name) {
   const lc = (w, s, st) => w ? `<div class="pg-c" style="width:${w}px;${st || ''}">${s}</div>` : '';
   let rows = '', ri = 0; const rowOf = {};
   vis.forEach(i => {
-    const t = T[i], c = C[i], sum = c.sum, late = !sum && c.pct < 100 && c.f < today, done = c.pct >= 100;
+    const t = T[i], c = C[i], sum = c.sum, stt = progStat(t, c, today), late = stt === 'late', done = stt === 'done';
     rowOf[i] = ri++;
     const toggle = sum ? `<span class="pg-tg" data-u="${pgEsc(t.u)}" onclick="progToggle(this.dataset.u)">${progCollapsed.has(t.u) ? '▸' : '▾'}</span>` : '<span class="pg-tg"></span>';
     const nm = `<div class="pg-c pg-nm${sum ? ' pg-sumrow' : ''}" style="width:${cols.nm}px;padding-left:${6 + t.lvl * 14}px" title="${pgEsc(t.name)}">${toggle}${t.puLink ? '🚚 ' : ''}<span ${edit ? `class="pg-edit" data-i="${i}" onclick="progEdit(+this.dataset.i)"` : ''}>${pgEsc(t.name)}</span></div>`;
     const pcCell = (!sum && edit) ? `<input type="number" min="0" max="100" value="${c.pct}" class="pg-pcin" data-i="${i}" onchange="progSetPct(+this.dataset.i,this.value)">` : c.pct + '%';
     const act = edit ? `<div class="pg-c" style="width:${cols.ac}px;gap:2px"><button class="pg-ib" title="Sửa / cấu trúc" data-i="${i}" onclick="progEdit(+this.dataset.i)">✎</button><button class="pg-ib" title="Thêm công việc bên dưới" data-i="${i}" onclick="progInsert(+this.dataset.i)">＋</button></div>` : '';
-    rows += `<div class="pg-row${sum ? ' pg-sum' : ''}"><div class="pg-left" style="width:${LW}px">${lc(cols.id, i + 1, 'justify-content:center;color:var(--text3)')}${nm}${lc(cols.du, c.dur + (c.dur === 1 ? ' day' : ' days'))}${lc(cols.st, pgFmt(c.s, true))}${lc(cols.fn, pgFmt(c.f, true))}${lc(cols.pc, pcCell, 'justify-content:center')}${lc(cols.pd, pgEsc(pgPredText(pr, t)), 'font-size:11px;color:var(--text2)')}${act}</div>
-      <div class="pg-tl" style="width:${W}px">${progBar(t, c, X(c.s), pxd, late, done)}</div></div>`;
+    rows += `<div class="pg-row${sum ? ' pg-sum' : ''}"><div class="pg-left" style="width:${LW}px">${lc(cols.id, i + 1, 'justify-content:center;color:var(--text3)')}${nm}${lc(cols.wh, pgEsc(t.who || ''), 'font-size:11px;color:var(--text2)')}${lc(cols.du, c.dur + (c.dur === 1 ? ' day' : ' days'))}${lc(cols.st, pgFmt(c.s, true))}${lc(cols.fn, pgFmt(c.f, true))}${lc(cols.pc, pcCell, 'justify-content:center')}${lc(cols.pd, pgEsc(pgPredText(pr, t)), 'font-size:11px;color:var(--text2)')}${act}</div>
+      <div class="pg-tl" style="width:${W}px">${progBar(t, c, X(c.s), pxd, stt)}</div></div>`;
   });
   // đã biết hàng của mọi task → dựng đường mũi tên
   let svg = '';
@@ -254,7 +365,7 @@ function progGanttHtml(name) {
     const lateN = puRows.filter(x => puStatus(x).k === 'late').length, doneN = puRows.filter(x => puStatus(x).k === 'done').length;
     const ests = puRows.map(x => pgN(puEst(x) || x.actual)).filter(n => !isNaN(n));
     const mn = Math.min(...ests), mx = Math.max(...ests);
-    puHtml += `<div class="pg-row pg-sum pg-puh"><div class="pg-left" style="width:${LW}px">${lc(cols.id, '🚚', 'justify-content:center')}<div class="pg-c pg-nm pg-sumrow" style="width:${cols.nm}px;cursor:pointer" onclick="progTogglePu()"><span class="pg-tg">${puExpanded ? '▾' : '▸'}</span>PU Delivery — hàng về site (${doneN}/${puRows.length} đã giao${lateN ? ', ' + lateN + ' trễ' : ''})</div>${lc(cols.du, '')}${lc(cols.st, ests.length ? pgFmt(mn) : '')}${lc(cols.fn, ests.length ? pgFmt(mx) : '')}${lc(cols.pc, Math.round(doneN * 100 / puRows.length) + '%', 'justify-content:center')}${lc(cols.pd, '')}${lc(cols.ac, '')}</div>
+    puHtml += `<div class="pg-row pg-sum pg-puh"><div class="pg-left" style="width:${LW}px">${lc(cols.id, '🚚', 'justify-content:center')}<div class="pg-c pg-nm pg-sumrow" style="width:${cols.nm}px;cursor:pointer" onclick="progTogglePu()"><span class="pg-tg">${puExpanded ? '▾' : '▸'}</span>PU Delivery — hàng về site (${doneN}/${puRows.length} đã giao${lateN ? ', ' + lateN + ' trễ' : ''})</div>${lc(cols.wh, '')}${lc(cols.du, '')}${lc(cols.st, ests.length ? pgFmt(mn) : '')}${lc(cols.fn, ests.length ? pgFmt(mx) : '')}${lc(cols.pc, Math.round(doneN * 100 / puRows.length) + '%', 'justify-content:center')}${lc(cols.pd, '')}${lc(cols.ac, '')}</div>
       <div class="pg-tl" style="width:${W}px">${ests.length ? `<div class="pg-sbar" style="left:${X(mn)}px;width:${Math.max(4, (mx - mn + 1) * pxd)}px;background:#7A5FD1"></div>` : ''}</div></div>`;
     if (puExpanded) puRows.forEach((x, k) => {
       const s = puStatus(x), col = PU_STATUS_COLOR[s.k], est = pgN(puEst(x)), act = pgN(x.actual), e0 = pgN(x.e0);
@@ -262,42 +373,40 @@ function progGanttHtml(name) {
       if (!isNaN(e0) && !isNaN(est) && est > e0) b += `<div class="pg-pugap" style="left:${X(e0) + pxd / 2}px;width:${(est - e0) * pxd}px;background:${PG_COL.over}" title="Trễ ${est - e0} ngày so với As contract"></div>`;
       const dn = !isNaN(act) ? act : est;
       if (!isNaN(dn)) b += `<div class="pg-ms" style="left:${X(dn) + pxd / 2 - 6}px;background:${col}" title="${pgEsc(x.name)} · ${pgEsc(s.t)} · ${pgFmt(dn)}"></div><span class="pg-bl" style="left:${X(dn) + pxd / 2 + 10}px">${pgEsc(puFmtS(!isNaN(act) ? x.actual : puEst(x)))}</span>`;
-      puHtml += `<div class="pg-row"><div class="pg-left" style="width:${LW}px">${lc(cols.id, k + 1, 'justify-content:center;color:var(--text3);font-size:11px')}<div class="pg-c pg-nm" style="width:${cols.nm}px;padding-left:24px" title="${pgEsc(x.name)}"><span class="pg-pill" style="background:${col}">${pgEsc(x.name)}</span></div>${lc(cols.du, '')}${lc(cols.st, x.e0 ? puFmt(x.e0).slice(0, 5) + '/' + puFmt(x.e0).slice(8) : '', 'font-size:11px;color:var(--text2)')}${lc(cols.fn, !isNaN(dn) ? pgFmt(dn) : '')}${lc(cols.pc, '')}${lc(cols.pd, pgEsc(x.supplier || ''), 'font-size:10.5px;color:var(--text2);overflow:hidden')}${lc(cols.ac, '')}</div><div class="pg-tl" style="width:${W}px">${b}</div></div>`;
+      puHtml += `<div class="pg-row"><div class="pg-left" style="width:${LW}px">${lc(cols.id, k + 1, 'justify-content:center;color:var(--text3);font-size:11px')}<div class="pg-c pg-nm" style="width:${cols.nm}px;padding-left:24px" title="${pgEsc(x.name)}"><span class="pg-pill" style="background:${col}">${pgEsc(x.name)}</span></div>${lc(cols.wh, pgEsc(x.supplier || ''), 'font-size:10.5px;color:var(--text2)')}${lc(cols.du, '')}${lc(cols.st, x.e0 ? puFmt(x.e0).slice(0, 5) + '/' + puFmt(x.e0).slice(8) : '', 'font-size:11px;color:var(--text2)')}${lc(cols.fn, !isNaN(dn) ? pgFmt(dn) : '')}${lc(cols.pc, '')}${lc(cols.pd, '')}${lc(cols.ac, '')}</div><div class="pg-tl" style="width:${W}px">${b}</div></div>`;
     });
   }
-  const hdLeft = `<div class="pg-left pg-hl" style="width:${LW}px;height:${HH}px">${lc(cols.id, 'ID', 'justify-content:center')}${lc(cols.nm, 'Task Name')}${lc(cols.du, 'Duration')}${lc(cols.st, 'Start')}${lc(cols.fn, 'Finish')}${lc(cols.pc, '%', 'justify-content:center')}${lc(cols.pd, 'Predecessors')}${lc(cols.ac, '')}</div>`;
+  const hdLeft = `<div class="pg-left pg-hl" style="width:${LW}px;height:${HH}px">${lc(cols.id, 'ID', 'justify-content:center')}${lc(cols.nm, 'Task Name')}${lc(cols.wh, 'Người thực hiện')}${lc(cols.du, 'Duration')}${lc(cols.st, 'Start')}${lc(cols.fn, 'Finish')}${lc(cols.pc, '%', 'justify-content:center')}${lc(cols.pd, 'Predecessors')}${lc(cols.ac, '')}</div>`;
   const totalH = H;
   const root = sm.root;
-  return `<div class="card" style="margin-top:14px">
-    <div class="card-title" style="margin-bottom:4px">📅 ${pgEsc(name)} <span style="font-size:12px;font-weight:600;color:${PG_COL[sm.k]}">· ${pgEsc(sm.label)}</span><span style="font-size:12px;font-weight:400;color:var(--text2)"> · ${pgFmt(root.s)} → ${pgFmt(root.f)} · ${root.pct}% hoàn thành</span></div>
+  return `<div class="card">
     <div class="action-row" style="margin-bottom:8px">
       <select onchange="progZoom=this.value;renderProgress()" title="Thang thời gian"><option value="day"${progZoom === 'day' ? ' selected' : ''}>Theo ngày</option><option value="week"${progZoom === 'week' ? ' selected' : ''}>Theo tuần</option><option value="month"${progZoom === 'month' ? ' selected' : ''}>Theo tháng</option></select>
       <button class="btn" onclick="progToToday()">Hôm nay</button>
       <button class="btn" onclick="progCollapseAll(true)">Thu gọn</button><button class="btn" onclick="progCollapseAll(false)">Mở rộng</button>
       <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" ${progCompact ? 'checked' : ''} onchange="progCompact=this.checked;renderProgress()"> Cột gọn</label>
       <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" ${progShowPu ? 'checked' : ''} onchange="progShowPu=this.checked;renderProgress()"> Hiện hàng PU</label>
-      <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ MS Project XML</button>
-      ${edit ? `<button class="btn btn-primary" onclick="progInsert(${T.length - 1})">＋ Công việc</button><label class="btn" style="cursor:pointer">⬆ Nhập XML/Excel<input type="file" accept=".xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑 Xoá tiến độ</button>` : ''}
+      ${edit ? `<button class="btn btn-primary" onclick="progInsert(${T.length - 1})">＋ Công việc</button>` : ''}
     </div>
-    <div class="pg-legend"><i class="lg-b"></i>Công việc <i class="lg-p"></i>Đã hoàn thành (phần %) <i class="lg-r"></i>Trễ hạn <i class="lg-s"></i>Nhóm (summary) <i class="lg-m"></i>Mốc (milestone) <i class="lg-t"></i>Hôm nay</div>
-    <div class="pg-scroll" id="progScroll" data-min="${minN}" data-px="${pxd}" data-today="${today}">
+    <div class="pg-legend"><i style="background:#8fa3c4"></i>Chưa bắt đầu <i class="lg-b"></i>Đang thực hiện <i class="lg-p"></i>Hoàn thành <i class="lg-r"></i>Trễ hạn <i style="background:#8a8f98"></i>Tạm dừng <i class="lg-s"></i>Nhóm (summary) <i class="lg-m"></i>Mốc (milestone) <i class="lg-t"></i>Hôm nay</div>
+    <div class="pg-scroll" id="progScroll" style="max-height:${progSolo ? "78vh" : "74vh"}" data-min="${minN}" data-px="${pxd}" data-today="${today}">
       <div class="pg-inner" style="width:${LW + W}px">
         <div class="pg-hdr" style="height:${HH}px">${hdLeft}<div class="pg-tl pg-htl" style="width:${W}px;height:${HH}px"><div class="pg-hmrow">${hm}</div><div class="pg-hdrow">${hd}</div></div></div>
         <div class="pg-body" style="height:${totalH}px">
           <div class="pg-grid" style="left:${LW}px;width:${W}px;height:${totalH}px">${grid}${todayLine}</div>
           ${rows}${puHtml}
-          <svg class="pg-svg" style="left:${LW}px;width:${W}px;height:${totalH}px" width="${W}" height="${totalH}"><defs><marker id="pgar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0L6,3L0,6z" fill="#555"/></marker></defs><g fill="none" stroke="#555" stroke-width="1">${svg}</g></svg>
+          <svg class="pg-svg" style="left:${LW}px;width:${W}px;height:${totalH}px" width="${W}" height="${totalH}"><defs><marker id="pgar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0L6,3L0,6z" fill="#F0A020"/></marker></defs><g fill="none" stroke="#F0A020" stroke-width="1.3">${svg}</g></svg>
         </div>
       </div></div>
     <div style="font-size:11px;color:var(--text3);margin-top:6px">Lịch 7 ngày/tuần (theo file MS Project mẫu). Ngày Start/Finish của công việc có Predecessor được tự tính; hàng PU thay đổi → mốc "hàng về site" tự dời theo.</div></div>`;
 }
-function progBar(t, c, x, pxd, late, done) {
+function progBar(t, c, x, pxd, stt) {
   const w = Math.max(3, (c.f - c.s + 1) * pxd);
   if (c.sum) return `<div class="pg-sbar" style="left:${x}px;width:${w}px"><b></b><em></em><div class="pg-sfill" style="width:${c.pct}%"></div></div><span class="pg-bl" style="left:${x + w + 6}px">${c.pct}%</span>`;
   if (c.nodata) return `<span class="pg-bl" style="left:6px;font-style:italic">chưa có hàng PU của dự án này</span>`;
   if (c.ms || c.dur === 0) return `<div class="pg-ms" style="left:${x + pxd / 2 - 6}px;${t.puLink ? 'background:#7A5FD1' : ''}" title="${pgEsc(t.name)} · ${pgFmt(c.s, true)}"></div><span class="pg-bl" style="left:${x + pxd / 2 + 10}px">${pgFmt(c.s)}</span>`;
-  const bg = late ? '#C0392B' : done ? '#2E7D32' : '#2D6CDF';
-  return `<div class="pg-bar1" style="left:${x}px;width:${w}px;background:${bg}${late ? '' : ''}" title="${pgEsc(t.name)}&#10;${pgFmt(c.s, true)} → ${pgFmt(c.f, true)} · ${c.dur} ngày · ${c.pct}%"><div class="pg-fill" style="width:${c.pct}%"></div></div><span class="pg-bl" style="left:${x + w + 5}px">${c.pct}%</span>`;
+  const bg = PG_ST[stt][1];
+  return `<div class="pg-bar1" style="left:${x}px;width:${w}px;background:${bg}" title="${pgEsc(t.name)}&#10;${pgEsc(PG_ST[stt][0])} · ${pgFmt(c.s, true)} → ${pgFmt(c.f, true)} · ${c.dur} ngày · ${c.pct}%${t.who ? '&#10;' + pgEsc(t.who) : ''}"><div class="pg-fill" style="width:${c.pct}%"></div>${w > 70 ? `<span class="pg-bin">${pgEsc(t.name)}</span>` : ''}</div>${w > 70 ? '' : `<span class="pg-bl" style="left:${x + w + 5}px">${pgEsc(t.name.length > 26 ? t.name.slice(0, 25) + '…' : t.name)}</span>`}`;
 }
 function progAfterGantt() {
   const sc = document.getElementById('progScroll'); if (!sc) return;
@@ -321,7 +430,7 @@ function keepScroll() {
 function progTouch(pr) { pr.at = Date.now(); saveProgDb(); keepScroll(); }
 function progSetPct(i, v) {
   const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
-  pr.tasks[i].pct = Math.max(0, Math.min(100, parseInt(v, 10) || 0)); progTouch(pr);
+  progApply(pr, i, { pct: v }); progTouch(pr);
 }
 function progMkTask(lvl, name) { return { u: pgNewUid(), lvl, name: name || 'Công việc mới', dur: 1, start: '', pred: [], pct: 0 }; }
 function progInsert(i) {
@@ -333,33 +442,51 @@ function progInsert(i) {
 }
 function progEdit(i) {
   const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
-  const t = pr.tasks[i], C = progCalc(pr), c = C[i], sum = c.sum, hasPred = (t.pred || []).length > 0;
+  const t = pr.tasks[i], C = progCalc(pr), c = C[i], sum = c.sum, hasPred = (t.pred || []).length > 0, today = pgToday(), stt = progStat(t, c, today);
+  const logs = (t.log || []).slice(-6).reverse().map(l => { const d = new Date(l.at); return `<li><b>${l.pct}%</b>${l.hold ? ' · tạm dừng' : ''} — ${pgEsc(l.note || '')} <i>${pgEsc(l.by || '')} · ${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}</i></li>`; }).join('');
   const ov = document.createElement('div'); ov.id = 'progModal'; ov.className = 'pg-modal';
-  ov.innerHTML = `<div class="pg-mbox"><div style="font-size:18px;font-weight:800;margin-bottom:12px">Công việc #${i + 1}${sum ? ' (nhóm)' : ''}</div>
+  ov.innerHTML = `<div class="pg-mbox"><div style="font-size:18px;font-weight:800;margin-bottom:4px">Công việc #${i + 1}${sum ? ' (nhóm)' : ''} <span class="pg-badge" style="background:${PG_ST[stt][1]}22;color:${PG_ST[stt][1]}">${PG_ST[stt][0]}</span></div>
     <label>Tên công việc<input id="pgfName" value="${pgEsc(t.name)}"></label>
     <div class="pg-g2">
-      <label>Duration (ngày)<input id="pgfDur" type="number" min="0" value="${sum ? c.dur : t.dur}" ${sum ? 'disabled' : ''}></label>
-      <label>% hoàn thành<input id="pgfPct" type="number" min="0" max="100" value="${c.pct}" ${sum ? 'disabled' : ''}></label>
-      <label>Ngày bắt đầu${hasPred ? ' (tự tính từ Predecessor)' : ''}<input id="pgfStart" type="date" value="${pgIso(c.s)}" ${sum || hasPred ? 'disabled' : ''}></label>
+      <label>Người thực hiện (cách nhau dấu phẩy)<input id="pgfWho" value="${pgEsc(t.who || '')}" placeholder="vd: Nhơn, Khánh" ${sum ? 'disabled' : ''}></label>
       <label>Predecessors<input id="pgfPred" value="${pgEsc(pgPredText(pr, t))}" placeholder="vd: 5, 6SS+3d, 7FF-2d" ${sum ? 'disabled' : ''}></label>
+      <label>Duration (ngày)<input id="pgfDur" type="number" min="0" value="${sum ? c.dur : t.dur}" ${sum ? 'disabled' : ''}></label>
+      <label>Ngày bắt đầu KH${hasPred ? ' (tự tính từ Predecessor)' : ''}<input id="pgfStart" type="date" value="${pgIso(c.s)}" ${sum || hasPred ? 'disabled' : ''}></label>
+      <label>Bắt đầu thực tế<input id="pgfAs" type="date" value="${pgEsc(t.as || '')}" ${sum ? 'disabled' : ''}></label>
+      <label>Kết thúc thực tế<input id="pgfAf" type="date" value="${pgEsc(t.af || '')}" ${sum ? 'disabled' : ''}></label>
     </div>
-    ${sum ? '' : `<label style="flex-direction:row;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="pgfPu" ${t.puLink ? 'checked' : ''} style="width:auto"> 🚚 Liên kết PU Delivery: ngày của mốc = ngày hàng cuối cùng về site (nên đặt Duration = 0)</label>`}
-    <label>Ghi chú<input id="pgfNote" value="${pgEsc(t.note || '')}"></label>
-    <div class="pg-g2" style="margin-top:8px"><div class="action-row" style="margin:0"><button class="btn" onclick="progMove(${i},-1)">▲ Lên</button><button class="btn" onclick="progMove(${i},1)">▼ Xuống</button><button class="btn" onclick="progIndent(${i},-1)">⇤ Lên cấp</button><button class="btn" onclick="progIndent(${i},1)">⇥ Xuống cấp</button></div>
+    ${sum ? '' : `<div class="pg-upd"><div style="font-weight:700;margin-bottom:6px">Cập nhật tiến độ</div>
+      <div style="display:flex;align-items:center;gap:10px"><input id="pgfPct" type="range" min="0" max="100" step="5" value="${c.pct}" style="flex:1;padding:0" oninput="document.getElementById('pgfPctV').textContent=this.value+'%'"><b id="pgfPctV" style="min-width:42px">${c.pct}%</b></div>
+      <div class="pg-g2"><label>Trạng thái<select id="pgfHold"><option value="0">Tự động theo tiến độ / ngày</option><option value="1"${t.hold ? ' selected' : ''}>Tạm dừng</option></select></label>
+        <label>Khối lượng (đã làm / dự toán / đơn vị)<span style="display:flex;gap:4px"><input id="pgfQd" type="number" min="0" step="any" value="${t.qtyDone || ''}" placeholder="đã làm"><input id="pgfQty" type="number" min="0" step="any" value="${t.qty || ''}" placeholder="dự toán"><input id="pgfUnit" value="${pgEsc(t.unit || '')}" placeholder="m2, bộ…" style="width:70px"></span></label></div>
+      <label>Ghi chú cập nhật<input id="pgfNote" placeholder="vd: Tiến độ chậm do nhà cung cấp"></label></div>
+      <label style="flex-direction:row;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="pgfPu" ${t.puLink ? 'checked' : ''} style="width:auto"> 🚚 Liên kết PU Delivery: ngày của mốc = ngày hàng cuối cùng về site (đặt Duration = 0)</label>`}
+    ${logs ? `<div class="pg-logs"><b>Lịch sử cập nhật</b><ul>${logs}</ul></div>` : ''}
+    <div class="pg-g2" style="margin-top:10px"><div class="action-row" style="margin:0"><button class="btn" onclick="progMove(${i},-1)">▲ Lên</button><button class="btn" onclick="progMove(${i},1)">▼ Xuống</button><button class="btn" onclick="progIndent(${i},-1)">⇤ Lên cấp</button><button class="btn" onclick="progIndent(${i},1)">⇥ Xuống cấp</button></div>
     <div class="action-row" style="margin:0;justify-content:flex-end"><button class="btn" style="color:#C0392B" onclick="progDelTask(${i})">Xoá</button><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progSaveTask(${i})">Lưu</button></div></div>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">Predecessors: số ID (mặc định FS) kèm loại FS/SS/FF/SF và độ trễ, cách nhau bằng dấu phẩy. Bắt đầu = ngày sau khi việc trước kết thúc (FS).</div></div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">Predecessors: số ID (mặc định FS) kèm loại FS/SS/FF/SF và độ trễ, cách nhau dấu phẩy. Nhập khối lượng đã làm + dự toán thì % tự tính theo khối lượng.</div></div>`;
   document.body.appendChild(ov); const f = document.getElementById('pgfName'); if (f) f.focus();
 }
 function progCloseModal() { const m = document.getElementById('progModal'); if (m) m.remove(); }
 function progSaveTask(i) {
   const pr = PROG_DB[progSel], t = pr.tasks[i], g = id => document.getElementById(id), C = progCalc(pr), sum = C[i].sum;
   const nm = (g('pgfName').value || '').trim(); if (!nm) { toast('⚠️ Nhập tên công việc.'); return; }
-  t.name = nm; t.note = (g('pgfNote').value || '').trim();
+  t.name = nm;
   if (!sum) {
-    t.dur = Math.max(0, parseInt(g('pgfDur').value, 10) || 0); t.pct = Math.max(0, Math.min(100, parseInt(g('pgfPct').value, 10) || 0));
-    t.pred = pgParsePred(g('pgfPred').value, pr, i); t.puLink = !!g('pgfPu').checked;
+    t.who = (g('pgfWho').value || '').trim(); if (!t.who) delete t.who;
+    t.dur = Math.max(0, parseInt(g('pgfDur').value, 10) || 0);
+    t.pred = pgParsePred(g('pgfPred').value, pr, i); t.puLink = !!g('pgfPu').checked; if (!t.puLink) delete t.puLink;
     if (!t.pred.length && g('pgfStart').value) t.start = g('pgfStart').value;
     if (progHasCycle(pr)) { toast('⚠️ Predecessor tạo vòng lặp — đã bỏ phần Predecessor vừa nhập.'); t.pred = []; }
+    t.as = g('pgfAs').value || ''; t.af = g('pgfAf').value || '';
+    const q = parseFloat(g('pgfQty').value), qd = parseFloat(g('pgfQd').value);
+    t.qty = q > 0 ? q : 0; t.qtyDone = qd >= 0 ? qd : 0; t.unit = (g('pgfUnit').value || '').trim();
+    if (!t.qty) { delete t.qty; delete t.qtyDone; } if (!t.unit) delete t.unit;
+    let pct = parseInt(g('pgfPct').value, 10) || 0;
+    if (t.qty && g('pgfQd').value !== '') pct = Math.round(Math.min(1, t.qtyDone / t.qty) * 100);
+    const asUser = t.as, afUser = t.af;
+    progApply(pr, i, { pct, hold: g('pgfHold').value === '1', note: (g('pgfNote').value || '').trim() });
+    if (asUser) t.as = asUser; if (afUser) t.af = afUser; if (!t.as) delete t.as; if (!t.af) delete t.af;
   }
   progCloseModal(); progTouch(pr);
 }
@@ -427,10 +554,10 @@ function progDelete() {
 // ── Xuất ──
 function progExportXlsx() {
   const pr = PROG_DB[progSel]; if (!pr || typeof XLSX === 'undefined') return;
-  const C = progCalc(pr), rows = [['ID', 'Task Name', 'Duration', 'Start', 'Finish', '% Complete', 'Predecessors']];
-  pr.tasks.forEach((t, i) => rows.push([i + 1, '    '.repeat(t.lvl) + t.name, C[i].dur + (C[i].dur === 1 ? ' day' : ' days'), pgFmt(C[i].s, true), pgFmt(C[i].f, true), C[i].pct / 100, pgPredText(pr, t)]));
-  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [{ wch: 5 }, { wch: 60 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 16 }];
-  for (let r = 2; r <= rows.length; r++) if (ws['F' + r]) ws['F' + r].z = '0%';
+  const C = progCalc(pr), td = pgToday(), rows = [['ID', 'Task Name', 'Người thực hiện', 'Duration', 'Start', 'Finish', 'Bắt đầu TT', 'Kết thúc TT', '% Complete', 'Trạng thái', 'Predecessors']];
+  pr.tasks.forEach((t, i) => rows.push([i + 1, '    '.repeat(t.lvl) + t.name, t.who || '', C[i].dur + (C[i].dur === 1 ? ' day' : ' days'), pgFmt(C[i].s, true), pgFmt(C[i].f, true), t.as ? puFmt(t.as) : '', t.af ? puFmt(t.af) : '', C[i].pct / 100, PG_ST[progStat(t, C[i], td)][0], pgPredText(pr, t)]));
+  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [5, 60, 18, 10, 14, 14, 12, 12, 11, 14, 16].map(w => ({ wch: w }));
+  for (let r = 2; r <= rows.length; r++) if (ws['I' + r]) ws['I' + r].z = '0%';
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
   const items = pgPuItems(pr.name);
   if (items.length) {
@@ -439,6 +566,17 @@ function progExportXlsx() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pr2), 'PU Delivery');
   }
   XLSX.writeFile(wb, `Tien-do-${pr.name.replace(/[^\w-]+/g, '_')}-${puToday()}.xlsx`);
+}
+function progTemplateXlsx() {
+  if (typeof XLSX === 'undefined') return;
+  const rows = [['ID', 'Task Name', 'Duration', 'Start', 'Predecessors', '% Complete', 'Người thực hiện', 'Khối lượng', 'Đơn vị', 'Outline Level'],
+    [1, 'TÊN DỰ ÁN', '', '', '', 0, '', '', '', 1], [2, 'Giai đoạn chuẩn bị', '', '', '', 0, '', '', '', 2],
+    [3, 'Duyệt bản vẽ shop', '7 days', '2026-11-01', '', 0, 'Nhơn', '', '', 3], [4, 'Đặt hàng thiết bị', '5 days', '', '3', 0, 'Khánh', 10, 'bộ', 3], [5, 'Giai đoạn thi công', '', '', '', 0, '', '', '', 2],
+    [6, 'Lắp đặt ống gió', '20 days', '', '4SS+3d', 0, 'Vũ', 250, 'm', 3]];
+  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [5, 40, 10, 12, 14, 11, 18, 11, 9, 12].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Hướng dẫn'], ['Dòng 1 = tên dự án (Outline Level 1); giai đoạn = Level 2; công việc = Level 3…'], ['Duration: số ngày (vd "7 days"). Start: yyyy-mm-dd — chỉ cần với việc chưa có Predecessors.'], ['Predecessors: số ID, kèm FS/SS/FF/SF và độ trễ, vd "3", "4SS+3d". % Complete: 0–1 hoặc 0–100.'], ['Người thực hiện: nhiều người cách nhau dấu phẩy. Khối lượng + Đơn vị: tuỳ chọn.']]), 'Hướng dẫn');
+  XLSX.writeFile(wb, 'Mau-nhap-tien-do.xlsx');
 }
 function progExportXml() {
   const pr = PROG_DB[progSel]; if (!pr) return; const C = progCalc(pr), x = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -490,12 +628,12 @@ function progParseSheet(buf) {
   const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames[0]], rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
   const hi = rows.findIndex(r => r.some(c => /task name/i.test(String(c)))); if (hi < 0) throw new Error('Không thấy cột "Task Name"');
   const H = rows[hi].map(c => String(c).toLowerCase().trim()), ix = k => H.findIndex(c => k.test(c));
-  const cN = ix(/task name/), cD = ix(/duration/), cS = ix(/^start/), cP = ix(/predecessor/), cC = ix(/%/), cL = ix(/outline/), tasks = [];
+  const cN = ix(/task name/), cD = ix(/duration/), cS = ix(/^start/), cP = ix(/predecessor/), cC = ix(/%/), cL = ix(/outline/), cW = ix(/người thực hiện|resource|assignee/), cQ = ix(/khối lượng|quantity/), cU = ix(/đơn vị|unit/), tasks = [];
   rows.slice(hi + 1).forEach(r => {
     const raw = String(r[cN] == null ? '' : r[cN]); if (!raw.trim()) return;
     const sp = raw.match(/^\s*/)[0].length, d = parseFloat(String(r[cD]).replace(',', '.')) || 0;
     let s = r[cS]; if (typeof s === 'string') { const m = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(s); if (m) s = `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; else s = ''; } else if (typeof s === 'number') s = pgIso(Math.round(s - 25569));
-    tasks.push({ u: pgNewUid(), lvl: cL >= 0 ? Math.max(0, (+r[cL] || 1) - 1) : Math.floor(sp / 4), name: raw.trim(), dur: Math.round(d), start: s || '', pred: [], pct: cC >= 0 ? Math.round((+r[cC] || 0) * (+r[cC] <= 1 ? 100 : 1)) : 0, _p: cP >= 0 ? String(r[cP] || '') : '' });
+    tasks.push({ u: pgNewUid(), lvl: cL >= 0 ? Math.max(0, (+r[cL] || 1) - 1) : Math.floor(sp / 4), name: raw.trim(), dur: Math.round(d), start: s || '', pred: [], pct: cC >= 0 ? Math.round((+r[cC] || 0) * (+r[cC] <= 1 ? 100 : 1)) : 0, _p: cP >= 0 ? String(r[cP] || '') : '', ...(cW >= 0 && r[cW] ? { who: String(r[cW]).trim() } : {}), ...(cQ >= 0 && +r[cQ] > 0 ? { qty: +r[cQ], qtyDone: 0, unit: cU >= 0 ? String(r[cU] || '') : '' } : {}) });
   });
   const pr = { tasks }; tasks.forEach((t, i) => { t.pred = pgParsePred(t._p, pr, i); delete t._p; });
   return tasks;
