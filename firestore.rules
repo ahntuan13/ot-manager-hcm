@@ -15,7 +15,7 @@ service cloud.firestore {
     // Hồ sơ người dùng (vai trò). Chỉ Admin sửa. Mỗi người đọc được hồ sơ của chính mình.
     // Ngoại lệ: email Admin gốc tự tạo hồ sơ Admin cho mình ở lần đăng nhập đầu tiên.
     match /users/{uid} {
-      allow get: if signedIn() && request.auth.uid == uid;
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
       allow create: if isAdmin()
         || (signedIn() && request.auth.uid == uid

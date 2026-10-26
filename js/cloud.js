@@ -564,7 +564,7 @@
   }
   const refreshAdmin = () => renderCloudAdmin();
   window.cloudEditPages = async function (uid) {
-    let u = {}; try { u = (await db.collection('users').doc(uid).get()).data() || {}; } catch (e) { toast('⚠️ ' + e.message); return; }
+    let u = {}; try { const qs = await db.collection('users').get(); const d = qs.docs.find(x => x.id === uid); u = d ? d.data() : {}; } catch (e) { toast('⚠️ ' + e.message); return; }
     const cur = Array.isArray(u.pages) ? u.pages : null, keys = (typeof PAGE_KEYS !== 'undefined') ? PAGE_KEYS : [];
     const m = document.createElement('div'); m.className = 'cloud-modal'; m.id = 'pagesModal';
     m.innerHTML = `<div style="max-width:440px"><div style="font-size:16px;font-weight:800;margin-bottom:2px">Mục được xem</div><div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(u.name || '')} · ${esc(u.email || '')}</div>

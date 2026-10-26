@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.97';
+const APP_VERSION = '2026.98';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1536,6 +1536,7 @@ function tryParseLongFormat(ws) {
     const iso0 = toIso(row[cDate]); if (iso0 && iso0 > fileMaxIso) fileMaxIso = iso0; }
   const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
   let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
+  const rosterOn = (typeof rosterList === 'function') && rosterList().length > 0;   // đã có danh sách NV HCM → CHỈ tính OT cho người trong danh sách
   for (let r = h + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row) continue;
     const name = String(row[cName] || '').trim(); const iso = toIso(row[cDate]);
@@ -1544,10 +1545,19 @@ function tryParseLongFormat(ws) {
     const ro = (typeof EMP_DB !== 'undefined') ? EMP_DB[staffCode] : null;
     if (ro && ro.status === 'excl') { exclSkipped.add(staffCode); continue; }   // NV đã đánh dấu "không tính OT"
     let dept;
-    if (cDept >= 0) {
+    if (rosterOn && !(ro && ro.dept)) {
+      if (!staffCode) continue;
+      if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
+      const ne = newEmp[staffCode] = newEmp[staffCode] || { code: staffCode, name, days: 0, devs: devAll[staffCode] || {}, devTo: fileMaxIso, dev: Object.entries(devTop[staffCode] || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ') };
+      if (toHM(row[cIn]) !== null) ne.days++;
+      continue;
+    }
+    if (cDept >= 0 && !rosterOn) {
       dept = mapNewDept(row[cDept]);
       if (ro && ro.lock && ro.dept) dept = ro.dept;                                // phòng ban chọn tay → không bị file ghi đè
       if (!dept) { skipped.add(String(row[cDept] || '').trim()); continue; }
+    } else if (rosterOn) {
+      dept = ro.dept;                                                              // phòng ban lấy từ danh sách NV HCM (Nhân lực)
     } else {
       dept = ro && ro.dept ? ro.dept : null;                                       // file không có Phòng ban → lấy từ danh sách NV HCM
       if (!dept) {
@@ -1559,7 +1569,7 @@ function tryParseLongFormat(ws) {
       }
     }
     if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
-    if (cDept >= 0 && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
+    if (cDept >= 0 && !rosterOn && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
     const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
     if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
     let key = keyOf[staffCode];
