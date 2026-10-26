@@ -835,6 +835,37 @@ function renderLanding(){
   };
 }
 
+async function startCandidate(u, account){
+  session = { role:"candidate", username:u };
+  let sub = await sGet(`submission:${u}`);
+  if(!sub){ sub = blankSubmission(account.examSet); await sSet(`submission:${u}`, sub); }
+  if(!sub.examSet) sub.examSet = account.examSet || "DE1";
+  if(!sub.candidateInfo) sub.candidateInfo = { fullName:"", dob:"" };
+  if(!sub.candidateInfo.fullName) sub.candidateInfo.fullName = account.fullName || "";
+  if(!sub.submittedAt && !sub.testStartedAt){
+    sub.testStartedAt = new Date().toISOString();
+    await sSet(`submission:${u}`, sub);
+  }
+  candidateSubmission = sub;
+  candidateAnswers = sub.answers || blankAnswers();
+  candidateInfo = sub.candidateInfo;
+  errorMsg = "";
+  if(sub.submittedAt){ goto("c-done"); }
+  else { goto("c-test"); }
+
+}
+async function tokenLogin(tok){
+  root.className = "app"; root.innerHTML = loadingBox("Đang mở bài thi...");
+  const account = await sGet(`account:${tok}`);
+  if(!account){ alert("Link không hợp lệ hoặc đã bị thu hồi. Vui lòng liên hệ người phụ trách tuyển dụng."); return goto("landing"); }
+  if(account.expiresAt && new Date(account.expiresAt) < new Date()){
+    const sb = await sGet(`submission:${tok}`);
+    if(!(sb && sb.testStartedAt)){ alert("Link đã hết hạn. Vui lòng liên hệ người phụ trách tuyển dụng."); return goto("landing"); }
+  }
+  return startCandidate(tok, account);
+}
+function candLink(key){ return location.origin + location.pathname.replace(/index\.html$/,"") + "?c=" + encodeURIComponent(key); }
+
 /* ================= CANDIDATE LOGIN ================= */
 function renderCandidateLogin(){
   root.className = "app";
@@ -861,22 +892,7 @@ function renderCandidateLogin(){
       errorMsg = bis("Sai tài khoản hoặc mật khẩu.","Incorrect username or password.");
       return renderCandidateLogin();
     }
-    session = { role:"candidate", username:u };
-    let sub = await sGet(`submission:${u}`);
-    if(!sub){ sub = blankSubmission(account.examSet); await sSet(`submission:${u}`, sub); }
-    if(!sub.examSet) sub.examSet = account.examSet || "DE1";
-    if(!sub.candidateInfo) sub.candidateInfo = { fullName:"", dob:"" };
-    if(!sub.candidateInfo.fullName) sub.candidateInfo.fullName = account.fullName || "";
-    if(!sub.submittedAt && !sub.testStartedAt){
-      sub.testStartedAt = new Date().toISOString();
-      await sSet(`submission:${u}`, sub);
-    }
-    candidateSubmission = sub;
-    candidateAnswers = sub.answers || blankAnswers();
-    candidateInfo = sub.candidateInfo;
-    errorMsg = "";
-    if(sub.submittedAt){ goto("c-done"); }
-    else { goto("c-test"); }
+    return startCandidate(u, account);
   };
 }
 
@@ -1337,7 +1353,7 @@ function drawDashboard(){
     const st = statusOf(entry);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><code>${esc(entry.username)}</code></td>
+      <td><code>${esc(entry.account?.label || entry.username)}</code></td>
       <td>${esc(entry.sub?.candidateInfo?.fullName || entry.account?.fullName || "—")}</td>
       <td>${esc(entry.account?.position||"—")}</td>
       <td><code>${esc(entry.account?.examSet || entry.sub?.examSet || "DE1")}</code></td>
@@ -1345,7 +1361,7 @@ function drawDashboard(){
       <td>${entry.sub?.submittedAt ? esc(fmtDT(entry.sub.submittedAt)) : "—"}</td>
       <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" data-view="${esc(entry.username)}">${entry.sub?.submittedAt ? bis("Chấm bài","Grade") : bis("Xem","View")}</button>
-        <button class="btn btn-ghost btn-sm" data-cred="${esc(entry.username)}">${bis("Tài khoản","Account")}</button>
+        <button class="btn btn-ghost btn-sm" data-cred="${esc(entry.username)}">${entry.account?.passHash ? bis("Tài khoản","Account") : "Link"}</button>
         <button class="btn btn-ghost btn-sm" data-del="${esc(entry.username)}" style="color:var(--bad);">${bis("Xóa","Delete")}</button>
       </div></td>
     `;
@@ -1357,6 +1373,8 @@ function drawDashboard(){
 }
 
 async function showCred(username){
+  const ac = dashRoster.find(e=>e.username===username)?.account;
+  if(ac && !ac.passHash){ const l = candLink(username); try{ await navigator.clipboard.writeText(l); }catch(e){} alert(`Link riêng của ứng viên (đã sao chép):\n\n${l}`); return; }
   const c = await sGet(`cred:${username}`);
   if(!c){ alert(`Tài khoản: ${username}\n\nKhông còn mật khẩu gốc để xem. Hãy tạo lại ứng viên hoặc xoá và tạo mới.`); return; }
   alert(`Tài khoản ứng viên\n\nUsername: ${username}\nPassword: ${c.password}\n\nGửi thông tin này cho ứng viên để họ đăng nhập.`);
@@ -1376,8 +1394,10 @@ function renderAdminCreate(){
   root.innerHTML = `
     <div class="card login-box">
       <h2>${bi("Tạo tài khoản ứng viên","")}</h2>
-      <div class="field"><label>${bis("Tài khoản (username)","Username")} *</label><input id="nc-user" type="text" placeholder="vd: ungvien01"></div>
-      <div class="field"><label>${bis("Mật khẩu","Password")} *</label><input id="nc-pass" type="text" value="${suggested}"></div>
+      <div class="field"><label>Mã / tên gọi (để bạn nhận biết)</label><input id="nc-user" type="text" placeholder="vd: ungvien01"></div>
+      <input id="nc-pass" type="hidden" value="${suggested}">
+      <div class="unit-hint" style="margin:-4px 0 10px;">Hệ thống tạo <b>link riêng</b> (có mã bí mật dài, không đoán được) cho ứng viên — không cần mật khẩu. Link hết hạn sau số ngày bên dưới (nếu ứng viên chưa bắt đầu làm).</div>
+      <div class="field"><label>Link có hiệu lực (ngày)</label><input id="nc-days" type="number" min="1" max="90" value="7"></div>
       <div class="field"><label>${bis("Họ và tên ứng viên","")}</label><input id="nc-name" type="text" placeholder="Nguyen Van A"></div>
       <div class="field"><label>${bis("Vị trí ứng tuyển","Position")}</label><input id="nc-pos" type="text" value="Design Engineer (MEP)"></div>
       <div class="field">
@@ -1403,22 +1423,21 @@ function renderAdminCreate(){
     document.getElementById("nc-examset").value = pick;
   };
   document.getElementById("nc-save").onclick = async ()=>{
-    const username = document.getElementById("nc-user").value.trim();
-    const password = document.getElementById("nc-pass").value.trim();
+    const label = document.getElementById("nc-user").value.trim();
     const fullName = document.getElementById("nc-name").value.trim();
     const position = document.getElementById("nc-pos").value.trim();
     const examSet = document.getElementById("nc-examset").value || "DE1";
-    if(!username || !password){ errorMsg = bis("Vui lòng nhập tài khoản và mật khẩu.","Please enter both username and password."); return renderAdminCreate(); }
-    const existing = await sGet(`account:${username}`);
-    if(existing){ errorMsg = bis(`Tài khoản "${username}" đã tồn tại. Vui lòng chọn tên khác.`, ""); return renderAdminCreate(); }
-    const salt = newSalt();
-    await sSet(`account:${username}`, { passHash: await sha256(salt+password), salt, fullName, position, examSet, createdAt: new Date().toISOString() });
-    await sSet(`cred:${username}`, { password });
+    const days = Math.max(1, Math.min(90, parseInt(document.getElementById("nc-days").value,10) || 7));
+    if(!label && !fullName){ errorMsg = "Nhập mã/tên gọi hoặc họ tên ứng viên."; return renderAdminCreate(); }
+    const key = Array.from(crypto.getRandomValues(new Uint8Array(18))).map(x=>"abcdefghijklmnopqrstuvwxyz0123456789"[x%36]).join("");
+    await sSet(`account:${key}`, { label: label||fullName, fullName, position, examSet, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now()+days*86400000).toISOString() });
     const sub = blankSubmission(examSet);
     sub.candidateInfo.fullName = fullName;
-    await sSet(`submission:${username}`, sub);
+    await sSet(`submission:${key}`, sub);
     errorMsg = "";
-    alert(`Đã tạo tài khoản thành công!\n\nUsername: ${username}\nPassword: ${password}\nĐề thi: ${examSet}\n\nHãy gửi thông tin này cho ứng viên.`);
+    const link = candLink(key);
+    try{ await navigator.clipboard.writeText(link); }catch(e){}
+    alert(`Đã tạo link riêng cho ứng viên (đã sao chép vào clipboard):\n\n${link}\n\nĐề thi: ${examSet} · hiệu lực ${days} ngày.\nGửi link này cho ứng viên.`);
     goto("a-dash");
   };
 }
@@ -1905,6 +1924,7 @@ if(!firebaseReady){
     if(u){ try{ const sn = await getDoc(doc(db,"users",u.uid)); const d = sn.exists()?sn.data():null; MGR = !!(d && d.active===true && (d.role==="admin"||d.role==="sub")); }catch(e){ console.error(e); } }
     boot();
   });
+  (function(){ const tok = new URLSearchParams(location.search).get("c"); if(tok){ booted = true; tokenLogin(tok); } })();
   setTimeout(boot, 5000);
 }
 document.getElementById("brand-logo").src = ASSET_LOGO;

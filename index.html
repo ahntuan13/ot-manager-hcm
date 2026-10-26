@@ -998,7 +998,7 @@
     <input id="ivLink" readonly style="flex:1;min-width:240px" onclick="this.select()">
     <button class="btn" onclick="ivCopy()">Sao chép</button>
     <a class="btn" id="ivOpen" target="_blank" rel="noopener">Mở tab mới</a>
-    <span style="font-size:11.5px;color:var(--text2);flex-basis:100%">Ứng viên mở link này, đăng nhập bằng tài khoản được cấp để làm bài (không cần tài khoản HMD). Việc tạo tài khoản, chấm điểm, xuất kết quả chỉ làm được khi đăng nhập HMD bằng quyền Quản lý / Admin.</span>
+    <span style="font-size:11.5px;color:var(--text2);flex-basis:100%">Ứng viên cũ (có tài khoản/mật khẩu) dùng link chung này; ứng viên mới nên dùng link riêng tạo trong danh sách bên dưới. Việc tạo tài khoản, chấm điểm, xuất kết quả chỉ làm được khi đăng nhập HMD bằng quyền Quản lý / Admin.</span>
   </div>
   <iframe id="ivFrame" title="Bài thi tuyển dụng" style="width:100%;height:calc(100vh - 250px);min-height:560px;border:1px solid var(--line,#e3e8ef);border-radius:12px;background:#fff"></iframe>
 </div>
@@ -1458,7 +1458,7 @@
     <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
       <li>Quản lý tạo tài khoản ứng viên, chấm bài, xuất kết quả ngay trong HMD (không còn mật khẩu admin riêng — dùng quyền HMD).</li>
       <li>Dữ liệu bài thi nay nằm trong Firebase của HMD (bảo mật bằng firestore.rules): chỉ Quản lý/Admin tạo tài khoản, xem, chấm bài; ứng viên chỉ đọc/ghi bài của mình, nộp xong thì khoá. Dữ liệu cũ: bấm <b>⇩ Chuyển dữ liệu cũ</b> (1 lần).</li>
-      <li>Gửi ứng viên <b>link ở đầu mục Tuyển dụng</b>; ứng viên đăng nhập bằng tài khoản được cấp, không cần tài khoản HMD.</li>
+      <li><b>Link riêng cho từng ứng viên:</b> bấm Tạo ứng viên → hệ thống tạo link có mã bí mật dài (không đoán được), tự sao chép; gửi cho ứng viên, họ bấm vào là làm bài, không cần tài khoản hay mật khẩu. Link hết hạn sau số ngày bạn chọn (nếu chưa bắt đầu làm); xoá ứng viên = thu hồi link. Nút <i>Link</i> trong danh sách để lấy lại link.</li>
     </ul>
   </div>
 </div>
