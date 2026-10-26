@@ -14,6 +14,7 @@
 <script src="js/vendor/html2canvas.min.js"></script>
 <link rel="icon" type="image/png" href="img/icon.png">
 <link rel="apple-touch-icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -120,17 +121,13 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 010 20"/><path d="M12 2a14.5 14.5 0 000 20"/></svg>
       <span class="nt-label"><span class="nt-vi">WLB</span><span class="nt-en">Work-Life Balance</span></span>
     </button>
-    <button class="nt mgr-nav" data-page="roster" onclick="goPage('roster')" style="display:none">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-      <span class="nt-label"><span class="nt-vi">Nhân viên HCM</span><span class="nt-en">HCM Staff</span></span>
-    </button>
     <button class="nt nt-highlight" data-page="action" onclick="goPage('action')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       <span class="nt-label"><span class="nt-vi">Action Plan</span><span class="nt-en">OT Action Plan</span></span>
     </button>
     <button class="nt mp-nav" data-page="manpower" onclick="goPage('manpower')" style="display:none">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <span class="nt-label"><span class="nt-vi">Manpower</span><span class="nt-en">Manpower</span></span>
+      <span class="nt-label"><span class="nt-vi">Nhân lực</span><span class="nt-en">Manpower</span></span>
     </button>
     <button class="nt" data-page="pudelivery" onclick="goPage('pudelivery')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -140,6 +137,11 @@
     <button class="nt" data-page="progress" onclick="goPage('progress')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h8"/><path d="M7 12h10"/><path d="M11 19h10"/><path d="M3 3v18"/></svg>
       <span class="nt-label"><span class="nt-vi">Tiến độ dự án</span><span class="nt-en">Project Schedule</span></span>
+    </button>
+
+    <button class="nt mgr-nav" data-page="interview" onclick="goPage('interview')" style="display:none">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      <span class="nt-label"><span class="nt-vi">Tuyển dụng</span><span class="nt-en">Interview Test</span></span>
     </button>
 
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
@@ -188,6 +190,7 @@
 ══════════════════════════════════════ -->
 <header class="top-header">
   <div class="th-title-block">
+    <div class="th-title" id="thTitle">Tổng quan OT</div>
     <div class="greet-sub" id="greetSub" style="font-size:13px">Đang tải dữ liệu...</div>
     <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Chỉ lưu hành trong nội bộ <span style="opacity:.7">/ For internal circulation only</span></div>
   </div>
@@ -265,6 +268,8 @@
     <span style="font-size:12px;color:var(--text2)">Tuần:</span>
     <div class="chip-row" id="periodChips"></div>
   </div>
+
+  <div id="dashHero"></div>
 
   <!-- KPI metrics -->
   <div class="metrics" id="dashMetrics"></div>
@@ -986,9 +991,16 @@
   </div>
 </div>
 
-<div class="pg" id="pg-roster">
-  <div class="page-title"><span>Nhân viên HCM <span style="font-size:12px;color:var(--text2);font-weight:400">/ HCM Staff — danh sách chuẩn để phân loại OT theo phòng ban, dự án</span></span></div>
-  <div id="rosterBody"></div>
+<div class="pg" id="pg-interview">
+  <div class="page-title"><span>Tuyển dụng <span style="font-size:12px;color:var(--text2);font-weight:400">/ Bài thi tuyển dụng MEP — chỉ Quản lý tạo tài khoản ứng viên, chấm bài, xuất kết quả</span></span></div>
+  <div class="card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:12.5px;font-weight:600">Link gửi ứng viên:</span>
+    <input id="ivLink" readonly style="flex:1;min-width:240px" onclick="this.select()">
+    <button class="btn" onclick="ivCopy()">Sao chép</button>
+    <a class="btn" id="ivOpen" target="_blank" rel="noopener">Mở tab mới</a>
+    <span style="font-size:11.5px;color:var(--text2);flex-basis:100%">Ứng viên mở link này, đăng nhập bằng tài khoản được cấp để làm bài (không cần tài khoản HMD). Việc tạo tài khoản, chấm điểm, xuất kết quả chỉ làm được khi đăng nhập HMD bằng quyền Quản lý / Admin.</span>
+  </div>
+  <iframe id="ivFrame" title="Bài thi tuyển dụng" style="width:100%;height:calc(100vh - 250px);min-height:560px;border:1px solid var(--line,#e3e8ef);border-radius:12px;background:#fff"></iframe>
 </div>
 
 <div class="pg" id="pg-progress">
@@ -997,7 +1009,10 @@
 </div>
 
 <div class="pg" id="pg-manpower">
-  <div class="page-title"><span>Manpower <span style="font-size:12px;color:var(--text2);font-weight:400">/ Nhân sự theo dự án — HCM-EC</span></span></div>
+  <div class="page-title"><span>Nhân lực <span style="font-size:12px;color:var(--text2);font-weight:400">/ Manpower — nhân sự theo dự án HCM-EC &amp; danh sách nhân viên HCM</span></span></div>
+  <div class="mp-tabs" id="mpTabs"><button class="on" data-t="main" onclick="mpSetTab('main')">📊 Manpower theo dự án</button><button class="mgr-nav" data-t="roster" onclick="mpSetTab('roster')" style="display:none">👥 Danh sách nhân viên HCM</button></div>
+  <div id="mpRoster" style="display:none"><div id="rosterBody"></div></div>
+  <div id="mpMain">
   <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <label style="font-size:12px;color:var(--text2)">Kỳ xem / Period</label>
     <select id="mpPeriod" onchange="renderManpower()"></select>
@@ -1021,6 +1036,7 @@
   <div class="card"><div class="card-title">4. Quá tải vs Dư năng lực</div>
     <div style="height:380px"><canvas id="cMpQuad"></canvas></div>
     <div id="mpQuadNote" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+  </div>
   </div>
 </div>
 
@@ -1428,12 +1444,20 @@
     </ul>
   </div>
   <div class="card" style="margin-top:14px">
-    <div class="card-title" style="margin-bottom:10px">👥 Nhân viên HCM — danh sách chuẩn để phân loại OT <span style="font-size:11px;font-weight:400;color:var(--text2)">— Quản lý và Admin</span></div>
+    <div class="card-title" style="margin-bottom:10px">👥 Nhân lực → Danh sách nhân viên HCM <span style="font-size:11px;font-weight:400;color:var(--text2)">— Quản lý và Admin</span></div>
     <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
-      <li><b>Để làm gì:</b> file chấm công xuất từ máy (Mã NV, Họ tên, Ngày, Giờ vào/ra, Thiết bị) <u>không có cột Phòng ban</u>, nên app dùng danh sách này để biết mỗi mã NV thuộc phòng ban nào, còn làm việc hay không, có tính OT hay không. Dự án lấy từ Action Plan.</li>
-      <li><b>Tự thêm NV mới khi upload:</b> NV có chấm công ở thiết bị "HCM …" mà chưa có trong danh sách sẽ hiện hộp <i>"Phát hiện N nhân viên HCM mới"</i> — chọn phòng ban (có nút gán hàng loạt) rồi bấm Lưu: OT được tính ngay. Bỏ tích = không tính OT (không thuộc HCM), app không hỏi lại. NV chỉ chấm ở thiết bị "HN …" (Hà Nội) tự bỏ qua.</li>
-      <li><b>File có cột Phòng ban</b> (định dạng cũ): app tự thêm/cập nhật danh sách. Phòng ban chọn tay được <b>khoá</b>, file upload không ghi đè.</li>
-      <li><b>Quản lý danh sách:</b> ＋ Thêm NV · ✎ sửa (đổi phòng ban sẽ cập nhật cả dữ liệu OT đã nạp) · trạng thái Tính OT / Không tính OT / Đã nghỉ việc · ↻ Lấy từ dữ liệu OT đã có · ⬆ Nhập từ file Excel · ⬇ Xuất Excel. Xem nhóm theo phòng ban hoặc theo dự án, kèm OT tháng gần nhất và % hạn mức 70h.</li>
+      <li><b>Để làm gì:</b> danh sách để <u>phân bổ phòng ban / dự án</u> (không hiển thị OT). File chấm công xuất từ máy không có cột Phòng ban nên các mục OT đọc phòng ban từ đây.</li>
+      <li><b>Dự án theo thiết bị chấm công:</b> NV chấm ở thiết bị "HCM AEON MT" → thuộc dự án HCM AEON MT (trong phòng HCM-EC). Cần ≥ 60% lượt chấm ở thiết bị dự án đó; thiết bị Văn phòng/Đào tạo không phải dự án. Không rõ thì để trống, bạn tự nhập tay. Bảng <i>Thiết bị ↔ dự án</i> cho chỉnh cách gán (VD thiết bị dự án mới → tạo dự án).</li>
+      <li><b>Đối chiếu Action Plan:</b> mục <i>Đối chiếu</i> so Action Plan (HCM-EC) với thiết bị chấm công: Khớp / Lệch dự án / Chưa có dự án (gợi ý) / Chưa rõ. App <b>không tự đổi</b> Action Plan — bạn bấm Áp dụng từng người hoặc cả nhóm.</li>
+      <li><b>Đồng bộ với Action Plan:</b> Action Plan đổi (thêm NV, chuyển dự án, xoá NV nghỉ việc) → danh sách NV đổi theo. Ngược lại đổi dự án/phòng ban ở danh sách → ghi vào Action Plan. Các mục OT theo dự án, So sánh OT, WLB dự án, Manpower, Đi trễ đều lấy phòng ban/dự án từ đây.</li>
+      <li><b>Tự thêm NV mới khi upload:</b> NV chấm ở thiết bị "HCM …" mà chưa có trong danh sách → hộp <i>"Phát hiện N nhân viên HCM mới"</i> (dự án gợi ý sẵn theo thiết bị). Bỏ tích = không tính OT. NV chỉ chấm ở "HN …" tự bỏ qua.</li>
+    </ul>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title" style="margin-bottom:10px">📝 Tuyển dụng — bài thi MEP <span style="font-size:11px;font-weight:400;color:var(--text2)">— Quản lý và Admin</span></div>
+    <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
+      <li>Quản lý tạo tài khoản ứng viên, chấm bài, xuất kết quả ngay trong HMD (không còn mật khẩu admin riêng — dùng quyền HMD).</li>
+      <li>Gửi ứng viên <b>link ở đầu mục Tuyển dụng</b>; ứng viên đăng nhập bằng tài khoản được cấp, không cần tài khoản HMD.</li>
     </ul>
   </div>
 </div>
@@ -1453,6 +1477,8 @@
 <script src="js/progress.js"></script>
 <script src="js/progress-views.js"></script>
 <script src="js/roster.js"></script>
+<script src="js/interview.js"></script>
+<script src="js/hero.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

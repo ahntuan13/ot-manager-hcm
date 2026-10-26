@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.91';
+const APP_VERSION = '2026.92';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1025,7 +1025,8 @@ function goPage(p, deptFilter, keepProjectFilter) {
     toast('⚠️ Chỉ Admin mới vào được mục Cài đặt. Bấm vào tên app để đổi vai trò.');
     return;
   }
-  if (p === 'roster' && !isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); return; }
+  if (p === 'roster') { if (!isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); return; } window.mpTab = 'roster'; p = 'manpower'; }
+  if (p === 'interview' && !isManager()) { toast('🔒 Mục Tuyển dụng chỉ dành cho Quản lý và Admin.'); return; }
   if (p === 'manpower' && !canSeeManpower()) {
     toast('🔒 Mục Manpower đang khoá — chỉ Admin xem được.');
     return;
@@ -1034,6 +1035,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   document.querySelectorAll('.pg').forEach(x => x.classList.remove('show'));
   document.querySelectorAll('.nt[data-page]').forEach(x => x.classList.remove('active'));
   document.querySelectorAll(`.nt[data-page="${p}"]`).forEach(x => x.classList.add('active'));
+  { const lb = document.querySelector(`.sb-nav .nt[data-page="${p}"] .nt-vi`), tt = document.getElementById('thTitle'); if (tt && lb) tt.textContent = lb.textContent; }
   if (dashGroup.includes(p)) {
     goSub(p);
     return;
@@ -1043,10 +1045,10 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'settings')  { renderSavedMonths(); renderSyncPage(); }
   if (p === 'report') { populateReportSelectors(); }
   if (p === 'action') renderActionPlan();
-  if (p === 'manpower' && typeof renderManpower === 'function') renderManpower();
+  if (p === 'manpower') { if (typeof mpSetTab === 'function') mpSetTab(window.mpTab || 'main'); else if (typeof renderManpower === 'function') renderManpower(); }
   if (p === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
   if (p === 'progress' && typeof renderProgress === 'function') renderProgress();
-  if (p === 'roster' && typeof renderRoster === 'function') renderRoster();
+  if (p === 'interview' && typeof ivShow === 'function') ivShow();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
@@ -1482,6 +1484,7 @@ function tryParseLongFormat(ws) {
   const cCode = col(/mã nhân viên/), cName = col(/họ và tên|họ tên/), cDept = col(/phòng ban/), cDate = col(/ngày làm việc/), cIn = col(/giờ vào/), cOut = col(/giờ ra/);
   if (cName < 0 || cDate < 0 || cIn < 0 || cOut < 0) return false;   // cột Phòng ban có thể không có → lấy phòng ban từ danh sách Nhân viên HCM
   const cPos = col(/chức vụ/), cMail = col(/^email/);
+  try { if (typeof rosterSyncPlan === 'function') rosterSyncPlan(); } catch (e) {}   // NV trong Action Plan đã có trong danh sách trước khi đọc file
   const toIso = v => {
     if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 10); }
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
@@ -1511,6 +1514,10 @@ function tryParseLongFormat(ws) {
   const hanoiSkipped = new Set(), exclSkipped = new Set(), newEmp = {};
   const devTop = {};   // mã NV → đếm tên thiết bị (hiện trong hộp "NV mới")
   for (let r = h + 1; r < aoa.length; r++) { const row = aoa[r]; if (!row) continue; const c = String(row[cCode] || '').trim(); if (!c) continue; const d = cDevIn >= 0 ? String(row[cDevIn] || '').trim() : ''; if (d) { (devTop[c] = devTop[c] || {})[d] = ((devTop[c] || {})[d] || 0) + 1; } }
+  const devAll = {}; let fileMaxIso = '';   // mã NV → {tên thiết bị: số lần chấm} (cả check in + check out) — để gợi ý dự án theo thiết bị
+  for (let r = h + 1; r < aoa.length; r++) { const row = aoa[r]; if (!row) continue; const c = String(row[cCode] || '').trim(); if (!c) continue;
+    [cDevIn, cDevOut].forEach(ci => { const d = ci >= 0 ? String(row[ci] || '').replace(/\s+/g, ' ').trim() : ''; if (d) { const o = (devAll[c] = devAll[c] || {}); o[d] = (o[d] || 0) + 1; } });
+    const iso0 = toIso(row[cDate]); if (iso0 && iso0 > fileMaxIso) fileMaxIso = iso0; }
   const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
   let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
   for (let r = h + 1; r < aoa.length; r++) {
@@ -1530,7 +1537,7 @@ function tryParseLongFormat(ws) {
       if (!dept) {
         if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
         if (!staffCode) continue;
-        const ne = newEmp[staffCode] = newEmp[staffCode] || { code: staffCode, name, days: 0, dev: Object.entries(devTop[staffCode] || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ') };
+        const ne = newEmp[staffCode] = newEmp[staffCode] || { code: staffCode, name, days: 0, devs: devAll[staffCode] || {}, devTo: fileMaxIso, dev: Object.entries(devTop[staffCode] || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ') };
         if (toHM(row[cIn]) !== null) ne.days++;
         continue;
       }
@@ -1575,7 +1582,7 @@ function tryParseLongFormat(ws) {
       lateMonths.add(mk);
     }
   }
-  if (typeof saveEmpDb === 'function' && cDept >= 0) saveEmpDb();
+  if (typeof rosterRecordDevices === 'function') { rosterRecordDevices(devAll, fileMaxIso); saveEmpDb(); }
   const newEmployees = Object.values(newEmp).sort((a, b) => a.code.localeCompare(b.code));
   if (!months.size && !newEmployees.length) return false;
   months.forEach(mk => {
@@ -1754,7 +1761,7 @@ function clearAll() {
   toast('Đã xóa toàn bộ dữ liệu OT');
 }
 
-function rebuildUI() { try { autoAssignUnassigned(); } catch(e) { console.warn(e); } updateSelects(); renderDash(); renderEmployeeList(); }
+function rebuildUI() { try { if (typeof rosterAfterData === 'function') rosterAfterData(); } catch(e) { console.warn(e); } try { autoAssignUnassigned(); } catch(e) { console.warn(e); } updateSelects(); renderDash(); renderEmployeeList(); }
 
 // ============================================================
 //  DASHBOARD
@@ -4603,7 +4610,7 @@ function loadProjectsDB() {
   });
   saveProjectsDB();
 }
-function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} cloudTouch(); }
+function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} cloudTouch(); try { if (typeof rosterSyncPlan === 'function') rosterSyncPlan(); } catch(e) {} }
 
 function projectGroups() { return Object.keys(PROJECTS_DB || {}); }
 function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}); }
@@ -4662,7 +4669,7 @@ function migrateUnassignedMoves() {
   });
   if (ch) saveProjMoves();
 }
-function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} cloudTouch(); }
+function saveProjMoves() { try { localStorage.setItem(PROJ_MOVES_KEY, JSON.stringify(PROJ_MOVES)); } catch(e) {} cloudTouch(); try { if (typeof rosterSyncPlan === 'function') rosterSyncPlan(); } catch(e) {} }
 function nextCycleMk(d) {
   const cur = companyMonthInfo(d || new Date()).monthKey;
   let [y, m] = cur.split('-').map(Number);

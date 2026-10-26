@@ -67,6 +67,7 @@ function mpSavePlan(proj, mk, val) {
 
 function renderManpower() {
   if (!canSeeManpower()) return;
+  if (window.mpTab === 'roster' && typeof renderRoster === 'function') { renderRoster(); return; }
   const sel = document.getElementById('mpPeriod'); if (!sel) return;
   const prev = sel.value, opts = mpPeriodList();
   sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.l}</option>`).join('') || '<option value="">— Chưa có dữ liệu OT —</option>';
