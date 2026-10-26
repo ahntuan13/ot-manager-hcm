@@ -127,7 +127,7 @@
     </button>
     <button class="nt mp-nav" data-page="manpower" onclick="goPage('manpower')" style="display:none">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <span class="nt-label"><span class="nt-vi">Nhân lực</span><span class="nt-en">Manpower</span></span>
+      <span class="nt-label"><span class="nt-vi">Nhân lực</span><span class="nt-en">Manpower &amp; HCM Staff</span></span>
     </button>
     <button class="nt" data-page="pudelivery" onclick="goPage('pudelivery')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -141,7 +141,7 @@
 
     <button class="nt mgr-nav" data-page="interview" onclick="goPage('interview')" style="display:none">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      <span class="nt-label"><span class="nt-vi">Tuyển dụng</span><span class="nt-en">Interview Test</span></span>
+      <span class="nt-label"><span class="nt-vi">Tuyển dụng</span><span class="nt-en">Recruitment Test</span></span>
     </button>
 
     <span class="sb-section-label">Tài liệu <i>/ Resources</i></span>
@@ -190,7 +190,7 @@
 ══════════════════════════════════════ -->
 <header class="top-header">
   <div class="th-title-block">
-    <div class="th-title" id="thTitle">Tổng quan OT</div>
+    <div class="th-title" id="thTitle">Tổng quan OT <span class="th-en">/ Overview</span></div>
     <div class="greet-sub" id="greetSub" style="font-size:13px">Đang tải dữ liệu...</div>
     <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Chỉ lưu hành trong nội bộ <span style="opacity:.7">/ For internal circulation only</span></div>
   </div>
@@ -994,11 +994,12 @@
 <div class="pg" id="pg-interview">
   <div class="page-title"><span>Tuyển dụng <span style="font-size:12px;color:var(--text2);font-weight:400">/ Bài thi tuyển dụng MEP — chỉ Quản lý tạo tài khoản ứng viên, chấm bài, xuất kết quả</span></span></div>
   <div class="card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span style="font-size:12.5px;font-weight:600">Link gửi ứng viên:</span>
-    <input id="ivLink" readonly style="flex:1;min-width:240px" onclick="this.select()">
+    <span style="font-size:12.5px;font-weight:600">Địa chỉ gốc link ứng viên <i style="font-weight:400;color:var(--text2)">/ Link base</i>:</span>
+    <input id="ivLink" style="flex:1;min-width:240px" placeholder="https://…/interview/" onchange="ivSaveBase(this.value)">
     <button class="btn" onclick="ivCopy()">Sao chép</button>
+    <button class="btn" onclick="ivSaveBase('')" title="Về địa chỉ mặc định">Mặc định</button>
     <a class="btn" id="ivOpen" target="_blank" rel="noopener">Mở tab mới</a>
-    <span style="font-size:11.5px;color:var(--text2);flex-basis:100%">Ứng viên cũ (có tài khoản/mật khẩu) dùng link chung này; ứng viên mới nên dùng link riêng tạo trong danh sách bên dưới. Việc tạo tài khoản, chấm điểm, xuất kết quả chỉ làm được khi đăng nhập HMD bằng quyền Quản lý / Admin.</span>
+    <span style="font-size:11.5px;color:var(--text2);flex-basis:100%">Mỗi ứng viên có <b>link riêng</b> dạng <code>…/interview/?c=ten-ma</code> (tạo khi bấm Tạo ứng viên). Ô trên là <b>địa chỉ gốc</b> dùng để ghép link: có thể đổi sang tên miền riêng / link rút gọn trỏ về trang này. Ứng viên cũ (có tài khoản/mật khẩu) dùng link chung. Việc tạo tài khoản, chấm điểm, xuất kết quả chỉ làm được khi đăng nhập HMD bằng quyền Quản lý / Admin.</span>
   </div>
   <iframe id="ivFrame" title="Bài thi tuyển dụng" style="width:100%;height:calc(100vh - 250px);min-height:560px;border:1px solid var(--line,#e3e8ef);border-radius:12px;background:#fff"></iframe>
 </div>

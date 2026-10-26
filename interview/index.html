@@ -864,7 +864,12 @@ async function tokenLogin(tok){
   }
   return startCandidate(tok, account);
 }
-function candLink(key){ return location.origin + location.pathname.replace(/index\.html$/,"") + "?c=" + encodeURIComponent(key); }
+function candLink(key){
+  let base = ""; try{ base = localStorage.getItem("iv_base_v1") || ""; }catch(e){}
+  if(!base) base = location.origin + location.pathname.replace(/index\.html$/,"");
+  return base + (base.includes("?") ? "&" : "?") + "c=" + encodeURIComponent(key);
+}
+function slugify(t){ return String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/gi,"d").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24); }
 
 /* ================= CANDIDATE LOGIN ================= */
 function renderCandidateLogin(){
@@ -1429,7 +1434,9 @@ function renderAdminCreate(){
     const examSet = document.getElementById("nc-examset").value || "DE1";
     const days = Math.max(1, Math.min(90, parseInt(document.getElementById("nc-days").value,10) || 7));
     if(!label && !fullName){ errorMsg = "Nhập mã/tên gọi hoặc họ tên ứng viên."; return renderAdminCreate(); }
-    const key = Array.from(crypto.getRandomValues(new Uint8Array(18))).map(x=>"abcdefghijklmnopqrstuvwxyz0123456789"[x%36]).join("");
+    const code = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(x=>"abcdefghijklmnopqrstuvwxyz0123456789"[x%36]).join("");
+    const sl = slugify(fullName || label);
+    const key = (sl ? sl + "-" : "") + code;   // link gọn, dễ nhận biết: ten-ung-vien-<mã bí mật 12 ký tự>
     await sSet(`account:${key}`, { label: label||fullName, fullName, position, examSet, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now()+days*86400000).toISOString() });
     const sub = blankSubmission(examSet);
     sub.candidateInfo.fullName = fullName;

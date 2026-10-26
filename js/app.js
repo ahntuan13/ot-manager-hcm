@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.94';
+const APP_VERSION = '2026.95';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1035,7 +1035,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   document.querySelectorAll('.pg').forEach(x => x.classList.remove('show'));
   document.querySelectorAll('.nt[data-page]').forEach(x => x.classList.remove('active'));
   document.querySelectorAll(`.nt[data-page="${p}"]`).forEach(x => x.classList.add('active'));
-  { const lb = document.querySelector(`.sb-nav .nt[data-page="${p}"] .nt-vi`), tt = document.getElementById('thTitle'); if (tt && lb) tt.textContent = lb.textContent; }
+  { const lb = document.querySelector(`.sb-nav .nt[data-page="${p}"] .nt-vi`), le = document.querySelector(`.sb-nav .nt[data-page="${p}"] .nt-en`), tt = document.getElementById('thTitle'); if (tt && lb) tt.innerHTML = lb.textContent + (le ? ` <span class="th-en">/ ${le.textContent}</span>` : ''); }
   if (dashGroup.includes(p)) {
     goSub(p);
     return;
