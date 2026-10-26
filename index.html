@@ -120,6 +120,10 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 010 20"/><path d="M12 2a14.5 14.5 0 000 20"/></svg>
       <span class="nt-label"><span class="nt-vi">WLB</span><span class="nt-en">Work-Life Balance</span></span>
     </button>
+    <button class="nt mgr-nav" data-page="roster" onclick="goPage('roster')" style="display:none">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+      <span class="nt-label"><span class="nt-vi">Nhân viên HCM</span><span class="nt-en">HCM Staff</span></span>
+    </button>
     <button class="nt nt-highlight" data-page="action" onclick="goPage('action')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       <span class="nt-label"><span class="nt-vi">Action Plan</span><span class="nt-en">OT Action Plan</span></span>
@@ -982,6 +986,11 @@
   </div>
 </div>
 
+<div class="pg" id="pg-roster">
+  <div class="page-title"><span>Nhân viên HCM <span style="font-size:12px;color:var(--text2);font-weight:400">/ HCM Staff — danh sách chuẩn để phân loại OT theo phòng ban, dự án</span></span></div>
+  <div id="rosterBody"></div>
+</div>
+
 <div class="pg" id="pg-progress">
   <div class="page-title"><span>Tiến độ dự án <span style="font-size:12px;color:var(--text2);font-weight:400">/ Project Schedule — lập tiến độ theo form MS Project, liên kết PU Delivery</span></span></div>
   <div id="progBody"></div>
@@ -1418,6 +1427,15 @@
       <li><b>Nhập/Xuất:</b> ⬇ Excel (bảng tiến độ + PU), ⬇ MS Project XML (mở bằng MS Project), ⬆ Nhập XML/Excel + ⬇ File mẫu Excel (từ MS Project: <i>File → Save As → XML</i>). File .mpp không đọc trực tiếp trên web được — hãy lưu sang XML.</li>
     </ul>
   </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title" style="margin-bottom:10px">👥 Nhân viên HCM — danh sách chuẩn để phân loại OT <span style="font-size:11px;font-weight:400;color:var(--text2)">— Quản lý và Admin</span></div>
+    <ul style="margin:0 0 0 18px;font-size:12.5px;line-height:1.7">
+      <li><b>Để làm gì:</b> file chấm công xuất từ máy (Mã NV, Họ tên, Ngày, Giờ vào/ra, Thiết bị) <u>không có cột Phòng ban</u>, nên app dùng danh sách này để biết mỗi mã NV thuộc phòng ban nào, còn làm việc hay không, có tính OT hay không. Dự án lấy từ Action Plan.</li>
+      <li><b>Tự thêm NV mới khi upload:</b> NV có chấm công ở thiết bị "HCM …" mà chưa có trong danh sách sẽ hiện hộp <i>"Phát hiện N nhân viên HCM mới"</i> — chọn phòng ban (có nút gán hàng loạt) rồi bấm Lưu: OT được tính ngay. Bỏ tích = không tính OT (không thuộc HCM), app không hỏi lại. NV chỉ chấm ở thiết bị "HN …" (Hà Nội) tự bỏ qua.</li>
+      <li><b>File có cột Phòng ban</b> (định dạng cũ): app tự thêm/cập nhật danh sách. Phòng ban chọn tay được <b>khoá</b>, file upload không ghi đè.</li>
+      <li><b>Quản lý danh sách:</b> ＋ Thêm NV · ✎ sửa (đổi phòng ban sẽ cập nhật cả dữ liệu OT đã nạp) · trạng thái Tính OT / Không tính OT / Đã nghỉ việc · ↻ Lấy từ dữ liệu OT đã có · ⬆ Nhập từ file Excel · ⬇ Xuất Excel. Xem nhóm theo phòng ban hoặc theo dự án, kèm OT tháng gần nhất và % hạn mức 70h.</li>
+    </ul>
+  </div>
 </div>
 
 </div><!-- /appBody -->
@@ -1434,6 +1452,7 @@
 <script src="js/pudelivery.js"></script>
 <script src="js/progress.js"></script>
 <script src="js/progress-views.js"></script>
+<script src="js/roster.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

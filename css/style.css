@@ -700,3 +700,5 @@ body.prog-solo .main{margin-left:0}
 .pg-bin{position:absolute;left:6px;right:4px;top:0;line-height:14px;color:#fff;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 2px rgba(0,0,0,.5)}
 .pg-bar1{position:absolute}
 body.prog-solo #pg-progress>.page-title{display:none}
+.rs-dept{display:inline-block;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:11.5px;padding:2px 8px;border-radius:6px}
+.rs-grp td{background:var(--bg2);font-size:12.5px;padding:6px 8px}.rs-grp span{color:var(--text2);font-weight:400;margin-left:8px}

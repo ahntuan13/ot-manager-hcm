@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.90';
+const APP_VERSION = '2026.91';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -189,6 +189,7 @@ function applyRoleUI() {
   if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
   document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
   document.querySelectorAll('.mp-nav').forEach(el => { el.style.display = canSeeManpower() ? '' : 'none'; });
+  document.querySelectorAll('.mgr-nav').forEach(el => { el.style.display = isManager() ? '' : 'none'; });
   const badge = document.getElementById('roleBadge');
   const uname = sessionStorage.getItem('ot_manager_username');
   if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : isSubAdmin() ? `🧑‍💼 Quản lý · ${uname || 'sub-admin'}` : (uname ? `👤 ${uname}` : '👤 User');
@@ -1024,6 +1025,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
     toast('⚠️ Chỉ Admin mới vào được mục Cài đặt. Bấm vào tên app để đổi vai trò.');
     return;
   }
+  if (p === 'roster' && !isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); return; }
   if (p === 'manpower' && !canSeeManpower()) {
     toast('🔒 Mục Manpower đang khoá — chỉ Admin xem được.');
     return;
@@ -1044,6 +1046,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'manpower' && typeof renderManpower === 'function') renderManpower();
   if (p === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
   if (p === 'progress' && typeof renderProgress === 'function') renderProgress();
+  if (p === 'roster' && typeof renderRoster === 'function') renderRoster();
   if (p === 'employees') {
     if (!keepProjectFilter) empProjectFilter = null; // điều hướng bình thường (không phải từ Action Plan) → bỏ lọc dự án cũ
     if (deptFilter) {
@@ -1477,7 +1480,8 @@ function tryParseLongFormat(ws) {
   const hdr = aoa[h].map(c => String(c || '').toLowerCase());
   const col = re => hdr.findIndex(c => re.test(c));
   const cCode = col(/mã nhân viên/), cName = col(/họ và tên|họ tên/), cDept = col(/phòng ban/), cDate = col(/ngày làm việc/), cIn = col(/giờ vào/), cOut = col(/giờ ra/);
-  if (cName < 0 || cDept < 0 || cDate < 0 || cIn < 0 || cOut < 0) return false;
+  if (cName < 0 || cDate < 0 || cIn < 0 || cOut < 0) return false;   // cột Phòng ban có thể không có → lấy phòng ban từ danh sách Nhân viên HCM
+  const cPos = col(/chức vụ/), cMail = col(/^email/);
   const toIso = v => {
     if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 10); }
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
@@ -1498,22 +1502,41 @@ function tryParseLongFormat(ws) {
   const isHanoi = c => {
     if (!c) return false;
     if (projMap[c]) return false;
+    if (typeof EMP_DB !== 'undefined' && EMP_DB[c] && EMP_DB[c].status !== 'excl') return false;
     const d = devs[c] || new Set();
     if (d.has('HCM')) return false;
     if (d.has('HN')) return true;
     return /^H/i.test(c);
   };
-  const hanoiSkipped = new Set();
+  const hanoiSkipped = new Set(), exclSkipped = new Set(), newEmp = {};
+  const devTop = {};   // mã NV → đếm tên thiết bị (hiện trong hộp "NV mới")
+  for (let r = h + 1; r < aoa.length; r++) { const row = aoa[r]; if (!row) continue; const c = String(row[cCode] || '').trim(); if (!c) continue; const d = cDevIn >= 0 ? String(row[cDevIn] || '').trim() : ''; if (d) { (devTop[c] = devTop[c] || {})[d] = ((devTop[c] || {})[d] || 0) + 1; } }
   const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
   let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
   for (let r = h + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row) continue;
     const name = String(row[cName] || '').trim(); const iso = toIso(row[cDate]);
     if (!name || !iso) continue;
-    const dept = mapNewDept(row[cDept]);
-    if (!dept) { skipped.add(String(row[cDept] || '').trim()); continue; }
     const staffCode = String(row[cCode] || '').trim();
+    const ro = (typeof EMP_DB !== 'undefined') ? EMP_DB[staffCode] : null;
+    if (ro && ro.status === 'excl') { exclSkipped.add(staffCode); continue; }   // NV đã đánh dấu "không tính OT"
+    let dept;
+    if (cDept >= 0) {
+      dept = mapNewDept(row[cDept]);
+      if (ro && ro.lock && ro.dept) dept = ro.dept;                                // phòng ban chọn tay → không bị file ghi đè
+      if (!dept) { skipped.add(String(row[cDept] || '').trim()); continue; }
+    } else {
+      dept = ro && ro.dept ? ro.dept : null;                                       // file không có Phòng ban → lấy từ danh sách NV HCM
+      if (!dept) {
+        if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
+        if (!staffCode) continue;
+        const ne = newEmp[staffCode] = newEmp[staffCode] || { code: staffCode, name, days: 0, dev: Object.entries(devTop[staffCode] || {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ') };
+        if (toHM(row[cIn]) !== null) ne.days++;
+        continue;
+      }
+    }
     if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
+    if (cDept >= 0 && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
     const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
     if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
     let key = keyOf[staffCode];
@@ -1552,13 +1575,15 @@ function tryParseLongFormat(ws) {
       lateMonths.add(mk);
     }
   }
-  if (!months.size) return false;
+  if (typeof saveEmpDb === 'function' && cDept >= 0) saveEmpDb();
+  const newEmployees = Object.values(newEmp).sort((a, b) => a.code.localeCompare(b.code));
+  if (!months.size && !newEmployees.length) return false;
   months.forEach(mk => {
     if (!DB[mk].snapshots) DB[mk].snapshots = [];
     const mx = monthMaxIso[mk];
     if (mx && !DB[mk].snapshots.includes(mx)) { DB[mk].snapshots.push(mx); DB[mk].snapshots.sort(); }
   });
-  return { ok: true, cnt, months, lateMonths, skippedDepts: [...skipped], hanoiSkipped: hanoiSkipped.size };
+  return { ok: true, cnt, months, lateMonths, skippedDepts: [...skipped], hanoiSkipped: hanoiSkipped.size, exclSkipped: exclSkipped.size, newEmployees };
 }
 
 // Process one file's binary content → returns {fileName, ok, cnt, months, lateMonths, error}
@@ -1584,16 +1609,18 @@ async function handleFile(inp) {
   const files = Array.from(inp.files || []);
   if (!files.length) return;
 
-  const results = [];
+  const bins = [];
   for (const file of files) {
-    try {
-      const bin = await readFileAsBinary(file);
-      results.push(processOneFile(file.name, bin));
-    } catch (err) {
-      results.push({ fileName: file.name, ok:false, error:'Lỗi đọc file' });
-    }
+    try { bins.push({ name: file.name, bin: await readFileAsBinary(file) }); }
+    catch (err) { bins.push({ name: file.name, bin: null }); }
   }
   inp.value = '';
+  runUpload(bins, true);
+}
+// Xử lý các file đã đọc. review=true: nếu có NV HCM mới (file không có cột Phòng ban) → hỏi phòng ban rồi đọc lại.
+function runUpload(bins, review) {
+  const files = bins;
+  const results = bins.map(b => b.bin == null ? { fileName: b.name, ok: false, error: 'Lỗi đọc file' } : processOneFile(b.name, b.bin));
 
   const okResults = results.filter(r => r.ok);
   const failResults = results.filter(r => !r.ok);
@@ -1642,6 +1669,11 @@ async function handleFile(inp) {
   document.getElementById('upLog').textContent = summaryParts.join(' · ');
   toast(failResults.length ? `Upload xong, ${failResults.length} file lỗi` : 'Upload thành công!');
   if (mArr.length) offerPublish(`${totalCnt} dòng OT (${mArr.length} tháng)`, false);
+  if (review && typeof rosterReviewNew === 'function') {
+    const nm = {}; okResults.forEach(r => (r.newEmployees || []).forEach(e => { if (!nm[e.code]) nm[e.code] = e; else nm[e.code].days += e.days; }));
+    const list = Object.values(nm).filter(e => e.days > 0);
+    if (list.length) rosterReviewNew(list, () => runUpload(bins, false));
+  }
 }
 
 function loadDemo() {
