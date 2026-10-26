@@ -571,6 +571,7 @@ const TEST_DURATION_MS = 60 * 60 * 1000; // 60 phut lam bai, tinh tu luc dang nh
    Chỉ tài khoản Admin / Quản lý của HMD mới tạo tài khoản ứng viên, chấm bài, xuất kết quả.
    Ứng viên vẫn đăng nhập bằng tài khoản được cấp (không cần tài khoản HMD). */
 const EMBED = /[?&]embed=1/.test(location.search);
+const TOKEN = new URLSearchParams(location.search).get("c");
 let MGR = false;   // đặt sau khi xác thực: tài khoản HMD đang đăng nhập có vai trò admin / sub (đọc users/{uid})
 function hmdIsManager(){ return MGR; }
 if(EMBED) document.documentElement.classList.add("embed");
@@ -582,7 +583,7 @@ let firebaseInitError = "";
 try{
   const fbApp0 = initializeApp(FIREBASE_CONFIG);
   db = getFirestore(fbApp0);
-  fbAuth = getAuth(fbApp0);
+  fbAuth = TOKEN ? null : getAuth(fbApp0);   // ứng viên mở link riêng: không khởi tạo đăng nhập → không lưu gì trên trình duyệt
   firebaseReady = true;
 }catch(e){
   firebaseInitError = e && e.message ? e.message : String(e);
@@ -862,6 +863,8 @@ async function tokenLogin(tok){
     const sb = await sGet(`submission:${tok}`);
     if(!(sb && sb.testStartedAt)){ alert("Link đã hết hạn. Vui lòng liên hệ người phụ trách tuyển dụng."); return goto("landing"); }
   }
+  const sb0 = await sGet(`submission:${tok}`);
+  if(sb0 && sb0.submittedAt){ root.className="app"; root.innerHTML = `<div class="card" style="text-align:center"><h2>Link đã được sử dụng</h2><p class="lead">Bài thi đã được nộp. Link này không còn truy cập được. Cảm ơn bạn!</p></div>`; return; }
   return startCandidate(tok, account);
 }
 function candLink(key){
@@ -1367,6 +1370,7 @@ function drawDashboard(){
       <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" data-view="${esc(entry.username)}">${entry.sub?.submittedAt ? bis("Chấm bài","Grade") : bis("Xem","View")}</button>
         <button class="btn btn-ghost btn-sm" data-cred="${esc(entry.username)}">${entry.account?.passHash ? bis("Tài khoản","Account") : "Link"}</button>
+        ${entry.account && !entry.account.passHash && !entry.account.short ? `<button class="btn btn-ghost btn-sm" data-short="${esc(entry.username)}">Rút gọn</button>` : ""}
         <button class="btn btn-ghost btn-sm" data-del="${esc(entry.username)}" style="color:var(--bad);">${bis("Xóa","Delete")}</button>
       </div></td>
     `;
@@ -1374,12 +1378,28 @@ function drawDashboard(){
   });
   body.querySelectorAll("[data-view]").forEach(b=>b.onclick = ()=>openGrade(b.dataset.view));
   body.querySelectorAll("[data-cred]").forEach(b=>b.onclick = ()=>showCred(b.dataset.cred));
+  body.querySelectorAll("[data-short]").forEach(b=>b.onclick = ()=>shortenLink(b.dataset.short));
   body.querySelectorAll("[data-del]").forEach(b=>b.onclick = ()=>deleteCandidate(b.dataset.del));
 }
 
+async function shortenLink(key){
+  const ac = dashRoster.find(e=>e.username===key)?.account; if(!ac) return;
+  const long = candLink(key);
+  if(!confirm("Rút gọn link qua dịch vụ is.gd?\n(Link của ứng viên sẽ được gửi tới dịch vụ bên thứ 3 để rút gọn.)")) return;
+  try{
+    const r = await fetch("https://is.gd/create.php?format=json&url="+encodeURIComponent(long));
+    const j = await r.json(); if(!j.shorturl) throw new Error(j.errormessage||"không có kết quả");
+    ac.short = j.shorturl; await sSet(`account:${key}`, ac);
+    try{ await navigator.clipboard.writeText(ac.short); }catch(e){}
+    alert(`Link rút gọn (đã sao chép):\n\n${ac.short}`); drawDashboard();
+  }catch(e){
+    try{ await navigator.clipboard.writeText(long); }catch(x){}
+    alert("Không rút gọn tự động được ("+(e&&e.message?e.message:e)+").\nLink gốc đã sao chép — bạn có thể dán vào dịch vụ rút gọn bất kỳ.");
+  }
+}
 async function showCred(username){
   const ac = dashRoster.find(e=>e.username===username)?.account;
-  if(ac && !ac.passHash){ const l = candLink(username); try{ await navigator.clipboard.writeText(l); }catch(e){} alert(`Link riêng của ứng viên (đã sao chép):\n\n${l}`); return; }
+  if(ac && !ac.passHash){ const l = ac.short || candLink(username); try{ await navigator.clipboard.writeText(l); }catch(e){} alert(`Link riêng của ứng viên (đã sao chép):\n\n${l}`); return; }
   const c = await sGet(`cred:${username}`);
   if(!c){ alert(`Tài khoản: ${username}\n\nKhông còn mật khẩu gốc để xem. Hãy tạo lại ứng viên hoặc xoá và tạo mới.`); return; }
   alert(`Tài khoản ứng viên\n\nUsername: ${username}\nPassword: ${c.password}\n\nGửi thông tin này cho ứng viên để họ đăng nhập.`);
@@ -1926,13 +1946,13 @@ if(!firebaseReady){
 } else {
   let booted = false;
   const boot = ()=>{ if(booted){ if(view==="landing") render(); return; } booted = true; render(); };
-  onAuthStateChanged(fbAuth, async u=>{
+  if(fbAuth) onAuthStateChanged(fbAuth, async u=>{
     MGR = false;
-    if(u){ try{ const sn = await getDoc(doc(db,"users",u.uid)); const d = sn.exists()?sn.data():null; MGR = !!(d && d.active===true && (d.role==="admin"||d.role==="sub")); }catch(e){ console.error(e); } }
+    if(u){ try{ const sn = await getDoc(doc(db,"users",u.uid)); const d = sn.exists()?sn.data():null; MGR = !!(d && d.active===true && (d.role==="admin"||d.role==="sub"||(Array.isArray(d.pages)&&d.pages.includes("interview")))); }catch(e){ console.error(e); } }
     boot();
   });
   (function(){ const tok = new URLSearchParams(location.search).get("c"); if(tok){ booted = true; tokenLogin(tok); } })();
-  setTimeout(boot, 5000);
+  if(fbAuth) setTimeout(boot, 5000);
 }
 document.getElementById("brand-logo").src = ASSET_LOGO;
 </script>

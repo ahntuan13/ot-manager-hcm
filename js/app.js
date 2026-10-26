@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.95';
+const APP_VERSION = '2026.96';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -184,12 +184,28 @@ function switchRole() {
   backToRoleMain();
 }
 // Ẩn mục "Cài đặt" khỏi sidebar + cập nhật hiển thị vai trò hiện tại, nếu không phải Admin.
+// ── Phân quyền theo MỤC (menu): Admin chọn mục được xem cho từng tài khoản (users/{uid}.pages). Không đặt = theo vai trò.
+const PAGE_KEYS = [['dash','Tổng quan OT'],['dept','OT phòng ban'],['employees','Danh sách NV OT'],['compare','So sánh OT'],['late','Đi trễ'],['wlb','WLB'],['action','Action Plan'],['manpower','Nhân lực'],['pudelivery','PU Delivery'],['progress','Tiến độ dự án'],['interview','Tuyển dụng'],['report','Báo cáo'],['formula','Công thức tính']];
+function pageAllowed(p) {
+  if (p === 'settings') return isAdmin();
+  if (isAdmin()) return true;
+  const pg = window.CLOUD_USER && window.CLOUD_USER.pages;
+  if (Array.isArray(pg)) return pg.includes(p);
+  if (p === 'interview') return isManager();
+  return true;
+}
+function applyPageAccess() {
+  document.querySelectorAll('.sb-nav .nt[data-page]').forEach(el => { const p = el.dataset.page; if (!pageAllowed(p)) el.style.display = 'none'; else if (p === 'interview') el.style.display = ''; });
+  const cur = document.querySelector('.sb-nav .nt.active'), cp = cur && cur.dataset.page;
+  if (cp && !pageAllowed(cp)) { const first = [...document.querySelectorAll('.sb-nav .nt[data-page]')].find(el => pageAllowed(el.dataset.page)); if (first) goPage(first.dataset.page); }
+}
 function applyRoleUI() {
   const adminSection = document.querySelector('.sb-admin');
   if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
   document.querySelectorAll('.admin-only-btn').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
   document.querySelectorAll('.mp-nav').forEach(el => { el.style.display = canSeeManpower() ? '' : 'none'; });
   document.querySelectorAll('.mgr-nav').forEach(el => { el.style.display = isManager() ? '' : 'none'; });
+  try { applyPageAccess(); } catch (e) { console.warn(e); }
   const badge = document.getElementById('roleBadge');
   const uname = sessionStorage.getItem('ot_manager_username');
   if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : isSubAdmin() ? `🧑‍💼 Quản lý · ${uname || 'sub-admin'}` : (uname ? `👤 ${uname}` : '👤 User');
@@ -1025,8 +1041,8 @@ function goPage(p, deptFilter, keepProjectFilter) {
     toast('⚠️ Chỉ Admin mới vào được mục Cài đặt. Bấm vào tên app để đổi vai trò.');
     return;
   }
+  if (!pageAllowed(p === 'roster' ? 'manpower' : p)) { toast('🔒 Bạn chưa được cấp quyền vào mục này. Liên hệ Admin.'); return; }
   if (p === 'roster') { if (!isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); return; } window.mpTab = 'roster'; p = 'manpower'; }
-  if (p === 'interview' && !isManager()) { toast('🔒 Mục Tuyển dụng chỉ dành cho Quản lý và Admin.'); return; }
   if (p === 'manpower' && !canSeeManpower()) {
     toast('🔒 Mục Manpower đang khoá — chỉ Admin xem được.');
     return;

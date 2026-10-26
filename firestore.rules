@@ -9,6 +9,8 @@ service cloud.firestore {
     function active()   { return hasProfile() && myDoc().active == true; }
     function isAdmin()  { return active() && myDoc().role == 'admin'; }
     function isMgr()    { return active() && (myDoc().role == 'admin' || myDoc().role == 'sub'); }
+    // Admin có thể cấp riêng mục "Tuyển dụng" cho 1 tài khoản (users/{uid}.pages có 'interview').
+    function ivStaff()  { return isMgr() || (active() && myDoc().get('pages', []).hasAny(['interview'])); }
 
     // Hồ sơ người dùng (vai trò). Chỉ Admin sửa. Mỗi người đọc được hồ sơ của chính mình.
     // Ngoại lệ: email Admin gốc tự tạo hồ sơ Admin cho mình ở lần đăng nhập đầu tiên.
@@ -45,20 +47,20 @@ service cloud.firestore {
     // Tài khoản: chỉ Quản lý/Admin tạo, sửa, xoá, liệt kê. Mật khẩu lưu băm; bản rõ (iv_cred) chỉ Quản lý đọc.
     match /iv_accounts/{u} {
       allow get: if true;
-      allow list, create, update, delete: if isMgr();
+      allow list, create, update, delete: if ivStaff();
     }
     match /iv_cred/{u} {
-      allow read, write: if isMgr();
+      allow read, write: if ivStaff();
     }
     // Bài làm: ứng viên tạo/cập nhật khi chưa nộp (final=false); nộp xong (final=true) chỉ Quản lý sửa (chấm điểm).
     match /iv_subs/{u} {
       allow get: if true;
-      allow list, delete: if isMgr();
-      allow create: if (isMgr() || exists(/databases/$(database)/documents/iv_accounts/$(u)))
+      allow list, delete: if ivStaff();
+      allow create: if (ivStaff() || exists(/databases/$(database)/documents/iv_accounts/$(u)))
                     && request.resource.data.keys().hasOnly(['payload', 'final'])
                     && request.resource.data.payload is string
                     && request.resource.data.payload.size() < 600000;
-      allow update: if isMgr()
+      allow update: if ivStaff()
                     || (resource.data.get('final', false) != true
                         && request.resource.data.keys().hasOnly(['payload', 'final'])
                         && request.resource.data.payload is string

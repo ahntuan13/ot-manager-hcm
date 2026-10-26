@@ -94,7 +94,7 @@
       const prof = snap.data();
       if (prof.active === false) { loginMsg = 'Tài khoản đã bị khoá. Liên hệ Admin.'; await auth.signOut(); return; }
       const role = prof.role === 'admin' ? 'admin' : prof.role === 'sub' ? 'sub' : 'user';
-      window.CLOUD_USER = { uid: user.uid, email: user.email, name: prof.name || user.email, role };
+      window.CLOUD_USER = { uid: user.uid, email: user.email, name: prof.name || user.email, role, pages: Array.isArray(prof.pages) ? prof.pages : null };
       try { const last = localStorage.getItem('ot_last_uid'); if (last && last !== user.uid) wipeLocalData(); localStorage.setItem('ot_last_uid', user.uid); } catch (e) {}
       document.body.classList.add('cloud-on');
       enterAsRole(role, window.CLOUD_USER.name);
@@ -111,7 +111,7 @@
       if (!window.CLOUD_USER) return;
       const d = s.exists ? s.data() : null;
       if (!d || d.active === false) { loginMsg = 'Tài khoản đã bị khoá hoặc gỡ quyền.'; auth.signOut(); }
-      else if ((d.role === 'admin' ? 'admin' : d.role === 'sub' ? 'sub' : 'user') !== role) { toast('Quyền của bạn vừa thay đổi — đang tải lại…'); setTimeout(() => location.reload(), 900); }
+      else if (JSON.stringify(Array.isArray(d.pages) ? d.pages : null) !== JSON.stringify(window.CLOUD_USER.pages || null) || (d.role === 'admin' ? 'admin' : d.role === 'sub' ? 'sub' : 'user') !== role) { toast('Quyền của bạn vừa thay đổi — đang tải lại…'); setTimeout(() => location.reload(), 900); }
     }, () => {});
   }
   function detach() {
@@ -529,6 +529,7 @@
       ${users.map(u => `<tr><td>${esc(u.name || '')}</td><td>${esc(u.email || '')}</td><td>${roleSel(u.id, u.role, u.id === me)}</td>
         <td>${u.active === false ? '<span style="color:var(--red)">Đã khoá</span>' : '<span style="color:var(--green)">Hoạt động</span>'}</td>
         <td style="white-space:nowrap"><button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudRename('${u.id}')">Đổi tên</button>
+        <button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudEditPages('${u.id}')" title="Chọn các mục được phép xem">Mục được xem${Array.isArray(u.pages) ? ' (' + u.pages.length + ')' : ''}</button>
         <button class="btn" style="padding:3px 8px;font-size:11px" data-email="${esc(u.email)}" onclick="cloudResetPw(this.dataset.email)">Gửi mail đặt lại MK</button>
         ${u.id === me ? '' : `<button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudToggleActive('${u.id}',${u.active === false})">${u.active === false ? 'Mở khoá' : 'Khoá'}</button>
         <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" data-email="${esc(u.email)}" onclick="cloudRemoveUser('${u.id}',this.dataset.email)">Gỡ quyền</button>`}</td></tr>`).join('')}
@@ -562,6 +563,23 @@
     </div>`;
   }
   const refreshAdmin = () => renderCloudAdmin();
+  window.cloudEditPages = async function (uid) {
+    let u = {}; try { u = (await db.collection('users').doc(uid).get()).data() || {}; } catch (e) { toast('⚠️ ' + e.message); return; }
+    const cur = Array.isArray(u.pages) ? u.pages : null, keys = (typeof PAGE_KEYS !== 'undefined') ? PAGE_KEYS : [];
+    const m = document.createElement('div'); m.className = 'cloud-modal'; m.id = 'pagesModal';
+    m.innerHTML = `<div style="max-width:440px"><div style="font-size:16px;font-weight:800;margin-bottom:2px">Mục được xem</div><div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(u.name || '')} · ${esc(u.email || '')}</div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px"><input type="radio" name="pgMode" value="def" ${cur ? '' : 'checked'}> Mặc định theo vai trò (${ROLE_LABEL[u.role] || u.role})</label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:8px"><input type="radio" name="pgMode" value="sel" ${cur ? 'checked' : ''}> Chỉ các mục được chọn:</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:10px">${keys.map(k => `<label style="font-size:12.5px"><input type="checkbox" class="pgCk" value="${k[0]}" ${cur && cur.includes(k[0]) ? 'checked' : ''}> ${k[1]}</label>`).join('')}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Giới hạn mục hiển thị/vào được. Quyền ghi dữ liệu vẫn theo vai trò. Mục Tuyển dụng cần được chọn ở đây (với vai trò User) mới vào và tạo link ứng viên được. Cài đặt chỉ Admin.</div>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="cloudSavePages('${uid}')">Lưu</button><button class="btn" onclick="document.getElementById('pagesModal').remove()">Huỷ</button></div></div>`;
+    document.body.appendChild(m);
+  };
+  window.cloudSavePages = async function (uid) {
+    const sel = document.querySelector('input[name=pgMode]:checked').value === 'sel', arr = [...document.querySelectorAll('#pagesModal .pgCk:checked')].map(x => x.value);
+    if (sel && !arr.length) { toast('⚠️ Chọn ít nhất 1 mục.'); return; }
+    try { await db.collection('users').doc(uid).update({ pages: sel ? arr : firebase.firestore.FieldValue.delete() }); document.getElementById('pagesModal').remove(); toast('✅ Đã lưu mục được xem.'); renderCloudAdmin(); } catch (e) { toast('⚠️ ' + e.message); }
+  };
   window.cloudSetRole = async function (uid, role) { try { await db.collection('users').doc(uid).update({ role }); toast('Đã đổi vai trò.'); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
   window.cloudToggleActive = async function (uid, active) { try { await db.collection('users').doc(uid).update({ active }); toast(active ? 'Đã mở khoá.' : 'Đã khoá tài khoản.'); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
   window.cloudRename = async function (uid) { const n = prompt('Tên hiển thị mới:'); if (!n) return; try { await db.collection('users').doc(uid).update({ name: n.trim() }); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
