@@ -297,13 +297,24 @@ html.embed .app{padding-top:14px}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 /* ============================================================
    Firebase project config — replace these values in Firebase
    Console > Project settings > Your apps if you ever need to
    point this app at a different Firebase project.
    ============================================================ */
+/* Dùng chung Firebase của HMD (ot-manager-hcm): bảo mật bằng firestore.rules — chỉ Quản lý/Admin HMD tạo tài khoản, chấm bài. */
 const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD3yKcjqvx4Fm4jt6SxvQfV6ZWENwRcSeg",
+  authDomain: "ot-manager-hcm.firebaseapp.com",
+  projectId: "ot-manager-hcm",
+  storageBucket: "ot-manager-hcm.firebasestorage.app",
+  messagingSenderId: "486381760217",
+  appId: "1:486381760217:web:2fdd274268079d72b558c8"
+};
+/* Hệ thống cũ (chỉ dùng cho nút "Chuyển dữ liệu từ hệ thống cũ") */
+const LEGACY_CONFIG = {
   apiKey: "AIzaSyC0-YSpt27-oUWiPrCiz9kzgQLBWHyC_oM",
   authDomain: "testonline-17ed0.firebaseapp.com",
   projectId: "testonline-17ed0",
@@ -560,15 +571,18 @@ const TEST_DURATION_MS = 60 * 60 * 1000; // 60 phut lam bai, tinh tu luc dang nh
    Chỉ tài khoản Admin / Quản lý của HMD mới tạo tài khoản ứng viên, chấm bài, xuất kết quả.
    Ứng viên vẫn đăng nhập bằng tài khoản được cấp (không cần tài khoản HMD). */
 const EMBED = /[?&]embed=1/.test(location.search);
-function hmdIsManager(){ try{ const r = sessionStorage.getItem("ot_manager_role_v1"); return r==="admin" || r==="sub"; }catch(e){ return false; } }
+let MGR = false;   // đặt sau khi xác thực: tài khoản HMD đang đăng nhập có vai trò admin / sub (đọc users/{uid})
+function hmdIsManager(){ return MGR; }
 if(EMBED) document.documentElement.classList.add("embed");
 /* ---------------- Firebase Firestore storage ---------------- */
 let db = null;
+let fbAuth = null;
 let firebaseReady = false;
 let firebaseInitError = "";
 try{
-  const fbApp = initializeApp(FIREBASE_CONFIG);
-  db = getFirestore(fbApp);
+  const fbApp0 = initializeApp(FIREBASE_CONFIG);
+  db = getFirestore(fbApp0);
+  fbAuth = getAuth(fbApp0);
   firebaseReady = true;
 }catch(e){
   firebaseInitError = e && e.message ? e.message : String(e);
@@ -576,9 +590,9 @@ try{
 }
 
 function parseKey(key){
-  if(key.startsWith("account:"))    return ["accounts", key.slice(8)];
-  if(key.startsWith("submission:")) return ["submissions", key.slice(11)];
-  if(key === "admin:password")      return ["config", "admin"];
+  if(key.startsWith("account:"))    return ["iv_accounts", key.slice(8)];
+  if(key.startsWith("submission:")) return ["iv_subs", key.slice(11)];
+  if(key.startsWith("cred:"))       return ["iv_cred", key.slice(5)];
   throw new Error("Unknown storage key: "+key);
 }
 async function sGet(key){
@@ -595,30 +609,50 @@ async function sSet(key, obj){
   if(!firebaseReady) return false;
   try{
     const [coll,id] = parseKey(key);
-    await setDoc(doc(db, coll, id), { payload: JSON.stringify(obj) });
+    const data = { payload: JSON.stringify(obj) };
+    if(coll==="iv_subs") data.final = !!(obj && obj.submittedAt);   // đã nộp bài → chỉ Quản lý sửa được (chấm điểm)
+    await setDoc(doc(db, coll, id), data);
     return true;
   }catch(e){ console.error("sSet failed", key, e); return false; }
 }
 async function sDelete(key){
   if(!firebaseReady) return;
-  try{
-    const [coll,id] = parseKey(key);
-    await deleteDoc(doc(db, coll, id));
-  }catch(e){ console.error("sDelete failed", key, e); }
+  try{ const [coll,id] = parseKey(key); await deleteDoc(doc(db, coll, id)); }catch(e){ console.error("sDelete failed", key, e); }
 }
 async function sList(prefix){
   if(!firebaseReady) return [];
   try{
-    if(prefix === "account:"){
-      const snap = await getDocs(collection(db, "accounts"));
-      return snap.docs.map(d=>"account:"+d.id);
-    }
-    if(prefix === "submission:"){
-      const snap = await getDocs(collection(db, "submissions"));
-      return snap.docs.map(d=>"submission:"+d.id);
-    }
+    if(prefix === "account:"){ const snap = await getDocs(collection(db, "iv_accounts")); return snap.docs.map(d=>"account:"+d.id); }
     return [];
   }catch(e){ console.error("sList failed", prefix, e); return []; }
+}
+/* Mật khẩu ứng viên: lưu băm SHA-256 (+salt) ở iv_accounts (ứng viên đọc được để đăng nhập); bản rõ để Quản lý xem lại nằm ở iv_cred (chỉ Quản lý đọc). */
+async function sha256(t){ const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function newSalt(){ return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>x.toString(16).padStart(2,"0")).join(""); }
+async function checkPw(account, p){ if(account.passHash) return (await sha256((account.salt||"")+p)) === account.passHash; return account.password === p; }
+async function migrateLegacy(){
+  if(!MGR){ alert("Chỉ Quản lý."); return; }
+  if(!confirm("Chuyển ứng viên + bài làm từ hệ thống cũ (testonline-17ed0) sang HMD?\nDữ liệu đã có ở HMD sẽ KHÔNG bị ghi đè.")) return;
+  root.innerHTML = loadingBox("Đang chuyển dữ liệu...");
+  let na=0, ns=0, sk=0;
+  try{
+    const lapp = initializeApp(LEGACY_CONFIG, "legacy"), ldb = getFirestore(lapp);
+    const accs = await getDocs(collection(ldb, "accounts"));
+    for(const d of accs.docs){
+      const u = d.id;
+      if(await sGet(`account:${u}`)){ sk++; continue; }
+      const a = JSON.parse(d.data().payload), salt = newSalt(), pw = a.password || "";
+      const acc = { passHash: await sha256(salt+pw), salt, fullName:a.fullName||"", position:a.position||"", examSet:a.examSet||"DE1", createdAt:a.createdAt||new Date().toISOString() };
+      await sSet(`account:${u}`, acc); await sSet(`cred:${u}`, { password: pw }); na++;
+    }
+    const subs = await getDocs(collection(ldb, "submissions"));
+    for(const d of subs.docs){
+      const u = d.id; if(await sGet(`submission:${u}`)) continue;
+      await sSet(`submission:${u}`, JSON.parse(d.data().payload)); ns++;
+    }
+    alert(`Đã chuyển ${na} tài khoản và ${ns} bài làm${sk?` (bỏ qua ${sk} tài khoản đã có)`:""}.`);
+  }catch(e){ alert("Chuyển dữ liệu lỗi: "+(e&&e.message?e.message:e)); }
+  renderAdminDashboard();
 }
 
 /* ---------------- bilingual helper ---------------- */
@@ -823,7 +857,7 @@ function renderCandidateLogin(){
     if(!u || !p){ errorMsg = bis("Vui lòng nhập đầy đủ tài khoản và mật khẩu.","Please enter both username and password."); return renderCandidateLogin(); }
     root.innerHTML = loadingBox(bi("Đang kiểm tra tài khoản...","Checking your account..."));
     const account = await sGet(`account:${u}`);
-    if(!account || account.password !== p){
+    if(!account || !(await checkPw(account, p))){
       errorMsg = bis("Sai tài khoản hoặc mật khẩu.","Incorrect username or password.");
       return renderCandidateLogin();
     }
@@ -1218,32 +1252,7 @@ function renderCandidateDone(){
   `;
 }
 
-/* ================= ADMIN LOGIN ================= */
-function renderAdminLogin(){
-  root.className = "app";
-  root.innerHTML = `
-    <div class="card login-box">
-      <h2 style="text-align:center;">${bi("Quản trị viên dang nhap","Administrator Login")}</h2>
-      ${errorMsg?`<div class="error-msg">${esc(errorMsg)}</div>`:""}
-      <div class="field"><label>${bis("Mật khẩu quan tri","Admin password")}</label><input id="ap" type="password"></div>
-      <button class="btn btn-primary btn-block" id="btn-login-a">${bis("Đăng nhập","Log in")}</button>
-      <div class="btn-row" style="justify-content:center;margin-top:14px;">
-        <button class="link-btn" style="color:var(--blue);" id="back-landing">&larr; ${bis("Quay lại trang chính","Back to home")}</button>
-      </div>
-    </div>
-  `;
-  document.getElementById("back-landing").onclick = ()=>goto("landing");
-  document.getElementById("btn-login-a").onclick = async ()=>{
-    const p = document.getElementById("ap").value;
-    root.innerHTML = loadingBox(bi("Đang kiểm tra...","Checking..."));
-    let stored = await sGet("admin:password");
-    if(stored===null){ stored = "admin123"; await sSet("admin:password", stored); }
-    if(p !== stored){ errorMsg = bis("Sai mật khẩu quản trị.","Incorrect admin password."); return renderAdminLogin(); }
-    session = { role:"admin", username:null };
-    errorMsg = "";
-    goto("a-dash");
-  };
-}
+function renderAdminLogin(){ goto("landing"); }
 
 /* ================= ADMIN DASHBOARD ================= */
 async function loadRoster(){
@@ -1300,6 +1309,7 @@ function drawDashboard(){
         <h2>${bi(`Danh sách ứng viên (${dashRoster.length})`, "")}</h2>
         <div class="btn-row" style="margin:0;">
           <button class="btn btn-ghost btn-sm" id="btn-refresh">&#8635; ${bis("Làm mới","Refresh")}</button>
+          <button class="btn btn-ghost btn-sm" id="btn-migrate" title="Chuyển ứng viên & bài làm từ hệ thống cũ sang HMD">&#8681; Chuyển dữ liệu cũ</button>
           <button class="btn btn-primary btn-sm" id="btn-new-candidate">+ ${bis("Tạo ứng viên mới","New candidate")}</button>
         </div>
       </div>
@@ -1318,6 +1328,7 @@ function drawDashboard(){
   `;
   document.getElementById("btn-refresh").onclick = renderAdminDashboard;
   document.getElementById("btn-new-candidate").onclick = ()=>goto("a-create");
+  document.getElementById("btn-migrate").onclick = migrateLegacy;
   
 
   if(dashRoster.length===0) return;
@@ -1345,31 +1356,20 @@ function drawDashboard(){
   body.querySelectorAll("[data-del]").forEach(b=>b.onclick = ()=>deleteCandidate(b.dataset.del));
 }
 
-function showCred(username){
-  const entry = dashRoster.find(e=>e.username===username);
-  if(!entry) return;
-  alert(`Tài khoản ứng viên\n\nUsername: ${username}\nPassword: ${entry.account.password}\n\nGửi thông tin này cho ứng viên để họ đăng nhập.`);
+async function showCred(username){
+  const c = await sGet(`cred:${username}`);
+  if(!c){ alert(`Tài khoản: ${username}\n\nKhông còn mật khẩu gốc để xem. Hãy tạo lại ứng viên hoặc xoá và tạo mới.`); return; }
+  alert(`Tài khoản ứng viên\n\nUsername: ${username}\nPassword: ${c.password}\n\nGửi thông tin này cho ứng viên để họ đăng nhập.`);
 }
 
 async function deleteCandidate(username){
   if(!confirm(`Xóa tài khoản và bài làm của "${username}"?\nHành động này không thể hoàn tác.`)) return;
   await sDelete(`account:${username}`);
   await sDelete(`submission:${username}`);
+  await sDelete(`cred:${username}`);
   renderAdminDashboard();
 }
 
-async function changeAdminPassword(){
-  const cur = prompt("Nhập mật khẩu admin hiện tại:");
-  if(cur===null) return;
-  const stored = await sGet("admin:password") || "admin123";
-  if(cur !== stored){ alert("Mật khẩu hiện tại không đúng."); return; }
-  const next = prompt("Nhập mật khẩu admin mới:");
-  if(!next) return;
-  await sSet("admin:password", next);
-  alert("Đã đổi mật khẩu admin thành công.");
-}
-
-/* ================= ADMIN CREATE CANDIDATE ================= */
 function renderAdminCreate(){
   root.className = "app";
   const suggested = genPassword();
@@ -1411,7 +1411,9 @@ function renderAdminCreate(){
     if(!username || !password){ errorMsg = bis("Vui lòng nhập tài khoản và mật khẩu.","Please enter both username and password."); return renderAdminCreate(); }
     const existing = await sGet(`account:${username}`);
     if(existing){ errorMsg = bis(`Tài khoản "${username}" đã tồn tại. Vui lòng chọn tên khác.`, ""); return renderAdminCreate(); }
-    await sSet(`account:${username}`, { password, fullName, position, examSet, createdAt: new Date().toISOString() });
+    const salt = newSalt();
+    await sSet(`account:${username}`, { passHash: await sha256(salt+password), salt, fullName, position, examSet, createdAt: new Date().toISOString() });
+    await sSet(`cred:${username}`, { password });
     const sub = blankSubmission(examSet);
     sub.candidateInfo.fullName = fullName;
     await sSet(`submission:${username}`, sub);
@@ -1896,7 +1898,14 @@ if(!firebaseReady){
       <pre style="background:#f6f9fb;padding:12px;border-radius:8px;font-size:12.5px;white-space:pre-wrap;">${esc(firebaseInitError||"(khong co chi tiet / no details)")}</pre>
     </div>`;
 } else {
-  render();
+  let booted = false;
+  const boot = ()=>{ if(booted){ if(view==="landing") render(); return; } booted = true; render(); };
+  onAuthStateChanged(fbAuth, async u=>{
+    MGR = false;
+    if(u){ try{ const sn = await getDoc(doc(db,"users",u.uid)); const d = sn.exists()?sn.data():null; MGR = !!(d && d.active===true && (d.role==="admin"||d.role==="sub")); }catch(e){ console.error(e); } }
+    boot();
+  });
+  setTimeout(boot, 5000);
 }
 document.getElementById("brand-logo").src = ASSET_LOGO;
 </script>

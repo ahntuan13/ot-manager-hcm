@@ -40,6 +40,31 @@ service cloud.firestore {
       );
     }
 
+    // ── TUYỂN DỤNG (bài thi MEP, thư mục interview/) ──
+    // Ứng viên KHÔNG đăng nhập HMD: chỉ đọc được đúng tài khoản/bài làm của mình (biết tên đăng nhập), không liệt kê được.
+    // Tài khoản: chỉ Quản lý/Admin tạo, sửa, xoá, liệt kê. Mật khẩu lưu băm; bản rõ (iv_cred) chỉ Quản lý đọc.
+    match /iv_accounts/{u} {
+      allow get: if true;
+      allow list, create, update, delete: if isMgr();
+    }
+    match /iv_cred/{u} {
+      allow read, write: if isMgr();
+    }
+    // Bài làm: ứng viên tạo/cập nhật khi chưa nộp (final=false); nộp xong (final=true) chỉ Quản lý sửa (chấm điểm).
+    match /iv_subs/{u} {
+      allow get: if true;
+      allow list, delete: if isMgr();
+      allow create: if (isMgr() || exists(/databases/$(database)/documents/iv_accounts/$(u)))
+                    && request.resource.data.keys().hasOnly(['payload', 'final'])
+                    && request.resource.data.payload is string
+                    && request.resource.data.payload.size() < 600000;
+      allow update: if isMgr()
+                    || (resource.data.get('final', false) != true
+                        && request.resource.data.keys().hasOnly(['payload', 'final'])
+                        && request.resource.data.payload is string
+                        && request.resource.data.payload.size() < 600000);
+    }
+
     // Lịch sử chỉnh sửa: ai cũng ghi được (khi đang hoạt động), chỉ Admin xem.
     match /log/{logId} {
       allow create: if active();
