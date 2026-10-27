@@ -140,7 +140,7 @@ function progViewCal(name, sm) {
 function progViewPu(name, sm) {
   const pu = sm.pu, items = pu.items.slice().sort((a, b) => (puEst(a) || '9').localeCompare(puEst(b) || '9'));
   if (!items.length) return `<div class="card" style="color:var(--text2)">Dự án "${pgEsc(name)}" chưa có hàng nào trong PU Delivery. Hàng được liên kết theo tên dự án (Action Plan / PU Delivery).</div>`;
-  const stl = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao 7 ngày'], ['soon30', 'Sắp giao 30 ngày'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC'], ['miss', 'Thiếu KH đặt hàng']];
+  const stl = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC'], ['miss', 'Thiếu KH đặt hàng']];
   const chips = stl.map(([k, l]) => { const n = items.filter(x => puStatus(x).k === k).length; return n ? `<span class="pg-chip" style="background:${PU_STATUS_COLOR[k]}22;color:${PU_STATUS_COLOR[k]}">${l}: ${n}</span>` : ''; }).join('');
   const rows = items.map((x, k) => { const s = puStatus(x), est = puEst(x), delay = x.e0 && est && est > x.e0 ? puDaysBetween(x.e0, est) : 0;
     return `<tr><td class="c">${k + 1}</td><td style="white-space:nowrap"><span class="pg-pill" style="background:${PU_STATUS_COLOR[s.k]}">${pgEsc(x.name)}</span></td><td>${pgEsc(x.supplier || '')}</td><td>${pgEsc(x.po || '')}</td><td class="c">${puFmt(x.e0)}</td><td class="c">${puFmt(est)}</td><td class="c">${puFmt(x.actual)}</td><td class="c" style="color:${delay ? '#C0392B' : 'inherit'}">${delay ? '+' + delay + ' ngày' : ''}</td><td>${pgEsc(s.t)}</td><td style="font-size:11.5px;color:var(--text2)">${pgEsc(x.reason || '')}</td></tr>`; }).join('');

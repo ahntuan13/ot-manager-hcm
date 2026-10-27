@@ -1417,11 +1417,10 @@
         <tr><td style="padding:6px 10px"><b style="color:#2D6CDF">Đã giao</b></td><td style="padding:6px 10px">Có "Actual date on Site". <u>Hàng đã giao tự ẩn khỏi danh sách dự án</u> (coi như hoàn tất); vẫn tính trong số liệu, biểu đồ và xem được ở ô "Đã giao" hoặc tick "Hiện hàng đã giao".</td></tr>
         <tr><td style="padding:6px 10px"><b style="color:#8a8f98">Chờ NCC báo ngày giao</b></td><td style="padding:6px 10px">Chưa có ngày dự kiến, nhưng đã có Order Date (Plan).</td></tr>
         <tr><td style="padding:6px 10px"><b style="color:#7A5FD1">Thiếu kế hoạch đặt hàng</b></td><td style="padding:6px 10px">Chưa có ngày dự kiến, chưa có Order Date (Plan), và không có NCC kèm Desired date còn hiệu lực.</td></tr>
-        <tr><td style="padding:6px 10px"><b style="color:#E8A33D">Sắp giao (7 ngày)</b></td><td style="padding:6px 10px">Còn lại ≤ 7 ngày (kể cả đã quá ngày dự kiến mà chưa giao).</td></tr>
-        <tr><td style="padding:6px 10px"><b style="color:#2E7D32">Sắp giao (30 ngày)</b></td><td style="padding:6px 10px">Còn lại từ 8 đến 30 ngày.</td></tr>
-        <tr><td style="padding:6px 10px"><b style="color:#6b7280">Đang sản xuất</b></td><td style="padding:6px 10px">Còn lại trên 30 ngày.</td></tr>
-        <tr><td style="padding:6px 10px"><b style="color:#C0392B">Trễ tiến độ</b></td><td style="padding:6px 10px">Ngày dự kiến mới muộn hơn ngày "As contract" và lý do đổi lịch <u>không</u> phải do yêu cầu của PM (không chứa chữ "PM"). Ưu tiên hơn các trạng thái sắp giao/đang sản xuất.</td></tr>
-      </table>
+        <tr><td style="padding:6px 10px"><b style="color:#C0392B">Trễ tiến độ</b></td><td style="padding:6px 10px">Đã quá Ngày dự kiến giao (hôm nay &gt; ngày dự kiến) mà chưa có "Actual date on Site".</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#E8A33D">Sắp giao (≤ 2 ngày)</b></td><td style="padding:6px 10px">Còn lại từ 0 đến 2 ngày nữa là tới ngày dự kiến giao.</td></tr>
+        <tr><td style="padding:6px 10px"><b style="color:#6b7280">Đang sản xuất</b></td><td style="padding:6px 10px">Còn lại trên 2 ngày.</td></tr>
+        </table>
       <p style="color:var(--text2);font-size:12px"><strong>Hướng dẫn sử dụng:</strong></p>
       <ul style="color:var(--text2);font-size:12px;margin:4px 0 0 18px;line-height:1.8">
         <li>Dự án lấy từ Action Plan, mỗi dự án có PM và danh sách hàng hóa. Bấm tên dự án để mở/đóng; nút <b>✎ Dự án</b> sửa tên PM; <b>＋ Thêm dự án</b> tạo dự án riêng.</li>

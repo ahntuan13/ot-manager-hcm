@@ -50,11 +50,11 @@ function puStatus(x, today) {
     else return { k: 'miss', t: 'Thiếu kế hoạch đặt hàng' };
   }
   const d = puDaysBetween(today, est);
-  const base = d <= 7 ? { k: 'soon7', t: 'sắp giao (7 ngày)' } : d <= 30 ? { k: 'soon30', t: 'sắp giao (30 ngày)' } : { k: 'make', t: 'đang sản xuất' };
-  // Trễ tiến độ: ngày giao mới muộn hơn ngày "As contract" và lý do KHÔNG phải do yêu cầu của PM
-  const late = !!(x.e0 && est > x.e0 && !/\bpm/i.test(x.reason || ''));
-  if (late) return { k: 'late', t: 'Trễ tiến độ và ' + base.t };
-  return { k: base.k, t: base.t.charAt(0).toUpperCase() + base.t.slice(1) };
+  // Trễ tiến độ: đã QUÁ ngày dự kiến giao (hôm nay > ngày dự kiến) mà chưa giao.
+  if (d < 0) return { k: 'late', t: 'Trễ tiến độ' };
+  // Sắp giao: còn ≤ 2 ngày nữa là tới ngày giao (hôm nay, +1, +2).
+  if (d <= 2) return { k: 'soon7', t: 'Sắp giao (còn ' + d + ' ngày)' };
+  return { k: 'make', t: 'Đang sản xuất' };
 }
 
 // ── Dự án lấy từ Action Plan ──
@@ -121,7 +121,7 @@ function puCtl() {
   return { proj: document.getElementById('puProjFilter')?.value || '__all__', st: document.getElementById('puStatusFilter')?.value || 'all',
     q: (document.getElementById('puSearch')?.value || '').toLowerCase().trim(), hideEmpty: document.getElementById('puHideEmpty')?.checked !== false, showDone: !!document.getElementById('puShowDone')?.checked };
 }
-const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC báo ngày giao'], ['miss', 'Thiếu kế hoạch đặt hàng']];
+const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC báo ngày giao'], ['miss', 'Thiếu kế hoạch đặt hàng']];
 function puBadge(s) { return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(s.t)}</span>`; }
 
 function puRow(x, no) {
@@ -155,7 +155,7 @@ function renderPuDelivery() {
   const cnt = k => all.filter(a => a.s.k === k).length;
   const kpi = document.getElementById('puKpi');
   if (kpi) kpi.innerHTML = `<div class="mk pu-tile" onclick="openPuDetail('all')" title="Bấm để xem chi tiết"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
-    [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (7 ngày)'], ['soon30', 'Sắp giao (30 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk pu-tile" onclick="openPuDetail('${k}')" title="Bấm để xem chi tiết"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
+    [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk pu-tile" onclick="openPuDetail('${k}')" title="Bấm để xem chi tiết"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
   renderPuChart(all);
   const match = a => (c.showDone || c.st === 'done' || a.s.k !== 'done') && (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
   let html = '';
@@ -238,7 +238,7 @@ function renderPuChart(all) {
   const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
   card.style.display = names.length ? '' : 'none'; if (!names.length) return;
   box.style.height = Math.max(240, names.length * 34 + 90) + 'px';
-  const order = ['done', 'make', 'soon30', 'soon7', 'late', 'wait', 'miss'], label = Object.fromEntries(PU_ST_LIST);
+  const order = ['done', 'make', 'soon7', 'late', 'wait', 'miss'], label = Object.fromEntries(PU_ST_LIST);
   const ds = order.map(k => ({ label: label[k], data: names.map(n => groups[n].filter(a => a.s.k === k).length), backgroundColor: PU_STATUS_COLOR[k], borderWidth: 0, borderDash: [], maxBarThickness: 24 }));
   CH['cPuProg'] = new Chart(cv, { type: 'bar', data: { labels: names.map(n => n.replace(/^HCM[\s-]+/i, '') + ` (${groups[n].length})`), datasets: ds },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
@@ -375,7 +375,7 @@ function exportPuExcel() {
 
 // ── Bấm ô KPI → danh sách chi tiết các hạng mục theo trạng thái ──
 function openPuDetail(k) {
-  const today = puToday(), lab = { all: 'Tổng hàng hóa', late: 'Trễ tiến độ', soon7: 'Sắp giao (7 ngày)', soon30: 'Sắp giao (30 ngày)', miss: 'Thiếu kế hoạch đặt hàng', done: 'Đã giao' };
+  const today = puToday(), lab = { all: 'Tổng hàng hóa', late: 'Trễ tiến độ', soon7: 'Sắp giao (≤ 2 ngày)', miss: 'Thiếu kế hoạch đặt hàng', done: 'Đã giao' };
   const rows = puItems().map(x => ({ x, proj: puProjOf(x) || x.src || '(chưa gán)', s: puStatus(x, today) })).filter(a => k === 'all' || a.s.k === k)
     .sort((a, b) => a.proj.localeCompare(b.proj) || (puEst(a.x) || '9').localeCompare(puEst(b.x) || '9'));
   const col = k === 'all' ? '#1f2937' : PU_STATUS_COLOR[k];
