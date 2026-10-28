@@ -352,7 +352,7 @@ function progGanttHtml(name) {
   minN -= 3; maxN += 10;
   const pxd = progZoom === 'day' ? 24 : progZoom === 'week' ? 9 : 3, days = maxN - minN + 1, W = days * pxd;
   const X = n => (n - minN) * pxd;
-  const cols = progCompact ? { id: 34, nm: 300, wh: 0, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, wh: 110, du: 58, st: 82, fn: 82, pc: 50, pd: 112, ac: edit ? 56 : 0 };
+  const cols = progCompact ? { id: 34, nm: 300, wh: 0, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, wh: 110, du: 58, st: 82, fn: 82, pc: 50, pd: 0, ac: edit ? 56 : 0 };
   const LW = Object.values(cols).reduce((a, b) => a + b, 0), HH = 46;
   const nrows = vis.length + (puRows.length ? 1 + (puExpanded ? puRows.length : 0) : 0), H = nrows * PG_RH;
   // header

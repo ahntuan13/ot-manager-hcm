@@ -1,8 +1,14 @@
+// DataView an toàn: đọc ngoài phạm vi trả về 0 thay vì ném lỗi (file .mpp lạ/biến thể)
+function safeDV(buf, off, len) {
+  var d = new DataView(buf, off, len);
+  function w(f) { return function (p, le) { try { return d[f](p, le); } catch (e) { return 0; } }; }
+  return { getUint8: w('getUint8'), getUint16: w('getUint16'), getUint32: w('getUint32'), getInt32: w('getInt32') };
+}
 // Minimal OLE2 compound file reader (browser+node)
 (function(root){
 function readOle(buf){
   const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  const dv = new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  const dv = safeDV(u8.buffer,u8.byteOffset,u8.byteLength);
   const sig=[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1];
   for(let i=0;i<8;i++) if(u8[i]!==sig[i]) throw new Error('File không phải định dạng .mpp hợp lệ (hoặc bị hỏng)');
   const ssz=1<<dv.getUint16(30,true), mssz=1<<dv.getUint16(32,true);
@@ -20,7 +26,7 @@ function readOle(buf){
   }
   const fat=new Uint32Array(fatSecs.length*per);
   fatSecs.forEach((s,i)=>{const o=sec(s);for(let j=0;j<per;j++)fat[i*per+j]=dv.getUint32(o+j*4,true);});
-  function chain(start){const r=[];let s=start,g=0;while(s<0xFFFFFFFA&&g++<10000000){r.push(s);s=fat[s];}return r;}
+  function chain(start){const r=[];let s=start,g=0;while(s<0xFFFFFFFA&&g++<=fat.length){r.push(s);s=fat[s];}return r;}
   function readStream(start,size){
     const ch=chain(start);const out=new Uint8Array(ch.length*ssz);
     ch.forEach((s,i)=>out.set(u8.subarray(sec(s),sec(s)+ssz),i*ssz));
@@ -29,7 +35,7 @@ function readOle(buf){
   const dirData=readStream(dirStart);
   const ents=[];
   for(let o=0;o+128<=dirData.length;o+=128){
-    const dd=new DataView(dirData.buffer,dirData.byteOffset+o,128);
+    const dd=safeDV(dirData.buffer,dirData.byteOffset+o,128);
     const nl=dd.getUint16(64,true);
     let name='';for(let i=0;i<nl/2-1;i++)name+=String.fromCharCode(dd.getUint16(i*2,true));
     ents.push({name,type:dirData[o+66],left:dd.getInt32(68,true),right:dd.getInt32(72,true),child:dd.getInt32(76,true),start:dd.getUint32(116,true),size:dd.getUint32(120,true)});
@@ -44,7 +50,7 @@ function readOle(buf){
   }
   function readMini(start,size){
     ensureMini();const parts=[];let s=start,g=0;
-    while(s<0xFFFFFFFA&&g++<10000000){parts.push(mini.subarray(s*mssz,s*mssz+mssz));s=miniFat[s];}
+    while(s<0xFFFFFFFA&&g++<=miniFat.length){parts.push(mini.subarray(s*mssz,s*mssz+mssz));s=miniFat[s];}
     const out=new Uint8Array(parts.length*mssz);parts.forEach((p,i)=>out.set(p,i*mssz));return out.subarray(0,size);
   }
   function content(e){return e.size<cutoff?readMini(e.start,e.size):readStream(e.start,e.size);}
@@ -82,7 +88,7 @@ root.readOle=readOle;
     return s;
   }
   function fixedBlocks(meta, data) {   // danh sách vị trí các bản ghi trong FixedData
-    var mdv = new DataView(meta.buffer, meta.byteOffset, meta.byteLength), n = mdv.getUint32(8, true), offs = [];
+    var mdv = safeDV(meta.buffer, meta.byteOffset, meta.byteLength), n = mdv.getUint32(8, true), offs = [];
     var isz = n > 0 ? Math.round((meta.length - 16) / n) : 0;
     if (isz < 8) return [];
     for (var i = 0; i < n; i++) offs.push(mdv.getUint32(16 + i * isz + 4, true));
@@ -98,16 +104,16 @@ root.readOle=readOle;
     var vm = o.read(T + 'VarMeta'), vd = o.read(T + 'Var2Data'), fm = o.read(T + 'FixedMeta'), fd = o.read(T + 'FixedData');
     if (!vm || !vd || !fm || !fd) throw new Error('File .mpp không có dữ liệu công việc.');
     // Var2Data: tên công việc
-    var vdv = new DataView(vm.buffer, vm.byteOffset, vm.byteLength), vcnt = vdv.getUint32(8, true), names = {};
+    var vdv = safeDV(vm.buffer, vm.byteOffset, vm.byteLength), vcnt = vdv.getUint32(8, true), names = {};
     for (var i = 0; i < vcnt; i++) {
       var p = 24 + i * 12; if (p + 12 > vm.length) break;
       var uid = vdv.getUint32(p, true), off = vdv.getUint32(p + 4, true), field = vdv.getUint32(p + 8, true);
       if ((field & 0xFFFF) === 14 && ((field >>> 16) === 0x0B40 || (field >>> 16) === 0) && off + 4 <= vd.length) {
-        var sz = new DataView(vd.buffer, vd.byteOffset, vd.byteLength).getUint32(off, true);
+        var sz = safeDV(vd.buffer, vd.byteOffset, vd.byteLength).getUint32(off, true);
         names[uid] = utf16(vd, off + 4, Math.min(sz, vd.length - off - 4));
       }
     }
-    var dv = new DataView(fd.buffer, fd.byteOffset, fd.byteLength), seen = {}, tasks = [];
+    var dv = safeDV(fd.buffer, fd.byteOffset, fd.byteLength), seen = {}, tasks = [];
     fixedBlocks(fm, fd).forEach(function (b) {
       if (b.flag !== 0 || b.len < 176 || b.s + 176 > fd.length) return;   // flag ≠ 0 = bản ghi đã xoá / không phải công việc
       var id = dv.getUint32(b.s, true), uid = dv.getUint32(b.s + 4, true);
@@ -124,7 +130,7 @@ root.readOle=readOle;
     var cons = o.read(rootDir + '/TBkndCons/FixedData'), byUid = {};
     tasks.forEach(function (t) { byUid[t.uid] = t; });
     if (cons) {
-      var cd = new DataView(cons.buffer, cons.byteOffset, cons.byteLength), TY = ['FF', 'FS', 'SF', 'SS'];
+      var cd = safeDV(cons.buffer, cons.byteOffset, cons.byteLength), TY = ['FF', 'FS', 'SF', 'SS'];
       var cm = o.read(rootDir + '/TBkndCons/FixedMeta');
       fixedBlocks(cm, cons).forEach(function (b) {
         if (b.flag !== 0 || b.s + 20 > cons.length) return;   // flag ≠ 0 = liên kết đã xoá
