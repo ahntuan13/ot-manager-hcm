@@ -279,9 +279,25 @@ function progSoloHtml(name) {
 }
 function progProjInfo() {
   const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
-  const pm = prompt('Quản lý dự án (PM):', pr.pm || (typeof puApPm === 'function' ? puApPm(progSel) : '')); if (pm === null) return;
-  const code = prompt('Mã dự án:', pr.code || ''); if (code === null) return;
-  pr.pm = pm.trim(); pr.code = code.trim(); progTouch(pr);
+  const have = new Set(Object.keys(PROG_DB)), avail = (typeof puProjects === 'function' ? puProjects().map(x => x.p) : []).filter(p => !have.has(p));
+  const ov = document.createElement('div'); ov.id = 'progModal'; ov.className = 'pg-modal';
+  ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:12px">Thông tin dự án</div>
+    <label>Gán vào dự án (Action Plan / PU Delivery)<select id="pgiProj"><option value="${pgEsc(pr.name)}">${pgEsc(pr.name)} (hiện tại)</option>${avail.map(p => `<option>${pgEsc(p)}</option>`).join('')}<option value="__new__">＋ Đổi sang tên khác…</option></select></label>
+    <label id="pgiNameL" style="display:none">Tên dự án<input id="pgiName" value="${pgEsc(pr.name)}"></label>
+    <label>Quản lý dự án (PM)<input id="pgiPm" value="${pgEsc(pr.pm || (typeof puApPm === 'function' ? puApPm(progSel) : ''))}"></label>
+    <label>Mã dự án<input id="pgiCode" value="${pgEsc(pr.code || '')}"></label>
+    <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progInfoSave()">Lưu</button></div></div>`;
+  document.body.appendChild(ov);
+  const sel = document.getElementById('pgiProj'); sel.onchange = () => { document.getElementById('pgiNameL').style.display = sel.value === '__new__' ? 'flex' : 'none'; };
+}
+function progInfoSave() {
+  const pr = PROG_DB[progSel], g = id => document.getElementById(id); if (!pr) return;
+  let nn = g('pgiProj').value; if (nn === '__new__') nn = g('pgiName').value.trim();
+  if (!nn) { toast('⚠️ Nhập tên dự án.'); return; }
+  if (nn !== pr.name && PROG_DB[nn]) { toast('⚠️ Dự án "' + nn + '" đã có tiến độ.'); return; }
+  pr.pm = g('pgiPm').value.trim(); pr.code = g('pgiCode').value.trim();
+  if (nn !== pr.name) { delete PROG_DB[pr.name]; pr.name = nn; PROG_DB[nn] = pr; }
+  pr.at = Date.now(); progCloseModal(); saveProgDb(); toast('✅ Đã lưu thông tin dự án.'); progBack();   // lưu xong tự đóng tab
 }
 function progOpen(name) { progSwitch(name); }
 
@@ -526,12 +542,15 @@ function progNewProject() {
   const have = new Set(Object.keys(PROG_DB)), avail = (typeof puProjects === 'function' ? puProjects().map(x => x.p) : []).filter(p => !have.has(p));
   const ov = document.createElement('div'); ov.id = 'progModal'; ov.className = 'pg-modal';
   ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:12px">Lập tiến độ cho dự án</div>
+    <div id="pgnManual">
     <label>Dự án (Action Plan / PU Delivery)<select id="pgnProj">${avail.map(p => `<option>${pgEsc(p)}</option>`).join('')}<option value="__new__">＋ Dự án khác (nhập tên)…</option></select></label>
     <label id="pgnNameL" style="display:${avail.length ? 'none' : 'flex'}">Tên dự án<input id="pgnName" placeholder="Tên dự án"></label>
     <label>Ngày khởi công / bắt đầu<input id="pgnStart" type="date" value="${puToday()}"></label>
+    </div>
     <div class="pg-mpp" id="pgnMpp"><div class="pg-mpp-t">Hoặc tạo nhanh từ file tiến độ có sẵn</div>
       <label class="btn pg-mpp-btn">📂 Upload MPP<input type="file" id="pgnFile" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progPickFile(this)"></label>
-      <span id="pgnFileInfo" class="pg-mpp-i">MS Project (.mpp) — hoặc .xml / Excel</span></div>
+      <span id="pgnFileInfo" class="pg-mpp-i">MS Project (.mpp) — hoặc .xml / Excel</span>
+      <div id="pgnFileNote" class="pg-mpp-n" style="display:none">Dự án sẽ lấy <b>tên và ngày bắt đầu theo file</b>. Xem chi tiết xong, bấm <b>⚙ Thông tin</b> để gán vào dự án Action Plan/PU Delivery hoặc đổi tên; <b>Đổi ngày khởi công</b> để chỉnh ngày.</div></div>
     <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progCreate()">Tạo</button></div></div>`;
   document.body.appendChild(ov);
   const sel = document.getElementById('pgnProj'); sel.onchange = () => { document.getElementById('pgnNameL').style.display = sel.value === '__new__' ? 'flex' : 'none'; };
@@ -570,13 +589,18 @@ function progPickFile(inp) {
   const info = document.getElementById('pgnFileInfo'); info.style.color = ''; info.textContent = '⏳ Đang đọc ' + f.name + '…';
   progReadFile(f, (err, tasks) => {
     if (err || !tasks || !tasks.length) { pgnTasks = null; info.style.color = '#C0392B'; info.textContent = '⚠️ ' + (err || 'Không đọc được công việc nào.'); return; }
-    pgnTasks = tasks;
-    const first = tasks.map(t => pgN(t.start)).filter(x => !isNaN(x)); if (first.length) document.getElementById('pgnStart').value = pgIso(Math.min(...first));
+    pgnTasks = tasks; document.getElementById('pgnManual').style.display = 'none'; document.getElementById('pgnFileNote').style.display = 'block';
     info.style.color = '#2E7D32'; info.textContent = '✅ ' + f.name + ' — ' + tasks.length + ' công việc';
   });
 }
 function progCreate() {
-  const g = id => document.getElementById(id); let name = g('pgnProj').value; if (name === '__new__' || !name) name = (g('pgnName').value || '').trim();
+  const g = id => document.getElementById(id);
+  if (pgnTasks) {   // tạo từ file: tên + ngày bắt đầu lấy theo file
+    const base = (pgnTasks[0].name || 'Dự án mới').trim(); let name = base, k = 2; while (PROG_DB[name]) name = base + ' (' + (k++) + ')';
+    const ds = pgnTasks.map(t => pgN(t.start)).filter(x => !isNaN(x)), tasks = progEnsureRoot(pgnTasks, name); pgnTasks = null;
+    PROG_DB[name] = { name, start: ds.length ? pgIso(Math.min(...ds)) : puToday(), tasks, at: Date.now() };
+    progCloseModal(); progSel = name; saveProgDb(); renderProgress(); progOpen(name); return;
+  } let name = g('pgnProj').value; if (name === '__new__' || !name) name = (g('pgnName').value || '').trim();
   if (!name) { toast('⚠️ Chọn hoặc nhập tên dự án.'); return; } if (PROG_DB[name]) { toast('⚠️ Dự án này đã có tiến độ.'); return; }
   const st = g('pgnStart').value; if (isNaN(pgN(st))) { toast('⚠️ Chọn ngày bắt đầu.'); return; }
   const tasks = pgnTasks ? progEnsureRoot(pgnTasks, name) : [progMkTask(0, name)]; pgnTasks = null;
@@ -591,7 +615,7 @@ function progRename() {
 }
 function progDelete() {
   if (!progSel || !confirm(`Xoá toàn bộ tiến độ của dự án "${progSel}"? (Có thể khôi phục từ bản lưu cũ trong Cài đặt.)`)) return;
-  delete PROG_DB[progSel]; progSel = ''; saveProgDb(); renderProgress();
+  delete PROG_DB[progSel]; saveProgDb(); progBack();   // xoá xong tự đóng tab / về danh sách
 }
 
 // ── Xuất ──
