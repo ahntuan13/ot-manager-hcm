@@ -87,13 +87,14 @@ root.readOle=readOle;
     for (var i = 0; i + 1 < n; i += 2) { var c = u8[p + i] | (u8[p + i + 1] << 8); if (!c) break; s += String.fromCharCode(c); }
     return s;
   }
-  function fixedBlocks(meta, data) {   // danh sách vị trí các bản ghi trong FixedData
-    var mdv = safeDV(meta.buffer, meta.byteOffset, meta.byteLength), n = mdv.getUint32(8, true), offs = [];
-    var isz = n > 0 ? Math.round((meta.length - 16) / n) : 0;
-    if (isz < 8) return [];
+  function fixedBlocks(meta, data, isz) {   // isz = kích thước 1 mục trong FixedMeta (công việc 47, liên kết 10); số mục tính theo độ dài, không tin tiêu đề
+    var mdv = safeDV(meta.buffer, meta.byteOffset, meta.byteLength), n = Math.floor((meta.length - 16) / isz), offs = [];
     for (var i = 0; i < n; i++) offs.push(mdv.getUint32(16 + i * isz + 4, true));
-    return offs.map(function (o, i) { var nx = i + 1 < offs.length ? offs[i + 1] : data.length; return { s: o, len: nx - o, flag: meta[16 + i * isz] }; })
-      .filter(function (b) { return b.s < data.length; });
+    var sorted = offs.slice().sort(function (x, y) { return x - y; });
+    return offs.map(function (o, i) {
+      var nx = data.length; for (var k = 0; k < sorted.length; k++) if (sorted[k] > o) { nx = sorted[k]; break; }
+      return { s: o, len: nx - o, flag: meta[16 + i * isz] };
+    }).filter(function (b) { return b.s < data.length; });
   }
   function mppParse(buf) {
     var o = root.readOle(buf), top = o.list('').map(function (x) { return x.replace(/\/$/, ''); });
@@ -114,7 +115,7 @@ root.readOle=readOle;
       }
     }
     var dv = safeDV(fd.buffer, fd.byteOffset, fd.byteLength), seen = {}, tasks = [];
-    fixedBlocks(fm, fd).forEach(function (b) {
+    fixedBlocks(fm, fd, 47).forEach(function (b) {
       if (b.flag !== 0 || b.len < 176 || b.s + 176 > fd.length) return;   // flag ≠ 0 = bản ghi đã xoá / không phải công việc
       var id = dv.getUint32(b.s, true), uid = dv.getUint32(b.s + 4, true);
       if (uid === 0 || seen[uid] || names[uid] == null || !names[uid].trim() || id > 100000) return;
@@ -132,10 +133,10 @@ root.readOle=readOle;
     if (cons) {
       var cd = safeDV(cons.buffer, cons.byteOffset, cons.byteLength), TY = ['FF', 'FS', 'SF', 'SS'];
       var cm = o.read(rootDir + '/TBkndCons/FixedMeta');
-      fixedBlocks(cm, cons).forEach(function (b) {
+      fixedBlocks(cm, cons, 10).forEach(function (b) {
         if (b.flag !== 0 || b.s + 20 > cons.length) return;   // flag ≠ 0 = liên kết đã xoá
         var q = b.s, pu = cd.getUint32(q + 4, true), su = cd.getUint32(q + 8, true), ty = cd.getUint16(q + 12, true), lag = cd.getInt32(q + 14, true);
-        if (byUid[pu] && byUid[su] && pu !== su && ty < 4) byUid[su].preds.push({ uid: pu, t: TY[ty], lag: Math.round(lag / 4800) });
+        if (byUid[pu] && byUid[su] && pu !== su && ty < 4 && !byUid[su].preds.some(function (x) { return x.uid === pu && x.t === TY[ty] && x.lag === Math.round(lag / 4800); })) byUid[su].preds.push({ uid: pu, t: TY[ty], lag: Math.round(lag / 4800) });
       });
     }
     return tasks;
