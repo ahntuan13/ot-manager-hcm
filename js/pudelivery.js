@@ -54,7 +54,7 @@ function puStatus(x, today) {
   if (d < 0) return { k: 'late', t: 'Trễ tiến độ' };
   // Sắp giao: còn ≤ 2 ngày nữa là tới ngày giao (hôm nay, +1, +2).
   if (d <= 2) return { k: 'soon7', t: 'Sắp giao (còn ' + d + ' ngày)' };
-  return { k: 'make', t: 'Đang sản xuất' };
+  return { k: 'make', t: 'Đang đặt hàng' };
 }
 
 // "Còn lại" đúng theo từng trạng thái: đã giao → so NGÀY GIAO THỰC TẾ với ngày dự kiến (sớm/đúng hẹn/trễ); chưa giao → so HÔM NAY với ngày dự kiến
@@ -134,7 +134,7 @@ function puCtl() {
   return { proj: document.getElementById('puProjFilter')?.value || '__all__', st: document.getElementById('puStatusFilter')?.value || 'all',
     q: (document.getElementById('puSearch')?.value || '').toLowerCase().trim(), hideEmpty: document.getElementById('puHideEmpty')?.checked !== false, showDone: !!document.getElementById('puShowDone')?.checked };
 }
-const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['make', 'Đang sản xuất'], ['wait', 'Chờ NCC báo ngày giao'], ['miss', 'Thiếu kế hoạch đặt hàng']];
+const PU_ST_LIST = [['done', 'Đã giao'], ['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['make', 'Đang đặt hàng'], ['wait', 'Chờ NCC báo ngày giao'], ['miss', 'Thiếu kế hoạch đặt hàng']];
 function puBadge(s) { return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(s.t)}</span>`; }
 
 function puRow(x, no) {
@@ -142,13 +142,13 @@ function puRow(x, no) {
   const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
     <td style="white-space:nowrap;text-align:center"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td>
-    <td style="text-align:center;color:var(--text2)">${puEsc(no)}</td>${T(x.supplier)}<td title="${puEsc(s.t)}" style="white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(x.name)}</span></td>${T(x.quote)}${T(x.origin)}${T(x.qty)}${T(x.unit)}${T(x.code)}
+    ${T(x.supplier)}<td title="${puEsc(s.t)}" style="white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(x.name)}</span></td>${T(x.quote)}${T(x.origin)}<td class="pu-q" style="white-space:nowrap">${puEsc(x.qty)}</td>${T(x.unit)}${T(x.code)}
     ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
     ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
     <td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`;
 }
 const PU_HEAD = `<thead>
-  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2">No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
+  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2" class="pu-q">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
   <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2" class="pu-d">PO/Contract Effective Date</th><th rowspan="2" class="pu-d">Advance Payment Date</th><th rowspan="2" class="pu-d">Desired date to be on site (SITE CONFIRM)</th>
   <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2" class="pu-d">Actual date on Site</th><th rowspan="2">Remarks</th></tr>
   <tr><th>No.</th><th class="pu-d">Approved Date</th><th class="pu-d">Plan</th><th class="pu-d">Actual</th><th class="pu-d">As contract</th><th class="pu-d">1st Change</th><th class="pu-d">2nd Change</th><th class="pu-d">3rd Change</th></tr></thead>`;
