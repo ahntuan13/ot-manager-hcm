@@ -272,7 +272,7 @@ function progSoloHtml(name) {
       <div class="pg-solo-t"><b>${pgEsc(name)}</b><span class="pg-badge" style="background:${hl[1]}22;color:${hl[1]}">${pgEsc(hl[0])}</span><span class="pg-solo-d">${pgFmt(sm.root.s)} → ${pgFmt(sm.root.f)} · ${pgEsc(sm.label)} · ${sm.root.pct}% (kế hoạch ${sm.plan}%)</span></div>
       <select onchange="progSwitch(this.value)" title="Đổi sang dự án khác">${names.map(n => `<option value="${pgEsc(n)}"${n === name ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
       <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ XML</button>
-      ${edit ? `<label class="btn" style="cursor:pointer">⬆ Nhập<input type="file" accept=".xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
+      ${edit ? `<label class="btn" style="cursor:pointer" title="Nhập từ MS Project (.mpp), XML hoặc Excel — thay toàn bộ tiến độ hiện tại">⬆ Nhập MPP<input type="file" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
     </div>
     <div class="pg-tabs">${tabs}</div>
     <div id="progView">${body}</div></div>`;
@@ -522,22 +522,65 @@ function progDelTask(i) {
 
 // ── Tạo / xoá / đổi ngày khởi công ──
 function progNewProject() {
-  if (!canEditProgress()) return;
+  if (!canEditProgress()) return; pgnTasks = null;
   const have = new Set(Object.keys(PROG_DB)), avail = (typeof puProjects === 'function' ? puProjects().map(x => x.p) : []).filter(p => !have.has(p));
   const ov = document.createElement('div'); ov.id = 'progModal'; ov.className = 'pg-modal';
   ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:12px">Lập tiến độ cho dự án</div>
     <label>Dự án (Action Plan / PU Delivery)<select id="pgnProj">${avail.map(p => `<option>${pgEsc(p)}</option>`).join('')}<option value="__new__">＋ Dự án khác (nhập tên)…</option></select></label>
     <label id="pgnNameL" style="display:${avail.length ? 'none' : 'flex'}">Tên dự án<input id="pgnName" placeholder="Tên dự án"></label>
     <label>Ngày khởi công / bắt đầu<input id="pgnStart" type="date" value="${puToday()}"></label>
+    <div class="pg-mpp" id="pgnMpp"><div class="pg-mpp-t">Hoặc tạo nhanh từ file tiến độ có sẵn</div>
+      <label class="btn pg-mpp-btn">📂 Upload MPP<input type="file" id="pgnFile" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progPickFile(this)"></label>
+      <span id="pgnFileInfo" class="pg-mpp-i">MS Project (.mpp) — hoặc .xml / Excel</span></div>
     <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progCreate()">Tạo</button></div></div>`;
   document.body.appendChild(ov);
   const sel = document.getElementById('pgnProj'); sel.onchange = () => { document.getElementById('pgnNameL').style.display = sel.value === '__new__' ? 'flex' : 'none'; };
+}
+let pgnTasks = null;   // công việc đọc từ file upload (dùng khi bấm Tạo)
+// Đọc file .mpp / .xml / Excel → mảng công việc của app
+function progReadFile(f, cb) {
+  const rd = new FileReader();
+  if (/\.xml$/i.test(f.name)) { rd.onload = () => { try { cb(null, progParseXml(String(rd.result))); } catch (e) { cb('File XML không hợp lệ: ' + (e.message || e)); } }; rd.readAsText(f); return; }
+  rd.onload = () => {
+    try {
+      const u8 = new Uint8Array(rd.result);
+      if (/\.mpp$/i.test(f.name) || (u8[0] === 0xD0 && u8[1] === 0xCF && !/\.xls$/i.test(f.name))) cb(null, progMppTasks(u8)); else cb(null, progParseSheet(u8));
+    } catch (e) { cb(e.message || String(e)); }
+  };
+  rd.readAsArrayBuffer(f);
+}
+function progMppTasks(u8) {
+  if (typeof mppParse !== 'function') throw new Error('Thiếu bộ đọc .mpp — hãy tải lại trang.');
+  const raw = mppParse(u8); if (!raw.length) throw new Error('Không tìm thấy công việc nào trong file .mpp.');
+  const minLvl = Math.min(...raw.map(t => t.lvl)), byUid = {}, tasks = [];
+  raw.forEach(t => { const job = { u: pgNewUid(), lvl: Math.max(0, t.lvl - minLvl), name: t.name, dur: t.dur > 0 ? Math.max(1, Math.round(t.dur)) : 0, start: t.start, pred: [], pct: t.pct }; byUid[t.uid] = job; tasks.push(job); });
+  raw.forEach(t => { const job = byUid[t.uid]; t.preds.forEach(p => { const q = byUid[p.uid]; if (q) job.pred.push({ u: q.u, t: p.t, lag: p.lag }); }); });
+  const p0 = raw[0].start;   // việc không có Predecessor mà ngày cũ hơn ngày bắt đầu dự án (dữ liệu tồn trong file) → đưa về ngày bắt đầu dự án
+  tasks.forEach(t => { if (!t.pred.length && t.start && t.start < p0) t.start = p0; });
+  return tasks;
+}
+// Bảo đảm dòng đầu là dòng gốc duy nhất của dự án
+function progEnsureRoot(tasks, name) {
+  const n0 = tasks.filter(t => t.lvl === 0).length;
+  if (tasks[0].lvl === 0 && n0 === 1) return tasks;
+  tasks.forEach(t => t.lvl++); tasks.unshift(progMkTask(0, name)); return tasks;
+}
+function progPickFile(inp) {
+  const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
+  const info = document.getElementById('pgnFileInfo'); info.style.color = ''; info.textContent = '⏳ Đang đọc ' + f.name + '…';
+  progReadFile(f, (err, tasks) => {
+    if (err || !tasks || !tasks.length) { pgnTasks = null; info.style.color = '#C0392B'; info.textContent = '⚠️ ' + (err || 'Không đọc được công việc nào.'); return; }
+    pgnTasks = tasks;
+    const first = tasks.map(t => pgN(t.start)).filter(x => !isNaN(x)); if (first.length) document.getElementById('pgnStart').value = pgIso(Math.min(...first));
+    info.style.color = '#2E7D32'; info.textContent = '✅ ' + f.name + ' — ' + tasks.length + ' công việc';
+  });
 }
 function progCreate() {
   const g = id => document.getElementById(id); let name = g('pgnProj').value; if (name === '__new__' || !name) name = (g('pgnName').value || '').trim();
   if (!name) { toast('⚠️ Chọn hoặc nhập tên dự án.'); return; } if (PROG_DB[name]) { toast('⚠️ Dự án này đã có tiến độ.'); return; }
   const st = g('pgnStart').value; if (isNaN(pgN(st))) { toast('⚠️ Chọn ngày bắt đầu.'); return; }
-  PROG_DB[name] = { name, start: st, tasks: [progMkTask(0, name)], at: Date.now() };
+  const tasks = pgnTasks ? progEnsureRoot(pgnTasks, name) : [progMkTask(0, name)]; pgnTasks = null;
+  PROG_DB[name] = { name, start: st, tasks, at: Date.now() };
   progCloseModal(); progSel = name; saveProgDb(); renderProgress(); progOpen(name);
 }
 function progRename() {
@@ -599,17 +642,13 @@ function progExportXml() {
 function progImportFile(inp) {
   const f = inp.files && inp.files[0]; inp.value = ''; if (!f || !progSel) return;
   const pr = PROG_DB[progSel];
-  const fin = (tasks, label) => {
+  progReadFile(f, (err, tasks) => {
+    if (err) { toast('⚠️ ' + err); return; }
     if (!tasks.length) { toast('⚠️ Không đọc được công việc nào trong file.'); return; }
-    if (!confirm(`Thay toàn bộ tiến độ của "${pr.name}" bằng ${tasks.length} công việc từ ${label}?`)) return;
-    pr.tasks = tasks; pr.tasks[0].lvl = 0; const mn = Math.min(...progCalc(pr).slice(0, 1).map(c => c.s)); if (!isNaN(mn)) pr.start = pgIso(mn);
+    if (!confirm(`Thay toàn bộ tiến độ của "${pr.name}" bằng ${tasks.length} công việc từ ${f.name}?`)) return;
+    pr.tasks = progEnsureRoot(tasks, pr.name); const mn = Math.min(...progCalc(pr).slice(0, 1).map(c => c.s)); if (!isNaN(mn)) pr.start = pgIso(mn);
     progTouch(pr); toast('✅ Đã nhập ' + tasks.length + ' công việc.');
-  };
-  if (/\.xml$/i.test(f.name)) {
-    const rd = new FileReader(); rd.onload = () => { try { fin(progParseXml(String(rd.result)), f.name); } catch (e) { toast('⚠️ File XML không hợp lệ: ' + (e.message || e)); } }; rd.readAsText(f);
-  } else {
-    const rd = new FileReader(); rd.onload = () => { try { fin(progParseSheet(new Uint8Array(rd.result)), f.name); } catch (e) { toast('⚠️ Không đọc được Excel: ' + (e.message || e)); } }; rd.readAsArrayBuffer(f);
-  }
+  });
 }
 function progParseXml(txt) {
   const doc = new DOMParser().parseFromString(txt, 'application/xml'); if (doc.querySelector('parsererror')) throw new Error('XML lỗi');
