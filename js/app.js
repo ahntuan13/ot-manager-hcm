@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.101';
+const APP_VERSION = '2026.102';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -187,6 +187,7 @@ function switchRole() {
 // ── Phân quyền theo MỤC (menu): Admin chọn mục được xem cho từng tài khoản (users/{uid}.pages). Không đặt = theo vai trò.
 const PAGE_KEYS = [['dash','Tổng quan OT'],['dept','OT phòng ban'],['employees','Danh sách NV OT'],['compare','So sánh OT'],['late','Đi trễ'],['wlb','WLB'],['action','Action Plan'],['manpower','Nhân lực'],['pudelivery','PU Delivery'],['progress','Tiến độ dự án'],['interview','Tuyển dụng'],['report','Báo cáo'],['formula','Công thức tính']];
 function pageAllowed(p) {
+  if (p === 'guide') return true;                     // Hướng dẫn: ai cũng xem được
   if (p === 'settings') return isAdmin();
   if (isAdmin()) return true;
   const pg = window.CLOUD_USER && window.CLOUD_USER.pages;

@@ -4,9 +4,9 @@
 //  Mỗi dự án 1 doc Firestore "prog_<tên dự án>":  { name, start, tasks:[{u,lvl,name,dur,start,pred:[{u,t,lag}],pct,puLink,note}], at }
 //  Lịch: 7 ngày/tuần (đúng như file MS Project mẫu). Ngày bắt đầu/kết thúc của task có predecessor được TỰ TÍNH.
 // ============================================================
-const PROGRESS_ADMIN_ONLY = true;                       // true = chỉ Admin thấy; Quản lý/User thấy thông báo "đang xây dựng". Mở cho mọi người → đổi thành false.
+const PROGRESS_ADMIN_ONLY = false;                      // true = chỉ Admin thấy; Quản lý/User thấy thông báo "đang xây dựng". Mở cho mọi người → đổi thành false.
 const canSeeProgress = () => !PROGRESS_ADMIN_ONLY || (typeof isAdmin === 'function' && isAdmin());
-const canEditProgress = () => typeof isAdmin === 'function' && isAdmin();
+const canEditProgress = () => true;                      // mở cho mọi tài khoản đăng nhập (Firestore rules đã cho phép ghi prog_*)
 const PROG_KEY = 'ot_manager_prog_v1';
 let PROG_DB = {};
 function loadProgDb() { try { const r = localStorage.getItem(PROG_KEY); if (r) PROG_DB = JSON.parse(r) || {}; } catch (e) {} }
@@ -144,7 +144,7 @@ function progApply(pr, i, o) {
   if (t.pct >= 100 && !t.af) t.af = today; if (t.pct < 100 && o.pct != null && old >= 100) t.af = '';
   if (o.pct != null && t.pct === 0 && old > 0) t.as = '';
   if ((o.pct != null && t.pct !== old) || o.note) {
-    (t.log = t.log || []).push({ at: Date.now(), by: (window.CLOUD_USER && window.CLOUD_USER.name) || 'Admin', pct: t.pct, hold: !!t.hold, note: String(o.note || '').slice(0, 200) });
+    (t.log = t.log || []).push({ at: Date.now(), by: (window.CLOUD_USER && window.CLOUD_USER.name) || (typeof isAdmin === 'function' && isAdmin() ? 'Admin' : 'User'), pct: t.pct, hold: !!t.hold, note: String(o.note || '').slice(0, 200) });
     if (t.log.length > 20) t.log.splice(0, t.log.length - 20);
   }
 }
