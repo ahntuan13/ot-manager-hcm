@@ -28,7 +28,7 @@ const pgNewUid = () => 't' + Date.now().toString(36) + (pgUid++).toString(36) + 
 // ── Predecessor: chữ ⇄ cấu trúc ("5", "6SS+3d", "7FF-2d") ──
 function pgPredText(pr, t) {
   const idx = {}; pr.tasks.forEach((x, i) => idx[x.u] = i);
-  return (t.pred || []).filter(p => idx[p.u] !== undefined).map(p => (idx[p.u] + 1) + (p.t === 'FS' ? '' : p.t) + (p.lag ? (p.lag > 0 ? '+' : '') + p.lag + 'd' : '')).join(',');
+  return (t.pred || []).filter(p => idx[p.u] !== undefined).map(p => (idx[p.u] + 1) + (p.t === 'FS' && !p.lag ? '' : p.t) + (p.lag ? (p.lag > 0 ? '+' : '') + p.lag + 'd' : '')).join(',');
 }
 function pgParsePred(txt, pr, selfIdx) {
   const out = [];
@@ -352,7 +352,7 @@ function progGanttHtml(name) {
   minN -= 3; maxN += 10;
   const pxd = progZoom === 'day' ? 24 : progZoom === 'week' ? 9 : 3, days = maxN - minN + 1, W = days * pxd;
   const X = n => (n - minN) * pxd;
-  const cols = progCompact ? { id: 34, nm: 300, wh: 0, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, wh: 110, du: 58, st: 82, fn: 82, pc: 50, pd: 78, ac: edit ? 56 : 0 };
+  const cols = progCompact ? { id: 34, nm: 300, wh: 0, du: 0, st: 0, fn: 82, pc: 0, pd: 0, ac: edit ? 56 : 0 } : { id: 34, nm: 290, wh: 110, du: 58, st: 82, fn: 82, pc: 50, pd: 112, ac: edit ? 56 : 0 };
   const LW = Object.values(cols).reduce((a, b) => a + b, 0), HH = 46;
   const nrows = vis.length + (puRows.length ? 1 + (puExpanded ? puRows.length : 0) : 0), H = nrows * PG_RH;
   // header
@@ -417,7 +417,7 @@ function progGanttHtml(name) {
       puHtml += `<div class="pg-row"><div class="pg-left" style="width:${LW}px">${lc(cols.id, k + 1, 'justify-content:center;color:var(--text3);font-size:11px')}<div class="pg-c pg-nm" style="width:${cols.nm}px;padding-left:24px" title="${pgEsc(x.name)}"><span class="pg-pill" style="background:${col}">${pgEsc(x.name)}</span></div>${lc(cols.wh, pgEsc(x.supplier || ''), 'font-size:10.5px;color:var(--text2)')}${lc(cols.du, '')}${lc(cols.st, x.e0 ? puFmt(x.e0).slice(0, 5) + '/' + puFmt(x.e0).slice(8) : '', 'font-size:11px;color:var(--text2)')}${lc(cols.fn, !isNaN(dn) ? pgFmt(dn) : '')}${lc(cols.pc, '')}${lc(cols.pd, '')}${lc(cols.ac, '')}</div><div class="pg-tl" style="width:${W}px">${b}</div></div>`;
     });
   }
-  const hdLeft = `<div class="pg-left pg-hl" style="width:${LW}px;height:${HH}px">${lc(cols.id, 'ID', 'justify-content:center')}${lc(cols.nm, 'Task Name')}${lc(cols.wh, 'Người thực hiện')}${lc(cols.du, 'Duration')}${lc(cols.st, 'Start')}${lc(cols.fn, 'Finish')}${lc(cols.pc, '%', 'justify-content:center')}${lc(cols.pd, 'Predecessors')}${lc(cols.ac, '')}</div>`;
+  const hdLeft = `<div class="pg-left pg-hl" style="width:${LW}px;height:${HH}px">${lc(cols.id, 'ID', 'justify-content:center')}${lc(cols.nm, 'Task Name')}${lc(cols.wh, 'Người thực hiện')}${lc(cols.du, 'Duration')}${lc(cols.st, 'Start')}${lc(cols.fn, 'Finish')}${lc(cols.pc, '%', 'justify-content:center')}${lc(cols.pd, '<span title="Việc phải làm TRƯỚC: số = ID dòng. FS = xong việc trước mới bắt đầu (mặc định, không ghi) · SS = cùng bắt đầu · FF = cùng kết thúc · SF = bắt đầu việc trước thì mới được kết thúc. +Nd = chờ thêm N ngày; -Nd = được làm gối đầu N ngày.">Predecessors ⓘ</span>')}${lc(cols.ac, '')}</div>`;
   const totalH = H;
   const root = sm.root;
   return `<div class="card">

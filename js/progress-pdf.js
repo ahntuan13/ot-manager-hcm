@@ -1,7 +1,7 @@
 // ── Xuất Tiến độ dự án ra PDF (khổ ngang, bảng chi tiết + Gantt, tuỳ chọn định dạng) ──
 // Dựng từng trang bằng HTML (đúng font tiếng Việt) rồi chụp bằng html2canvas → jsPDF.
 const PGP = { W: 1400, H: 990, PAD: 22, RH: 22 };   // px / trang (tỉ lệ A4 ngang, dùng chung cho A3)
-const PGP_COLS = [['who', 'Người thực hiện', 120], ['dur', 'Duration', 62], ['st', 'Start', 84], ['fn', 'Finish', 84], ['pc', '% HT', 46], ['stat', 'Trạng thái', 92], ['pred', 'Predecessors', 90]];
+const PGP_COLS = [['who', 'Người thực hiện', 120], ['dur', 'Duration', 62], ['st', 'Start', 84], ['fn', 'Finish', 84], ['pc', '% HT', 46], ['stat', 'Trạng thái', 92], ['pred', 'Predecessors', 110]];
 
 function progPdfDialog() {
   const pr = PROG_DB[progSel]; if (!pr) return;
