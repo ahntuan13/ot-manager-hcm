@@ -57,6 +57,19 @@ function puStatus(x, today) {
   return { k: 'make', t: 'Đang sản xuất' };
 }
 
+// "Còn lại" đúng theo từng trạng thái: đã giao → so NGÀY GIAO THỰC TẾ với ngày dự kiến (sớm/đúng hẹn/trễ); chưa giao → so HÔM NAY với ngày dự kiến
+function puRemain(x, today) {
+  today = today || puToday(); const est = puEst(x);
+  if (x.actual) {
+    const ref = est || x.desired; if (!ref) return { t: '', c: 'inherit' };
+    const d = puDaysBetween(x.actual, ref);
+    return d > 0 ? { t: 'sớm ' + d + ' ngày', c: '#2E7D32' } : d === 0 ? { t: 'đúng hẹn', c: '#2E7D32' } : { t: 'trễ ' + (-d) + ' ngày', c: '#C0392B' };
+  }
+  if (!est) return { t: '', c: 'inherit' };
+  const d = puDaysBetween(today, est);
+  return d < 0 ? { t: 'trễ ' + (-d) + ' ngày', c: '#C0392B' } : d === 0 ? { t: 'giao hôm nay', c: '#E8A33D' } : { t: 'còn ' + d + ' ngày', c: d <= 2 ? '#E8A33D' : 'inherit' };
+}
+
 // ── Dự án lấy từ Action Plan ──
 function puApProjects() {
   return Object.keys(PROJECTS_DB || {}).flatMap(g => Object.keys(PROJECTS_DB[g] || {}).filter(p => !p.startsWith('__') && p !== UNASSIGNED_PROJ).map(p => ({ g, p })));
@@ -381,12 +394,12 @@ function openPuDetail(k) {
   const col = k === 'all' ? '#1f2937' : PU_STATUS_COLOR[k];
   document.getElementById('puDTitle').innerHTML = `<span style="color:${col}">${puEsc(lab[k])}</span> <span style="font-weight:400;font-size:13px;color:var(--text2)">· ${rows.length} hạng mục</span>`;
   const T = v => `<td style="padding:6px 10px;white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="padding:6px 10px;text-align:center;white-space:nowrap">${puFmt(v)}</td>`;
-  const body = rows.map(a => { const x = a.x, est = puEst(x), d = est ? puDaysBetween(today, est) : null;
+  const body = rows.map(a => { const x = a.x, est = puEst(x), rm = puRemain(x, today);
     return `<tr style="border-top:1px solid var(--border2,#eee);cursor:pointer" onclick="closePuDetail();openPuModal('${x.id}')" title="Bấm để sửa">${T(a.proj)}${T(x.pm)}
       <td style="padding:6px 10px;white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[a.s.k]}">${puEsc(x.name)}</span></td>
-      ${T(x.supplier)}${T(x.po)}${D(x.desired)}${D(est)}<td style="padding:6px 10px;text-align:center;white-space:nowrap;font-weight:700;color:${d !== null && d < 0 ? '#C0392B' : 'inherit'}">${d === null ? '' : d < 0 ? 'trễ ' + (-d) + ' ngày' : d + ' ngày'}</td>
+      ${T(x.supplier)}${T(x.po)}${D(x.desired)}${D(est)}${D(x.actual)}<td style="padding:6px 10px;text-align:center;white-space:nowrap;font-weight:700;color:${rm.c}">${rm.t}</td>
       <td style="padding:6px 10px;min-width:160px">${puEsc(x.reason)}</td><td style="padding:6px 10px;min-width:200px;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`; }).join('');
-  document.getElementById('puDBody').innerHTML = rows.length ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="background:var(--bg2,#f3f5fa);position:sticky;top:0">${['Dự án', 'PM', 'Hạng mục', 'Supplier', 'PO/CO No.', 'Desired date', 'Ngày dự kiến', 'Còn lại', 'Lý do đổi lịch', 'Remarks'].map(h => `<th style="padding:8px 10px;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>` : '<div style="padding:20px;color:var(--text2)">Không có hạng mục nào.</div>';
+  document.getElementById('puDBody').innerHTML = rows.length ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="background:var(--bg2,#f3f5fa);position:sticky;top:0">${['Dự án', 'PM', 'Hạng mục', 'Supplier', 'PO/CO No.', 'Desired date', 'Ngày dự kiến', 'Giao thực tế', 'Còn lại / lệch', 'Lý do đổi lịch', 'Remarks'].map(h => `<th style="padding:8px 10px;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>` : '<div style="padding:20px;color:var(--text2)">Không có hạng mục nào.</div>';
   document.getElementById('puDetail').style.display = 'flex';
 }
 function closePuDetail() { document.getElementById('puDetail').style.display = 'none'; }
@@ -396,7 +409,7 @@ function puModalStatus() {
   const g = id => (document.getElementById(id)?.value || '').trim(), o = {};
   Object.entries(PU_DATES).forEach(([el, f]) => { o[f] = g(el); });
   o.supplier = g('puFSup'); o.reason = g('puFReason');
-  const s = puStatus(o), est = puEst(o), d = est ? puDaysBetween(puToday(), est) : null;
+  const s = puStatus(o), rm = puRemain(o);
   const e = document.getElementById('puFStatus');
-  if (e) e.innerHTML = puBadge(s) + (d !== null && s.k !== 'done' ? ` <span style="color:${d < 0 ? '#C0392B' : 'var(--text2)'};font-size:12px">${d < 0 ? 'quá ' + (-d) + ' ngày so với ngày dự kiến' : 'còn ' + d + ' ngày'}</span>` : '');
+  if (e) e.innerHTML = puBadge(s) + (rm.t ? ` <span style="color:${rm.c === 'inherit' ? 'var(--text2)' : rm.c};font-size:12px">${s.k === 'done' ? 'giao ' + rm.t + ' so với ngày dự kiến' : rm.t.replace(/^trễ (\d+) ngày/, 'quá $1 ngày so với ngày dự kiến')}</span>` : '');
 }
