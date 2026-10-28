@@ -172,6 +172,11 @@ function progOpenTab(name) {
   const w = window.open(url, '_blank');
   if (!w) { progSel = name; progSolo = true; document.body.classList.add('prog-solo'); renderProgress(); }   // trình duyệt chặn cửa sổ mới → mở ngay trong trang
 }
+// Lưu lên cloud xong mới đóng tab (đóng ngay thì dữ liệu chưa kịp gửi → mất thay đổi)
+async function progSaveClose() {
+  try { if (typeof cloudFlushNow === 'function') await cloudFlushNow(false); await new Promise(r => setTimeout(r, 700)); if (typeof cloudFlushNow === 'function') await cloudFlushNow(false); } catch (e) {}
+  progBack();
+}
 function progBack() {
   if (window.opener && pgHash()) { window.close(); if (!window.closed) return; }
   history.replaceState(null, '', location.pathname + location.search); progSolo = false; progSel = ''; document.body.classList.remove('prog-solo'); document.title = 'HCM-MD'; renderProgress();
@@ -272,10 +277,30 @@ function progSoloHtml(name) {
       <div class="pg-solo-t"><b>${pgEsc(name)}</b><span class="pg-badge" style="background:${hl[1]}22;color:${hl[1]}">${pgEsc(hl[0])}</span><span class="pg-solo-d">${pgFmt(sm.root.s)} → ${pgFmt(sm.root.f)} · ${pgEsc(sm.label)} · ${sm.root.pct}% (kế hoạch ${sm.plan}%)</span></div>
       <select onchange="progSwitch(this.value)" title="Đổi sang dự án khác">${names.map(n => `<option value="${pgEsc(n)}"${n === name ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
       <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ XML</button><button class="btn" onclick="progPdfDialog()" title="Xuất PDF khổ ngang, đầy đủ chi tiết">⬇ PDF</button>
-      ${edit ? `<label class="btn" style="cursor:pointer" title="Nhập từ MS Project (.mpp), XML hoặc Excel — thay toàn bộ tiến độ hiện tại">⬆ Nhập MPP<input type="file" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
+      ${edit ? `<label class="btn" style="cursor:pointer" title="Nhập từ MS Project (.mpp), XML hoặc Excel — thay toàn bộ tiến độ hiện tại">⬆ Nhập MPP<input type="file" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" onclick="progMergeDialog()" title="Đưa dự án nhỏ này vào làm một nhóm trong dự án lớn (vd WSE → CS1)">🔗 Gán vào dự án lớn</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
     </div>
     <div class="pg-tabs">${tabs}</div>
     <div id="progView">${body}</div></div>`;
+}
+function progMergeDialog() {
+  const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
+  const others = Object.keys(PROG_DB).filter(n => n !== progSel).sort();
+  if (!others.length) { toast('⚠️ Chưa có dự án lớn nào để gán vào. Hãy tạo/upload dự án lớn trước.'); return; }
+  const ov = document.createElement('div'); ov.id = 'progModal'; ov.className = 'pg-modal';
+  ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:6px">Gán vào dự án lớn</div>
+    <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">Toàn bộ ${pr.tasks.length} công việc của <b>${pgEsc(pr.name)}</b> sẽ thành một nhóm con trong dự án lớn. Dự án nhỏ này sẽ không còn là dự án riêng.</div>
+    <label>Dự án lớn<select id="pgmTo">${others.map(n => `<option>${pgEsc(n)}</option>`).join('')}</select></label>
+    <label>Tên nhóm trong dự án lớn<input id="pgmName" value="${pgEsc(pr.name)}"></label>
+    <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progMergeRun()">Gán</button></div></div>`;
+  document.body.appendChild(ov);
+}
+function progMergeRun() {
+  const pr = PROG_DB[progSel], g = id => document.getElementById(id), to = PROG_DB[g('pgmTo').value]; if (!pr || !to) return;
+  const gname = g('pgmName').value.trim() || pr.name, from = pr.name;
+  const sub = pr.tasks.map(t => Object.assign({}, t, { lvl: t.lvl + 1 })); sub[0].name = gname;   // dòng gốc dự án nhỏ → nhóm con
+  to.tasks = to.tasks.concat(sub); to.at = Date.now();
+  delete PROG_DB[from]; progCloseModal(); saveProgDb(); toast(`✅ Đã gán "${gname}" vào dự án ${to.name}.`);
+  progSwitch(to.name);
 }
 function progProjInfo() {
   const pr = PROG_DB[progSel]; if (!pr || !canEditProgress()) return;
@@ -297,7 +322,7 @@ function progInfoSave() {
   if (nn !== pr.name && PROG_DB[nn]) { toast('⚠️ Dự án "' + nn + '" đã có tiến độ.'); return; }
   pr.pm = g('pgiPm').value.trim(); pr.code = g('pgiCode').value.trim();
   if (nn !== pr.name) { delete PROG_DB[pr.name]; pr.name = nn; PROG_DB[nn] = pr; }
-  pr.at = Date.now(); progCloseModal(); saveProgDb(); toast('✅ Đã lưu thông tin dự án.'); progBack();   // lưu xong tự đóng tab
+  pr.at = Date.now(); progCloseModal(); saveProgDb(); toast('✅ Đã lưu thông tin dự án.'); progSaveClose();   // lưu xong tự đóng tab
 }
 function progOpen(name) { progSwitch(name); }
 
@@ -615,7 +640,7 @@ function progRename() {
 }
 function progDelete() {
   if (!progSel || !confirm(`Xoá toàn bộ tiến độ của dự án "${progSel}"? (Có thể khôi phục từ bản lưu cũ trong Cài đặt.)`)) return;
-  delete PROG_DB[progSel]; saveProgDb(); progBack();   // xoá xong tự đóng tab / về danh sách
+  delete PROG_DB[progSel]; saveProgDb(); progSaveClose();   // xoá xong tự đóng tab / về danh sách
 }
 
 // ── Xuất ──
