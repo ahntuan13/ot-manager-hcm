@@ -58,6 +58,13 @@ function pgPuInfo(name) {
   return c;
 }
 
+// % hoàn thành: nhập tay thì giữ nguyên; chưa nhập tay thì tự tính — Finish đã qua / bằng hôm nay = 100%
+const pgManual = t => t.pctM === true || (t.pctM === undefined && (+t.pct || 0) > 0);
+function pgAutoPct(t, fin, today) {
+  const v = Math.max(0, Math.min(100, +t.pct || 0));
+  if (pgManual(t) || t.hold) return v;
+  return fin <= today ? 100 : v;
+}
 // ── Tính lịch (forward pass) ──
 function progCalc(pr) {
   const T = pr.tasks, n = T.length, idx = {}; T.forEach((t, i) => idx[t.u] = i);
@@ -88,7 +95,7 @@ function progCalc(pr) {
       });
       if (s === -Infinity) { const m = pgN(t.start); s = isNaN(m) ? P0 : m; }
       if (t.puLink && puInfo && !isNaN(puInfo.date) && puInfo.date > s) s = puInfo.date;   // hàng về site muộn hơn kế hoạch → mốc bị đẩy theo PU
-      C[i] = { s, f: s + span - 1, dur, plan: dur > 0 ? Math.max(0, Math.min(1, (TD - s + 1) / dur)) : (TD >= s ? 1 : 0), pct: Math.max(0, Math.min(100, +t.pct || 0)), sum: false, ms: dur === 0, nodata: !!(t.puLink && !(t.pred || []).length && puInfo && isNaN(puInfo.date)) };
+      C[i] = { s, f: s + span - 1, dur, plan: dur > 0 ? Math.max(0, Math.min(1, (TD - s + 1) / dur)) : (TD >= s ? 1 : 0), pct: pgAutoPct(t, s + span - 1, TD), sum: false, ms: dur === 0, nodata: !!(t.puLink && !(t.pred || []).length && puInfo && isNaN(puInfo.date)) };
     }
     st[i] = 2; return C[i];
   }
@@ -138,7 +145,7 @@ function progSummary(pr) {
 // Cập nhật tiến độ 1 việc: tự ghi ngày thực tế + nhật ký (như hộp "Cập nhật tiến độ" của FastWork)
 function progApply(pr, i, o) {
   const t = pr.tasks[i], old = t.pct || 0, today = typeof puToday === 'function' ? puToday() : pgIso(pgToday());
-  if (o.pct != null) t.pct = Math.max(0, Math.min(100, Math.round(+o.pct) || 0));
+  if (o.pct != null) { t.pct = Math.max(0, Math.min(100, Math.round(+o.pct) || 0)); t.pctM = true; }
   if (o.hold != null) t.hold = !!o.hold; if (!t.hold) delete t.hold;
   if (t.pct > 0 && !t.as) t.as = today;
   if (t.pct >= 100 && !t.af) t.af = today; if (t.pct < 100 && o.pct != null && old >= 100) t.af = '';
@@ -497,7 +504,8 @@ function progEdit(i) {
       <label>Kết thúc thực tế<input id="pgfAf" type="date" value="${pgEsc(t.af || '')}" ${sum ? 'disabled' : ''}></label>
     </div>
     ${sum ? '' : `<div class="pg-upd"><div style="font-weight:700;margin-bottom:6px">Cập nhật tiến độ</div>
-      <div style="display:flex;align-items:center;gap:10px"><input id="pgfPct" type="range" min="0" max="100" step="5" value="${c.pct}" style="flex:1;padding:0" oninput="document.getElementById('pgfPctV').textContent=this.value+'%'"><b id="pgfPctV" style="min-width:42px">${c.pct}%</b></div>
+      <div style="display:flex;align-items:center;gap:10px"><input id="pgfPct" type="range" min="0" max="100" step="5" value="${c.pct}" style="flex:1;padding:0" oninput="document.getElementById('pgfPctV').textContent=this.value+'%';document.getElementById('pgfAuto').checked=false"><b id="pgfPctV" style="min-width:42px">${c.pct}%</b></div>
+      <label class="pg-perm" style="margin:4px 0 8px"><input type="checkbox" id="pgfAuto"${pgManual(t) ? '' : ' checked'}> Tự tính % theo ngày (Finish đã qua hôm nay = 100%). Kéo thanh trượt để nhập tay.</label>
       <div class="pg-g2"><label>Trạng thái<select id="pgfHold"><option value="0">Tự động theo tiến độ / ngày</option><option value="1"${t.hold ? ' selected' : ''}>Tạm dừng</option></select></label>
         <label>Khối lượng (đã làm / dự toán / đơn vị)<span style="display:flex;gap:4px"><input id="pgfQd" type="number" min="0" step="any" value="${t.qtyDone || ''}" placeholder="đã làm"><input id="pgfQty" type="number" min="0" step="any" value="${t.qty || ''}" placeholder="dự toán"><input id="pgfUnit" value="${pgEsc(t.unit || '')}" placeholder="m2, bộ…" style="width:70px"></span></label></div>
       <label>Ghi chú cập nhật<input id="pgfNote" placeholder="vd: Tiến độ chậm do nhà cung cấp"></label></div>
@@ -526,7 +534,8 @@ function progSaveTask(i) {
     let pct = parseInt(g('pgfPct').value, 10) || 0;
     if (t.qty && g('pgfQd').value !== '') pct = Math.round(Math.min(1, t.qtyDone / t.qty) * 100);
     const asUser = t.as, afUser = t.af;
-    progApply(pr, i, { pct, hold: g('pgfHold').value === '1', note: (g('pgfNote').value || '').trim() });
+    if (g('pgfAuto').checked && !(t.qty && g('pgfQd').value !== '')) { progApply(pr, i, { hold: g('pgfHold').value === '1', note: (g('pgfNote').value || '').trim() }); t.pctM = false; }
+    else progApply(pr, i, { pct, hold: g('pgfHold').value === '1', note: (g('pgfNote').value || '').trim() });
     if (asUser) t.as = asUser; if (afUser) t.af = afUser; if (!t.as) delete t.as; if (!t.af) delete t.af;
   }
   progCloseModal(); progTouch(pr);
@@ -597,7 +606,7 @@ function progMppTasks(u8) {
   if (typeof mppParse !== 'function') throw new Error('Thiếu bộ đọc .mpp — hãy tải lại trang.');
   const raw = mppParse(u8); if (!raw.length) throw new Error('Không tìm thấy công việc nào trong file .mpp.');
   const minLvl = Math.min(...raw.map(t => t.lvl)), byUid = {}, tasks = [];
-  raw.forEach(t => { const job = { u: pgNewUid(), lvl: Math.max(0, t.lvl - minLvl), name: t.name, dur: t.dur > 0 ? Math.max(1, Math.round(t.dur)) : 0, start: t.start, pred: [], pct: t.pct, ...(t.who ? { who: t.who } : {}) }; byUid[t.uid] = job; tasks.push(job); });
+  raw.forEach(t => { const job = { u: pgNewUid(), lvl: Math.max(0, t.lvl - minLvl), name: t.name, dur: t.dur > 0 ? Math.max(1, Math.round(t.dur)) : 0, start: t.start, pred: [], pct: t.pct, ...(t.pct > 0 ? { pctM: true } : {}), ...(t.who ? { who: t.who } : {}) }; byUid[t.uid] = job; tasks.push(job); });
   raw.forEach(t => { const job = byUid[t.uid]; t.preds.forEach(p => { const q = byUid[p.uid]; if (q) job.pred.push({ u: q.u, t: p.t, lag: p.lag }); }); });
   const p0 = raw[0].start;   // việc không có Predecessor mà ngày cũ hơn ngày bắt đầu dự án (dữ liệu tồn trong file) → đưa về ngày bắt đầu dự án
   tasks.forEach(t => { if (!t.pred.length && t.start && t.start < p0) t.start = p0; });
