@@ -271,7 +271,7 @@ function progSoloHtml(name) {
       <button class="btn" onclick="progBack()">← ${pgHash() ? 'Đóng tab' : 'Danh sách dự án'}</button>
       <div class="pg-solo-t"><b>${pgEsc(name)}</b><span class="pg-badge" style="background:${hl[1]}22;color:${hl[1]}">${pgEsc(hl[0])}</span><span class="pg-solo-d">${pgFmt(sm.root.s)} → ${pgFmt(sm.root.f)} · ${pgEsc(sm.label)} · ${sm.root.pct}% (kế hoạch ${sm.plan}%)</span></div>
       <select onchange="progSwitch(this.value)" title="Đổi sang dự án khác">${names.map(n => `<option value="${pgEsc(n)}"${n === name ? ' selected' : ''}>${pgEsc(n)}</option>`).join('')}</select>
-      <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ XML</button>
+      <button class="btn" onclick="progExportXlsx()">⬇ Excel</button><button class="btn" onclick="progExportXml()" title="Mở bằng MS Project">⬇ XML</button><button class="btn" onclick="progPdfDialog()" title="Xuất PDF khổ ngang, đầy đủ chi tiết">⬇ PDF</button>
       ${edit ? `<label class="btn" style="cursor:pointer" title="Nhập từ MS Project (.mpp), XML hoặc Excel — thay toàn bộ tiến độ hiện tại">⬆ Nhập MPP<input type="file" accept=".mpp,.xml,.xlsx,.xls" style="display:none" onchange="progImportFile(this)"></label><button class="btn" onclick="progTemplateXlsx()">⬇ File mẫu</button><button class="btn" onclick="progRename()">Đổi ngày khởi công</button><button class="btn" onclick="progProjInfo()">⚙ Thông tin</button><button class="btn" style="color:#C0392B" onclick="progDelete()">🗑</button>` : ''}
     </div>
     <div class="pg-tabs">${tabs}</div>
