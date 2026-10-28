@@ -597,7 +597,7 @@ function progMppTasks(u8) {
   if (typeof mppParse !== 'function') throw new Error('Thiếu bộ đọc .mpp — hãy tải lại trang.');
   const raw = mppParse(u8); if (!raw.length) throw new Error('Không tìm thấy công việc nào trong file .mpp.');
   const minLvl = Math.min(...raw.map(t => t.lvl)), byUid = {}, tasks = [];
-  raw.forEach(t => { const job = { u: pgNewUid(), lvl: Math.max(0, t.lvl - minLvl), name: t.name, dur: t.dur > 0 ? Math.max(1, Math.round(t.dur)) : 0, start: t.start, pred: [], pct: t.pct }; byUid[t.uid] = job; tasks.push(job); });
+  raw.forEach(t => { const job = { u: pgNewUid(), lvl: Math.max(0, t.lvl - minLvl), name: t.name, dur: t.dur > 0 ? Math.max(1, Math.round(t.dur)) : 0, start: t.start, pred: [], pct: t.pct, ...(t.who ? { who: t.who } : {}) }; byUid[t.uid] = job; tasks.push(job); });
   raw.forEach(t => { const job = byUid[t.uid]; t.preds.forEach(p => { const q = byUid[p.uid]; if (q) job.pred.push({ u: q.u, t: p.t, lag: p.lag }); }); });
   const p0 = raw[0].start;   // việc không có Predecessor mà ngày cũ hơn ngày bắt đầu dự án (dữ liệu tồn trong file) → đưa về ngày bắt đầu dự án
   tasks.forEach(t => { if (!t.pred.length && t.start && t.start < p0) t.start = p0; });

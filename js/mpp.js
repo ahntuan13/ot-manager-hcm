@@ -104,7 +104,8 @@ root.readOle=readOle;
     var T = rootDir + '/TBkndTask/';
     var vm = o.read(T + 'VarMeta'), vd = o.read(T + 'Var2Data'), fm = o.read(T + 'FixedMeta'), fd = o.read(T + 'FixedData');
     if (!vm || !vd || !fm || !fd) throw new Error('File .mpp không có dữ liệu công việc.');
-    // Var2Data: tên công việc
+    // Var2Data: tên công việc + cột tuỳ chỉnh Text1 (thường là "Người/Trách nhiệm thực hiện")
+    var texts = {};
     var vdv = safeDV(vm.buffer, vm.byteOffset, vm.byteLength), vcnt = vdv.getUint32(8, true), names = {};
     for (var i = 0; i < vcnt; i++) {
       var p = 24 + i * 12; if (p + 12 > vm.length) break;
@@ -112,6 +113,9 @@ root.readOle=readOle;
       if ((field & 0xFFFF) === 14 && ((field >>> 16) === 0x0B40 || (field >>> 16) === 0) && off + 4 <= vd.length) {
         var sz = safeDV(vd.buffer, vd.byteOffset, vd.byteLength).getUint32(off, true);
         names[uid] = utf16(vd, off + 4, Math.min(sz, vd.length - off - 4));
+      } else if (field === 0x0B400033 && off + 4 <= vd.length) {
+        var sz1 = safeDV(vd.buffer, vd.byteOffset, vd.byteLength).getUint32(off, true);
+        var tx = utf16(vd, off + 4, Math.min(sz1, vd.length - off - 4)).trim(); if (tx) texts[uid] = tx;
       }
     }
     var dv = safeDV(fd.buffer, fd.byteOffset, fd.byteLength), seen = {}, tasks = [];
@@ -128,6 +132,32 @@ root.readOle=readOle;
     });
     tasks.sort(function (a, b) { return a.id - b.id; });
     // TBkndCons: quan hệ Predecessor (20 byte / bản ghi)
+    // Resource (Task ↔ Resource): TBkndRsc (tên) + TBkndAssn (task uid @4, resource uid @8; -65535 = chưa gán)
+    var rname = {}, who = {};
+    try {
+      var rvm = o.read(rootDir + '/TBkndRsc/VarMeta'), rvd = o.read(rootDir + '/TBkndRsc/Var2Data');
+      if (rvm && rvd) {
+        var rdv = safeDV(rvm.buffer, rvm.byteOffset, rvm.byteLength), rn = rdv.getUint32(8, true);
+        for (var ri = 0; ri < rn; ri++) {
+          var rp = 24 + ri * 12; if (rp + 12 > rvm.length) break;
+          if (rdv.getUint32(rp + 8, true) === 0x0C400001) {
+            var ro = rdv.getUint32(rp + 4, true); if (ro + 4 > rvd.length) continue;
+            var rs = safeDV(rvd.buffer, rvd.byteOffset, rvd.byteLength).getUint32(ro, true);
+            var nm = utf16(rvd, ro + 4, Math.min(rs, rvd.length - ro - 4)).trim(); if (nm) rname[rdv.getUint32(rp, true)] = nm;
+          }
+        }
+      }
+      var am = o.read(rootDir + '/TBkndAssn/FixedMeta'), ad = o.read(rootDir + '/TBkndAssn/FixedData');
+      if (am && ad && Object.keys(rname).length) {
+        var adv = safeDV(ad.buffer, ad.byteOffset, ad.byteLength);
+        fixedBlocks(am, ad, 34).forEach(function (b) {
+          if (b.flag !== 0 || b.s + 12 > ad.length) return;
+          var tu = adv.getUint32(b.s + 4, true), ru = adv.getUint32(b.s + 8, true);
+          if (rname[ru]) { var l = who[tu] || (who[tu] = []); if (l.indexOf(rname[ru]) < 0) l.push(rname[ru]); }
+        });
+      }
+    } catch (e) { /* bỏ qua phần Resource nếu file lạ */ }
+    tasks.forEach(function (t) { var r = who[t.uid]; t.who = r ? r.join(', ') : (texts[t.uid] || ''); });
     var cons = o.read(rootDir + '/TBkndCons/FixedData'), byUid = {};
     tasks.forEach(function (t) { byUid[t.uid] = t; });
     if (cons) {
