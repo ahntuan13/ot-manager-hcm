@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.117';
+const APP_VERSION = '2026.118';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1293,6 +1293,15 @@ function getDayQuota(iso) {
   return 8;                  // Thứ 2 - Thứ 6
 }
 
+// Lưu giờ vào/ra GỐC của từng ngày (phút trong ngày, dạng "496-1031"; thiếu giờ → để trống) để màn hình chi tiết
+// hiển thị đúng như file Excel và giải thích cách tính OT.
+function ioPut(e, iso, inV, outV) {
+  const a = timeToMinutes(inV), b = timeToMinutes(outV);
+  e.io = e.io || {};
+  if (a === null && b === null) delete e.io[iso];
+  else e.io[iso] = (a === null ? '' : a) + '-' + (b === null ? '' : b);
+}
+
 // Parse dd/mm/yyyy date string used in the checkin-out header row
 function parseDDMMYYYY(s) {
   if (!s) return null;
@@ -1375,6 +1384,7 @@ function tryParseCheckinOutFormat(ws) {
       }
       // Quota luôn được ghi nhận (kể cả ngày không đi làm) — đúng theo công thức gốc.
       DB[mk].employees[name].quotaDays[dc.iso] = quota;
+      ioPut(DB[mk].employees[name], dc.iso, row[dc.inCol], row[dc.outCol]);
       if (wResult.night > 0) {
         DB[mk].employees[name].nightDays[dc.iso] = wResult.night;
       } else {
@@ -1596,6 +1606,7 @@ function tryParseLongFormat(ws) {
     e.nightDays = e.nightDays || {}; e.quotaDays = e.quotaDays || {};
     if (w.worked > 0) { e.days[iso] = w.worked; cnt++; } else delete e.days[iso];
     e.quotaDays[iso] = quota;
+    ioPut(e, iso, inV, outV);
     if (w.night > 0) e.nightDays[iso] = w.night; else delete e.nightDays[iso];
     e.dept = dept;
     if (!m.depts[dept]) m.depts[dept] = [];
@@ -2521,57 +2532,83 @@ function renderEmployeePeriodChips() {
   `).join('');
 }
 
-// ── Chi tiết OT sau 17h theo từng ngày (dùng lại e.days/e.quotaDays đã có sẵn, không cần dữ liệu
-// mới) — cho MỖI nhân viên: liệt kê từng ngày có OT (worked > quota), gộp theo tuần (dùng đúng
-// khung tuần buildPeriods() đang dùng khắp app), và tổng cả tháng.
+// ── Chi tiết OT theo từng ngày — hiển thị đúng giờ vào/ra trong file chấm công + cách tính từng ngày.
 function computeEmployeeDailyOt(mk, name) {
   if (!mk || !DB[mk] || !DB[mk].employees[name]) return null;
-  const periods = buildPeriods(mk);
-  const weekRanges = periods.map((p, i) => ({ label: p.label, range: getWeekOnlyRange(periods, i) }));
   const e = DB[mk].employees[name];
-  const days = e.days || {};
-  const quotaDays = e.quotaDays || {};
-  const dailyOt = [];
-  Object.keys(days).sort().forEach(iso => {
-    const worked = days[iso] || 0;
-    const quota = quotaDays[iso] || 0;
-    const ot = dayOtH(worked, quota);
-    if (ot > 0) dailyOt.push({ iso, worked, quota, ot });
+  const days = e.days || {}, quotaDays = e.quotaDays || {}, io = e.io || {};
+  const isos = [...new Set([...Object.keys(days), ...Object.keys(quotaDays), ...Object.keys(io)])].sort();
+  const rows = isos.map(iso => {
+    const p = io[iso] ? io[iso].split('-') : null;
+    const inM = p && p[0] !== '' ? +p[0] : null, outM = p && p[1] !== '' ? +p[1] : null;
+    const worked = days[iso] || 0, quota = quotaDays[iso] || 0;
+    return { iso, inM, outM, hasIo: !!p, worked, quota, ot: dayOtH(worked, quota) };
   });
-  const totalOt = Math.round(dailyOt.reduce((s,d)=>s+Math.round(d.ot*60),0))/60;
-  const weeklyOt = weekRanges.map(w => {
-    if (!w.range) return null;
-    const sIso = isoDate(w.range.start), eIso = isoDate(w.range.end);
-    const sum = dailyOt.filter(d => d.iso >= sIso && d.iso <= eIso).reduce((s,d)=>s+d.ot,0);
-    return { label: w.label, ot: Math.round(sum*60)/60 };
-  }).filter(w => w && w.ot > 0);
-  return { name, staffCode: e.staffCode||'', dept: e.dept||'', dailyOt, totalOt, weeklyOt };
+  const totalOt = Math.round(rows.reduce((s, d) => s + Math.round(d.ot * 60), 0)) / 60;
+  const totalWorked = Math.round(rows.reduce((s, d) => s + Math.round(d.worked * 60), 0)) / 60;
+  const totalQuota = rows.reduce((s, d) => s + d.quota, 0);
+  const otDays = rows.filter(d => d.ot > 0).length;
+  return { name, staffCode: e.staffCode || '', dept: e.dept || '', rows, totalOt, totalWorked, totalQuota, otDays, hasIo: rows.some(r => r.hasIo) };
 }
 const DOW_VI = ['CN','T2','T3','T4','T5','T6','T7'];
-// Tích hợp thẳng vào bảng Danh sách NV OT: bấm tên NV → mở 1 hàng ngay bên dưới hiện chi tiết,
-// thay vì phải xem 1 danh sách tách riêng ở dưới trang (đơn giản hơn, đúng yêu cầu).
+function hmStr(m) { return m === null || m === undefined ? '—' : String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0'); }
+// Giải thích 1 ngày: dòng công thức + ghi chú
+function otDayExplain(d) {
+  const notes = [];
+  const hol = isVNHoliday(d.iso);
+  if (hol) notes.push('Ngày lễ: quota 0h');
+  if (!d.hasIo && !d.worked) return { calc: '', notes: ['Không có dữ liệu chấm công'] };
+  if (d.inM === null || d.outM === null) {
+    if (d.hasIo) notes.push(d.inM === null ? 'Thiếu giờ vào → 0 giờ làm' : 'Thiếu giờ ra → 0 giờ làm');
+    return { calc: '', notes };
+  }
+  const inR = Math.max(d.inM, WORKDAY_START);
+  if (d.inM < WORKDAY_START) notes.push(`Vào sớm ${hmStr(d.inM)} → tính từ 08:00`);
+  const mor = Math.max(0, Math.min(720, d.outM) - inR), aft = Math.max(0, d.outM - Math.max(780, inR));
+  const parts = [];
+  if (mor > 0) parts.push(`${hmStr(inR)}→12:00 = ${fmtH(mor/60)}`);
+  if (aft > 0) parts.push(`13:00→${hmStr(d.outM)} = ${fmtH(aft/60)}`);
+  if (d.outM > 22*60) notes.push('Có giờ sau 22:00 (OT đêm)');
+  return { calc: parts.join(' + ') + ' = ' + fmtH(d.worked), notes };
+}
 function toggleEmpOtDetailRow(rowKey, mk, name) {
   const tr = document.getElementById('empOtDetailRow_'+rowKey);
   if (!tr) return;
   const isHidden = tr.style.display === 'none';
   tr.style.display = isHidden ? 'table-row' : 'none';
-  if (isHidden) {
-    const content = document.getElementById('empOtDetailContent_'+rowKey);
-    const emp = computeEmployeeDailyOt(mk, name);
-    if (!emp || !emp.dailyOt.length) {
-      content.innerHTML = '<div style="padding:10px 4px;color:var(--text2);font-size:12.5px">Không có OT phát sinh trong tháng này.</div>';
-      return;
-    }
-    content.innerHTML = `
-      ${emp.weeklyOt.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        ${emp.weeklyOt.map(w => `<span style="font-size:11px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">${w.label}: ${fmtH(w.ot)}</span>`).join('')}
-      </div>` : ''}
-      <table style="font-size:12px"><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ làm</th><th>Quota</th><th>OT ngày đó</th></tr></thead>
-      <tbody>${emp.dailyOt.map(d => {
-        const dow = DOW_VI[new Date(d.iso+'T00:00:00').getDay()];
-        return `<tr><td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${dow}</td><td class="num">${fmtH(d.worked)}</td><td class="num">${fmtH(d.quota)}</td><td class="num" style="color:#C0392B;font-weight:700">${fmtH(d.ot)}</td></tr>`;
-      }).join('')}</tbody></table>`;
-  }
+  if (!isHidden) return;
+  const content = document.getElementById('empOtDetailContent_'+rowKey);
+  const emp = computeEmployeeDailyOt(mk, name);
+  if (!emp || !emp.rows.length) { content.innerHTML = '<div style="padding:10px 4px;color:var(--text2);font-size:12.5px">Chưa có dữ liệu chấm công.</div>'; return; }
+  const guide = `<div style="font-size:12px;line-height:1.7;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px">
+      <b>Cách tính OT</b> (áp dụng cho từng ngày, rồi cộng các ngày có OT):<br>
+      ① <b>Giờ làm</b> = (giờ ra − giờ vào) trừ nghỉ trưa 12:00–13:00. Vào sớm trước 08:00 vẫn tính từ 08:00. Tính đúng từng phút, không làm tròn.<br>
+      ② <b>Quota</b> (giờ tiêu chuẩn): T2–T6 = 8h · T7 = 4h · CN và ngày lễ = 0h.<br>
+      ③ <b>OT ngày</b> = Giờ làm − Quota (nếu âm thì = 0, không bù trừ giữa các ngày).<br>
+      ④ Thiếu giờ vào hoặc giờ ra → ngày đó 0 giờ làm (không tự giả định giờ).<br>
+      ⑤ <b>Tổng OT</b> = cộng OT các ngày. Giờ vào/ra lấy nguyên từ file chấm công đã upload.
+    </div>`;
+  const warn = emp.hasIo ? '' : `<div style="font-size:12px;color:#B9770E;margin-bottom:8px">⚠ Tháng này được upload trước khi app lưu giờ vào/ra — hãy upload lại file chấm công để hiện đủ giờ vào/ra. Bảng dưới chỉ có giờ làm và quota.</div>`;
+  const body = emp.rows.map(d => {
+    const dow = new Date(d.iso+'T00:00:00').getDay(), x = otDayExplain(d);
+    const bad = d.hasIo && (d.inM === null || d.outM === null);
+    return `<tr${d.ot > 0 ? ' style="background:rgba(192,57,43,.06)"' : ''}>
+      <td class="num">${d.iso.slice(8,10)}/${d.iso.slice(5,7)}</td><td>${DOW_VI[dow]}</td>
+      <td class="num"${d.hasIo && d.inM === null ? ' style="color:#C0392B"' : ''}>${d.hasIo ? hmStr(d.inM) : '—'}</td>
+      <td class="num"${d.hasIo && d.outM === null ? ' style="color:#C0392B"' : ''}>${d.hasIo ? hmStr(d.outM) : '—'}</td>
+      <td style="font-size:11.5px;color:var(--text2)">${x.calc}${x.notes.length ? `<div style="color:${bad ? '#C0392B' : 'var(--text2)'}">${x.notes.join(' · ')}</div>` : ''}</td>
+      <td class="num">${fmtH(d.worked)}</td><td class="num">${fmtH(d.quota)}</td>
+      <td class="num" style="${d.ot > 0 ? 'color:#C0392B;font-weight:700' : 'color:var(--text2)'}">${d.worked ? (d.ot > 0 ? '+' + fmtH(d.ot) : '0') : '0'}</td></tr>`;
+  }).join('');
+  content.innerHTML = '<div style="max-width:860px">' + warn + guide + `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:11.5px;background:var(--accent-bg);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:600">Tổng OT: ${fmtH(emp.totalOt)} (${emp.otDays} ngày có OT)</span>
+      <span style="font-size:11.5px;background:var(--bg2);padding:3px 10px;border-radius:999px">Tổng giờ làm: ${fmtH(emp.totalWorked)}</span>
+      <span style="font-size:11.5px;background:var(--bg2);padding:3px 10px;border-radius:999px">Tổng quota: ${fmtH(emp.totalQuota)}</span>
+    </div>
+    <div style="overflow-x:auto"><table style="font-size:12px;width:100%;table-layout:auto"><thead><tr><th>Ngày</th><th>Thứ</th><th>Giờ vào</th><th>Giờ ra</th><th>Cách tính giờ làm</th><th>Giờ làm</th><th>Quota</th><th>OT ngày</th></tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr style="font-weight:700"><td colspan="5">Tổng</td><td class="num">${fmtH(emp.totalWorked)}</td><td class="num">${fmtH(emp.totalQuota)}</td><td class="num" style="color:#C0392B">${fmtH(emp.totalOt)}</td></tr></tfoot></table></div></div>`;
 }
 
 function renderEmployeeList() {
