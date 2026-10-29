@@ -128,6 +128,39 @@ function puMigrate() {
   if (ch) savePuDb();
 }
 
+// ── Lọc theo tuần thực tế (Thứ 2 → Chủ nhật) — theo ngày giao: đã giao = ngày thực tế, chưa giao = ngày dự kiến ──
+const puIso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function puWeekOf(iso, shiftWeeks) {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 7 * (shiftWeeks || 0));
+  const e = new Date(d); e.setDate(e.getDate() + 6); return [puIso(d), puIso(e)];
+}
+function puWeekRange() {
+  const v = document.getElementById('puWeek')?.value || 'all', t = puToday();
+  if (v === 'this') return puWeekOf(t, 0); if (v === 'prev') return puWeekOf(t, -1); if (v === 'next') return puWeekOf(t, 1);
+  if (v === 'pick') {
+    const m = /^(\d{4})-W(\d{2})$/.exec(document.getElementById('puWeekPick')?.value || ''); if (!m) return null;
+    const j = new Date(+m[1], 0, 4); j.setDate(j.getDate() - ((j.getDay() + 6) % 7) + (+m[2] - 1) * 7); return puWeekOf(puIso(j), 0);
+  }
+  return null;
+}
+const puInWeek = (x, r) => { if (!r) return true; const d = x.actual || puEst(x); return !!d && d >= r[0] && d <= r[1]; };
+function puWeekInit() {
+  const sel = document.getElementById('puWeek'); if (!sel || sel.dataset.ok === puToday()) return;
+  const t = puToday(), f = w => { const r = puWeekOf(t, w); return `${puFmtS(r[0])} – ${puFmtS(r[1])}`; }, cur = sel.value || 'all';
+  sel.innerHTML = `<option value="all">Tất cả các tuần</option><option value="prev">Tuần trước (${f(-1)})</option><option value="this">Tuần này (${f(0)})</option><option value="next">Tuần sau (${f(1)})</option><option value="pick">Chọn tuần khác…</option>`;
+  sel.value = cur; sel.dataset.ok = t;
+}
+function puIsoWeekStr(iso) {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));   // Thứ 5 của tuần ISO
+  const w1 = new Date(d.getFullYear(), 0, 4), n = 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+  return `${d.getFullYear()}-W${String(n).padStart(2, '0')}`;
+}
+function puWeekChange() {
+  const v = document.getElementById('puWeek').value, pk = document.getElementById('puWeekPick');
+  pk.style.display = v === 'pick' ? '' : 'none'; if (v === 'pick' && !pk.value) pk.value = puIsoWeekStr(puToday());
+  renderPuDelivery();
+}
+
 // ── Vẽ trang ──
 let puOpen = {};
 function puCtl() {
@@ -164,7 +197,8 @@ function renderPuDelivery() {
   const stSel = document.getElementById('puStatusFilter');
   if (stSel && stSel.options.length <= 1) stSel.innerHTML = '<option value="all">Tất cả trạng thái</option>' + PU_ST_LIST.map(s => `<option value="${s[0]}">${s[1]}</option>`).join('');
   if (stSel) stSel.value = c.st;
-  const all = puItems().map(x => ({ x, proj: puProjOf(x), s: puStatus(x, today) }));
+  puWeekInit(); const wk = puWeekRange();
+  const all = puItems().filter(x => puInWeek(x, wk)).map(x => ({ x, proj: puProjOf(x), s: puStatus(x, today) }));
   const cnt = k => all.filter(a => a.s.k === k).length;
   const kpi = document.getElementById('puKpi');
   if (kpi) kpi.innerHTML = `<div class="mk pu-tile" onclick="openPuDetail('all')" title="Bấm để xem chi tiết"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
@@ -389,7 +423,7 @@ function exportPuExcel() {
 // ── Bấm ô KPI → danh sách chi tiết các hạng mục theo trạng thái ──
 function openPuDetail(k) {
   const today = puToday(), lab = { all: 'Tổng hàng hóa', late: 'Trễ tiến độ', soon7: 'Sắp giao (≤ 2 ngày)', miss: 'Thiếu kế hoạch đặt hàng', done: 'Đã giao' };
-  const rows = puItems().map(x => ({ x, proj: puProjOf(x) || x.src || '(chưa gán)', s: puStatus(x, today) })).filter(a => k === 'all' || a.s.k === k)
+  const wk = puWeekRange(), rows = puItems().filter(x => puInWeek(x, wk)).map(x => ({ x, proj: puProjOf(x) || x.src || '(chưa gán)', s: puStatus(x, today) })).filter(a => k === 'all' || a.s.k === k)
     .sort((a, b) => a.proj.localeCompare(b.proj) || (puEst(a.x) || '9').localeCompare(puEst(b.x) || '9'));
   const col = k === 'all' ? '#1f2937' : PU_STATUS_COLOR[k];
   document.getElementById('puDTitle').innerHTML = `<span style="color:${col}">${puEsc(lab[k])}</span> <span style="font-weight:400;font-size:13px;color:var(--text2)">· ${rows.length} hạng mục</span>`;

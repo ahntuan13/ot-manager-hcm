@@ -926,6 +926,7 @@
       <button class="btn btn-primary" onclick="openPuProj()">＋ Thêm dự án</button>
       <select id="puProjFilter" onchange="renderPuDelivery()"><option value="__all__">Tất cả dự án</option></select>
       <select id="puStatusFilter" onchange="renderPuDelivery()"><option value="all">Tất cả trạng thái</option></select>
+      <select id="puWeek" onchange="puWeekChange()" title="Lọc theo tuần giao hàng thực tế (T2–CN)"><option value="all">Tất cả các tuần</option></select><input type="week" id="puWeekPick" style="display:none" onchange="renderPuDelivery()" title="Chọn tuần">
       <input type="text" id="puSearch" placeholder="Tìm hàng hóa, NCC, PO, PM..." oninput="renderPuDelivery()" style="width:230px">
       <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="puShowDone" onchange="renderPuDelivery()"> Hiện hàng đã giao</label>
       <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="puHideEmpty" checked onchange="renderPuDelivery()"> Ẩn dự án chưa có hàng</label>
