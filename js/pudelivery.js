@@ -82,6 +82,7 @@ function puProjects() {
   return [...ap, ...custom.sort((a, b) => a.p.localeCompare(b.p))];
 }
 function puApPm(proj) {
+  { const d = (typeof pmNames === 'function') ? pmNames(proj) : ''; if (d) return d; }
   for (const g of Object.keys(PROJECTS_DB || {})) {
     const pr = PROJECTS_DB[g] && PROJECTS_DB[g][proj]; if (!pr) continue;
     const ks = Object.keys(pr.plans || {}).sort().reverse();
@@ -208,14 +209,19 @@ function renderPuDelivery() {
   let html = '';
   // Dòng chưa gán được dự án Action Plan → gom theo tên dự án trong Excel, cho phép gán hàng loạt
   const orphans = all.filter(a => !a.proj && match(a));
-  if (orphans.length && c.proj === '__all__') {
+  if (orphans.length && c.proj === '__all__' && (document.getElementById('puPmFilter')?.value || '__all__') === '__all__' && (document.getElementById('puTeamFilter')?.value || '__all__') === '__all__') {
     const bySrc = {}; orphans.forEach(a => (bySrc[a.x.src || '(không rõ dự án)'] = bySrc[a.x.src || '(không rõ dự án)'] || []).push(a));
     html += `<div class="card" style="border-left:4px solid #E8A33D"><div class="card-title" style="margin-bottom:6px">⚠️ Chưa gán dự án Action Plan <span style="font-weight:400;font-size:11.5px;color:var(--text2)">— ${orphans.length} hàng. Chọn dự án tương ứng cho từng nhóm (lưu lại cho lần nhập sau).</span></div>` +
       Object.keys(bySrc).map(src => `<div style="margin:10px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${puEsc(src)}</b> <span style="color:var(--text2);font-size:11.5px">(${bySrc[src].length} hàng)</span>
         <select onchange="puAssignSrc('${encodeURIComponent(src)}', this.value)" style="padding:4px 8px"><option value="">Gán vào dự án…</option>${projs.map(x => `<option value="${puEsc(x.p)}">${puEsc(x.p)}</option>`).join('')}</select></div>
         ${puTable(bySrc[src].map((a, i) => puRow(a.x, a.x.no || i + 1)).join(''))}`).join('') + '</div>';
   }
-  projs.filter(x => c.proj === '__all__' || x.p === c.proj).forEach(({ p }) => {
+  // Bộ lọc PM / nhóm (CS, Project Base) — lấy từ danh bạ PM (Nhân lực → PM)
+  const pmSel = document.getElementById('puPmFilter');
+  if (pmSel) { const prev = pmSel.value; pmSel.innerHTML = '<option value="__all__">Tất cả PM</option>' + pmList().sort((a, b) => a.name.localeCompare(b.name, 'vi')).map(e => `<option value="${puEsc(e.code)}">${puEsc(e.name)}</option>`).join(''); if ([...pmSel.options].some(o => o.value === prev)) pmSel.value = prev; }
+  const fPm = pmSel ? pmSel.value : '__all__', fTeam = document.getElementById('puTeamFilter')?.value || '__all__';
+  const pmOk = x => (fPm === '__all__' || pmOfProject(x.g, x.p).some(m => m.code === fPm)) && (fTeam === '__all__' || pmTeamsOfProject(x.p, x.g).includes(fTeam));
+  projs.filter(x => (c.proj === '__all__' || x.p === c.proj) && pmOk(x)).forEach(({ p, g }) => {
     const rows = all.filter(a => a.proj === p), shown = rows.filter(match);
     if (!rows.length && c.hideEmpty && c.proj === '__all__') return;
     if (rows.length && !shown.length && (c.st !== 'all' || c.q)) return;
@@ -228,7 +234,7 @@ function renderPuDelivery() {
     html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(p)}')">
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
       <div style="font-size:15px;font-weight:800">${puEsc(p)}</div>
-      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—')))}</b>${jobs.length ? ` · Job: ${puEsc(jobs.join(', '))}` : ''}</div>
+      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(apPm && pmNames(p, g) ? apPm : ((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—'))))}</b> ${pmBadges(p, g)}${jobs.length ? ` · Job: ${puEsc(jobs.join(', '))}` : ''}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>
       <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}')">＋ Thêm hàng</button></span></div>
@@ -244,7 +250,7 @@ function openPuProj(encName) {
   const mt = name ? puMeta(name) : null, isAp = !!name && puApProjects().some(x => x.p === name);
   puProjEdit = { name, isAp, isNew: !name };
   document.getElementById('puPName').value = name; document.getElementById('puPName').disabled = isAp;
-  document.getElementById('puPPm').value = (mt && mt.pm) || (name ? puApPm(name) : '') || '';
+  { const dn = name ? pmNames(name) : '', el = document.getElementById('puPPm'); el.value = dn || (mt && mt.pm) || (name ? puApPm(name) : '') || ''; el.disabled = !!dn; el.title = dn ? 'PM lấy từ Nhân lực → PM (sửa ở đó)' : ''; }
   document.getElementById('puPTitle').textContent = !name ? 'Thêm dự án' : 'Sửa dự án';
   document.getElementById('puPNote').textContent = isAp ? 'Tên dự án lấy từ Action Plan nên không đổi ở đây; chỉ gán/sửa tên PM.' : (name ? 'Dự án riêng của PU Delivery (không có trong Action Plan).' : 'Dự án mới chỉ có trong PU Delivery. Dự án của Action Plan đã có sẵn, không cần thêm lại.');
   const canDel = !!name && !isAp && typeof isManager === 'function' && isManager();
@@ -254,7 +260,7 @@ function openPuProj(encName) {
 function closePuProj() { document.getElementById('puProjModal').style.display = 'none'; puProjEdit = null; }
 function savePuProj() {
   if (!puProjEdit) return;
-  const name = document.getElementById('puPName').value.trim(), pm = document.getElementById('puPPm').value.trim();
+  const name = document.getElementById('puPName').value.trim(), pmEl = document.getElementById('puPPm'), pm = pmEl.disabled ? ((puMeta(puProjEdit.name) || {}).pm || '') : pmEl.value.trim();
   if (!name) { toast('⚠️ Nhập tên dự án.'); return; }
   const old = puProjEdit.name, now = Date.now();
   if (puProjEdit.isNew && puProjects().some(x => x.p.toLowerCase() === name.toLowerCase())) { toast('⚠️ Dự án này đã có.'); return; }
@@ -394,7 +400,7 @@ function exportPuExcel() {
       const jl = String(x.job || '').split(',').map(puClean).filter(Boolean);
       const ext = acc && acc.every((j, k) => jl[k] === j);
       if (!ext || i === 0) {
-        const meta = puMeta(p), mp = (meta && meta.pm) || x.pm || puApPm(p) || '';
+        const meta = puMeta(p), mp = pmNames(p) || (meta && meta.pm) || x.pm || puApPm(p) || '';
         const pm = mp && !/^\s*(mr|mrs|ms)\b/i.test(mp) ? 'Mr. ' + mp : mp;
         const pr = blank(); pr[0] = `Project Name: ${p}${disc ? ` (${disc})` : ''}${pm ? ' - ' + pm : ''}`; aoa.push(pr);
         acc = [];

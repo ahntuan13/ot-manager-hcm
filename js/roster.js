@@ -212,9 +212,9 @@ function rosterReconApplyAll(kind) {
 function mpSetTab(t) {
   if (t === 'roster' && !isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); t = 'main'; }
   window.mpTab = t;
-  const a = document.getElementById('mpMain'), b = document.getElementById('mpRoster'); if (a) a.style.display = t === 'main' ? '' : 'none'; if (b) b.style.display = t === 'roster' ? '' : 'none';
+  const a = document.getElementById('mpMain'), b = document.getElementById('mpRoster'), c = document.getElementById('mpPm'); if (a) a.style.display = t === 'main' ? '' : 'none'; if (b) b.style.display = t === 'roster' ? '' : 'none'; if (c) c.style.display = t === 'pm' ? '' : 'none';
   document.querySelectorAll('#mpTabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
-  if (t === 'roster') renderRoster(); else if (typeof renderManpower === 'function') renderManpower();
+  if (t === 'roster') renderRoster(); else if (t === 'pm') renderPmTab(); else if (typeof renderManpower === 'function') renderManpower();
 }
 function rsTr(e, edit, pm, recon) {
   const pr = rosterProjOf(e.code), st = EMP_ST[e.status] || EMP_ST.ot, info = rosterDevInfo(e), rc = recon[e.code];
@@ -339,6 +339,7 @@ function rosterSave(isNew) {
 }
 function rosterDelete(code) {
   if (!requireManager('xoá nhân viên') || !confirm('Xoá ' + code + ' khỏi danh sách? (Dữ liệu OT đã nạp không bị xoá; lần upload sau NV này sẽ được hỏi lại nếu chấm công ở HCM.)')) return;
+  if (EMP_DB[code] && EMP_DB[code].pm) { toast('⚠️ Nhân viên này đang là PM — hãy bỏ khỏi danh bạ PM (tab PM) trước khi xoá.'); return; }
   delete EMP_DB[code]; saveEmpDb(); rosterClose(); renderRoster();
 }
 

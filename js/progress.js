@@ -239,7 +239,7 @@ function pgDonut(pct, col, big, small) {
   return `<div class="pg-donut"><svg viewBox="0 0 96 96" width="104" height="104"><circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="9"/><circle cx="48" cy="48" r="${r}" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${d} ${C}" transform="rotate(-90 48 48)"/></svg><div><b>${big}</b><span>${small}</span></div></div>`;
 }
 function progCard(n, s) {
-  const pr = PROG_DB[n], root = s.root, hl = s.health, pm = (pr.pm || (typeof puApPm === 'function' ? puApPm(n) : '')) || '';
+  const pr = PROG_DB[n], root = s.root, hl = s.health, pm = pmNamesLoose(n) || pr.pm || (typeof puApPm === 'function' ? puApPm(n) : '') || '';
   const span = Math.max(1, root.f - root.s + 1), today = pgToday();
   const lanes = s.stages.slice(0, 5).map(i => {
     const c = s.C[i], l = (c.s - root.s) * 100 / span, w = Math.max(1.5, (c.f - c.s + 1) * 100 / span);
@@ -316,7 +316,7 @@ function progProjInfo() {
   ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:12px">Thông tin dự án</div>
     <label>Gán vào dự án (Action Plan / PU Delivery)<select id="pgiProj"><option value="${pgEsc(pr.name)}">${pgEsc(pr.name)} (hiện tại)</option>${avail.map(p => `<option>${pgEsc(p)}</option>`).join('')}<option value="__new__">＋ Đổi sang tên khác…</option></select></label>
     <label id="pgiNameL" style="display:none">Tên dự án<input id="pgiName" value="${pgEsc(pr.name)}"></label>
-    <label>Quản lý dự án (PM)<input id="pgiPm" value="${pgEsc(pr.pm || (typeof puApPm === 'function' ? puApPm(progSel) : ''))}"></label>
+    <label>Quản lý dự án (PM)${pmNamesLoose(progSel) ? '<span style="font-weight:400;font-size:11px;color:var(--text3)"> — lấy từ Nhân lực → PM</span>' : ''}<input id="pgiPm" value="${pgEsc(pmNamesLoose(progSel) || pr.pm || (typeof puApPm === 'function' ? puApPm(progSel) : ''))}"${pmNamesLoose(progSel) ? ' disabled' : ''}></label>
     <label>Mã dự án<input id="pgiCode" value="${pgEsc(pr.code || '')}"></label>
     <div class="action-row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="progCloseModal()">Huỷ</button><button class="btn btn-primary" onclick="progInfoSave()">Lưu</button></div></div>`;
   document.body.appendChild(ov);
@@ -327,7 +327,7 @@ function progInfoSave() {
   let nn = g('pgiProj').value; if (nn === '__new__') nn = g('pgiName').value.trim();
   if (!nn) { toast('⚠️ Nhập tên dự án.'); return; }
   if (nn !== pr.name && PROG_DB[nn]) { toast('⚠️ Dự án "' + nn + '" đã có tiến độ.'); return; }
-  pr.pm = g('pgiPm').value.trim(); pr.code = g('pgiCode').value.trim();
+  if (!g('pgiPm').disabled) pr.pm = g('pgiPm').value.trim(); pr.code = g('pgiCode').value.trim();
   if (nn !== pr.name) { delete PROG_DB[pr.name]; pr.name = nn; PROG_DB[nn] = pr; }
   pr.at = Date.now(); progCloseModal(); saveProgDb(); toast('✅ Đã lưu thông tin dự án.'); progSaveClose();   // lưu xong tự đóng tab
 }

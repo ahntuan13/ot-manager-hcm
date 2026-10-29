@@ -894,3 +894,11 @@ html[data-theme="dark"] .gd-tip.warn{background:#3b2c10;color:#f3d49a}
 body:has(#pg-progress.show) #greetSub{display:none}
 
 .pu-tbl th.pu-q{min-width:0;width:44px;padding:7px 4px}.pu-tbl td.pu-q{width:44px;max-width:56px;padding:6px 4px;text-align:center;overflow:hidden;text-overflow:ellipsis}
+
+/* ── PM (Nhân lực → PM, PU Delivery, Action Plan) ── */
+.pm-card{margin-bottom:12px}.pm-left{opacity:.6}
+.pm-tb{border:1px solid var(--border,#d6dbe3);background:transparent;color:var(--text2);border-radius:999px;padding:3px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.pm-tb:disabled{cursor:default}
+.pm-tb.on.pm-CS,.pm-tag.pm-CS{background:#2D6CDF;border-color:#2D6CDF;color:#fff}
+.pm-tb.on.pm-PB,.pm-tag.pm-PB{background:#7A5BD0;border-color:#7A5BD0;color:#fff}
+.pm-tag{display:inline-block;margin-left:5px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;vertical-align:middle}
