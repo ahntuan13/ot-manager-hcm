@@ -339,7 +339,6 @@ function deletePu(id) {
 // ── Nhập Excel theo mẫu "Equipment Order Record" ──
 async function importPuExcel(inp) {
   const f = inp.files && inp.files[0]; if (!f) return;
-  if (typeof requireManager === 'function' && !requireManager('nhập PU Delivery từ Excel')) { inp.value = ''; return; }
   try {
     const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
