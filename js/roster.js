@@ -214,7 +214,7 @@ function mpSetTab(t) {
   window.mpTab = t;
   const a = document.getElementById('mpMain'), b = document.getElementById('mpRoster'), c = document.getElementById('mpPm'); if (a) a.style.display = t === 'main' ? '' : 'none'; if (b) b.style.display = t === 'roster' ? '' : 'none'; if (c) c.style.display = t === 'pm' ? '' : 'none';
   document.querySelectorAll('#mpTabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
-  if (t === 'roster') renderRoster(); else if (t === 'pm') renderPmTab(); else if (typeof renderManpower === 'function') renderManpower();
+  if (t === 'roster') renderRoster(); else if (typeof renderManpower === 'function') renderManpower();
 }
 function rsTr(e, edit, pm, recon) {
   const pr = rosterProjOf(e.code), st = EMP_ST[e.status] || EMP_ST.ot, info = rosterDevInfo(e), rc = recon[e.code];
@@ -222,7 +222,7 @@ function rsTr(e, edit, pm, recon) {
   const projCell = e.dept && e.dept !== 'HCM-EC' ? `<span style="color:var(--text3);font-size:12px">${emEsc(e.dept)}</span>` : pr ? emEsc(pr) : (pm[e.code] ? '<span style="color:#E8A33D">Chưa gán dự án</span>' : '<span style="color:var(--text3)">—</span>');
   return `<tr${e.status !== 'ot' ? ' style="opacity:.6"' : ''}><td style="white-space:nowrap">${emEsc(e.code)}</td><td><b>${emEsc(e.name)}</b>${e.note ? `<div style="font-size:10.5px;color:var(--text2)">${emEsc(e.note)}</div>` : ''}</td>
     <td>${e.dept ? `<span class="rs-dept">${emEsc(e.dept)}</span>` : '<span style="color:#C0392B;font-size:12px">chưa có</span>'}</td><td style="font-size:12px;color:var(--text2)">${emEsc(e.pos || '')}</td>
-    <td>${projCell}${warn}</td>
+    <td>${projCell}${warn}${typeof catRosterExtra === 'function' ? catRosterExtra(e, pr) : ''}</td>
     <td style="font-size:11.5px;color:var(--text2)">${info.has ? emEsc(info.top.join(', ')) : '<span style="color:var(--text3)">—</span>'}</td>
     <td><span class="pg-pill" style="background:${st[1]}">${st[0]}</span></td>${edit ? `<td style="white-space:nowrap"><button class="pg-ib" onclick="rosterEdit('${emJs(e.code).replace(/'/g, '&#39;')}')" title="Sửa">✎</button></td>` : ''}</tr>`;
 }

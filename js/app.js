@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.121';
+const APP_VERSION = '2026.122';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1074,6 +1074,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
   if (p === 'report') { populateReportSelectors(); }
   if (p === 'action') renderActionPlan();
   if (p === 'manpower') { if (typeof mpSetTab === 'function') mpSetTab(window.mpTab || 'main'); else if (typeof renderManpower === 'function') renderManpower(); }
+  if (p === 'catalog' && typeof renderCatalog === 'function') renderCatalog();
   if (p === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
   if (p === 'progress' && typeof renderProgress === 'function') renderProgress();
   if (p === 'interview' && typeof ivShow === 'function') ivShow();

@@ -902,3 +902,8 @@ body:has(#pg-progress.show) #greetSub{display:none}
 .pm-tb.on.pm-CS,.pm-tag.pm-CS{background:#2D6CDF;border-color:#2D6CDF;color:#fff}
 .pm-tb.on.pm-PB,.pm-tag.pm-PB{background:#7A5BD0;border-color:#7A5BD0;color:#fff}
 .pm-tag{display:inline-block;margin-left:5px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;vertical-align:middle}
+.cat-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0;padding:3px 4px 3px 10px;border:1px solid var(--border2,#d6dbe3);border-radius:999px;background:var(--bg2,#f3f6fa);font-size:12.5px;font-weight:600}
+.cat-chip select{border:0;background:transparent;color:var(--text2)}
+.cat-x{border:0;background:transparent;color:#A32D2D;cursor:pointer;font-size:12px;padding:0 6px}
+.cat-bad{border-color:#C0392B;color:#C0392B}
+.pm-tag.pm-x{background:#8a8f98;color:#fff}

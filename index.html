@@ -129,6 +129,10 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       <span class="nt-label"><span class="nt-vi">Nhân lực</span><span class="nt-en">Manpower &amp; HCM Staff</span></span>
     </button>
+    <button class="nt" data-page="catalog" onclick="goPage('catalog')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      <span class="nt-label"><span class="nt-vi">Danh mục</span><span class="nt-en">Catalog: PM · Nhóm · Dự án</span></span>
+    </button>
     <button class="nt" data-page="pudelivery" onclick="goPage('pudelivery')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
       <span class="nt-label"><span class="nt-vi">PU Delivery</span><span class="nt-en">PU Delivery</span></span>
@@ -923,6 +927,11 @@
   </div>
 </div>
 
+<div class="pg" id="pg-catalog">
+  <div class="page-title"><span>Danh mục <span style="font-size:12px;color:var(--text2);font-weight:400">/ Catalog — PM · Nhóm CS/PB · Dự án · Nhân viên (nguồn chung cho Action Plan, Nhân lực, PU Delivery, Tiến độ, OT)</span></span></div>
+  <div id="catBody"></div>
+</div>
+
 <div class="pg" id="pg-pudelivery">
   <div class="page-title"><span>PU Delivery <span style="font-size:12px;color:var(--text2);font-weight:400">/ Tiến độ giao hàng thiết bị theo dự án (Equipment Order Record)</span></span></div>
   <div id="puKpi" class="mp-kpi"></div>
@@ -1025,9 +1034,8 @@
 
 <div class="pg" id="pg-manpower">
   <div class="page-title"><span>Nhân lực <span style="font-size:12px;color:var(--text2);font-weight:400">/ Manpower — nhân sự theo dự án HCM-EC &amp; danh sách nhân viên HCM</span></span></div>
-  <div class="mp-tabs" id="mpTabs"><button data-t="pm" onclick="mpSetTab('pm')">🧑‍💼 PM (CS / Project Base)</button><button class="on" data-t="main" onclick="mpSetTab('main')">📊 Manpower theo dự án</button><button class="mgr-nav" data-t="roster" onclick="mpSetTab('roster')" style="display:none">👥 Danh sách nhân viên HCM</button></div>
+  <div class="mp-tabs" id="mpTabs"><button class="on" data-t="main" onclick="mpSetTab('main')">📊 Manpower theo dự án</button><button class="mgr-nav" data-t="roster" onclick="mpSetTab('roster')" style="display:none">👥 Danh sách nhân viên HCM</button></div>
   <div id="mpRoster" style="display:none"><div id="rosterBody"></div></div>
-  <div id="mpPm" style="display:none"><div id="pmBody"></div></div>
   <div id="mpMain">
   <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <label style="font-size:12px;color:var(--text2)">Kỳ xem / Period</label>
@@ -1507,6 +1515,7 @@
 <script src="js/progress-views.js"></script>
 <script src="js/roster.js"></script>
 <script src="js/pm.js"></script>
+<script src="js/catalog.js"></script>
 <script src="js/interview.js"></script>
 <script src="js/hero.js"></script>
 <script src="js/guide.js"></script>

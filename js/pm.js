@@ -50,7 +50,7 @@ function pmProjEmpCount(k) { const s = pmSplitKey(k); const p = PROJECTS_DB && P
 // ── Thao tác (chỉ Quản lý/Admin) ──
 function pmSave(msg) {
   saveEmpDb();
-  try { if (window.mpTab === 'pm') renderPmTab(); } catch (e) { console.warn(e); }
+  try { const c = document.getElementById('pg-catalog'); if (c && c.classList.contains('show') && typeof renderCatalog === 'function') renderCatalog(); } catch (e) { console.warn(e); }
   try { pmRefreshOthers(); } catch (e) { console.warn(e); }
   if (msg) toast(msg);
 }
@@ -71,6 +71,10 @@ function pmRemove(code) {
   if (!confirm(`Bỏ ${e.name} khỏi danh bạ PM?\n(Nhân viên vẫn còn trong danh sách; chỉ bỏ nhóm và các dự án đã gán PM.)`)) return;
   delete e.pm; e.at = Date.now(); pmSave('Đã bỏ khỏi danh bạ PM.');
 }
+function pmSetGroup(code, t) {
+  if (!requireManager('đổi nhóm PM')) return; const e = EMP_DB[code]; if (!e || !e.pm) return;
+  e.pm.team = PM_TEAMS[t] ? [t] : []; e.at = Date.now(); pmSave();
+}
 function pmToggleTeam(code, t) {
   if (!requireManager('đổi nhóm PM')) return; const e = EMP_DB[code]; if (!e || !e.pm) return;
   const s = new Set(e.pm.team || []); s.has(t) ? s.delete(t) : s.add(t); e.pm.team = ['CS', 'PB'].filter(x => s.has(x)); e.at = Date.now(); pmSave();
@@ -82,6 +86,10 @@ function pmAssign(code, k, d) {
   // Gán "Cả dự án" thay cho E/M riêng và ngược lại: giữ nguyên, để Quản lý tự quyết
   e.pm.projs.push({ k, d }); e.at = Date.now(); pmSave('✅ Đã gán dự án cho ' + e.name + '.');
 }
+function pmUnassignKey(code, k, d) {
+  if (!requireManager('bỏ dự án của PM')) return; const e = EMP_DB[code]; if (!e || !e.pm) return;
+  e.pm.projs = (e.pm.projs || []).filter(a => !(a.k === k && (a.d || '') === (d || ''))); e.at = Date.now(); pmSave();
+}
 function pmUnassign(code, i) {
   if (!requireManager('bỏ dự án của PM')) return; const e = EMP_DB[code]; if (!e || !e.pm) return;
   e.pm.projs.splice(i, 1); e.at = Date.now(); pmSave();
@@ -89,7 +97,7 @@ function pmUnassign(code, i) {
 function pmSetDisc(code, i, d) {
   if (!requireManager('đổi mảng E/M')) return; const e = EMP_DB[code]; if (!e || !e.pm || !e.pm.projs[i]) return;
   const a = e.pm.projs[i];
-  if (e.pm.projs.some((b, j) => j !== i && b.k === a.k && (b.d || '') === d)) { toast('⚠️ PM này đã có dự án/mảng đó.'); renderPmTab(); return; }
+  if (e.pm.projs.some((b, j) => j !== i && b.k === a.k && (b.d || '') === d)) { toast('⚠️ PM này đã có dự án/mảng đó.'); if (typeof renderCatalog === 'function') renderCatalog(); return; }
   a.d = d; e.at = Date.now(); pmSave();
 }
 // Đổi tên / xoá dự án trong Action Plan → cập nhật lại các chỗ PM tham chiếu
@@ -103,66 +111,6 @@ function pmOnProjectDelete(g, name) {
   pmList().forEach(e => { const b = e.pm.projs || []; const f = b.filter(a => a.k !== k); if (f.length !== b.length) { e.pm.projs = f; n++; } });
   if (n) saveEmpDb();
 }
-
-// ── Màn hình: Nhân lực → tab "PM" ──
-function pmAddDialog() {
-  if (!requireManager('thêm PM')) return;
-  const cand = rosterList().filter(e => !e.pm && e.status !== 'excl').sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-  const ov = document.createElement('div'); ov.className = 'pg-modal'; ov.id = 'pmAddModal'; ov.style.display = 'flex';
-  ov.innerHTML = `<div class="pg-mbox" style="max-width:520px"><div style="font-size:18px;font-weight:800;margin-bottom:6px">Thêm PM</div>
-    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">Chọn nhân viên HCM (đã có trong danh sách Nhân viên). PM vẫn là nhân viên, vẫn tính OT bình thường. Chưa có trong danh sách? Thêm ở tab "Danh sách nhân viên HCM" trước.</div>
-    <input id="pmAddQ" list="pmAddList" placeholder="Gõ mã hoặc tên rồi chọn…" style="width:100%;padding:9px 11px"><datalist id="pmAddList">${cand.map(e => `<option value="${emEsc(e.code)} — ${emEsc(e.name)}">`).join('')}</datalist>
-    <div class="action-row" style="justify-content:flex-end;margin:14px 0 0"><button class="btn" onclick="document.getElementById('pmAddModal').remove()">Huỷ</button><button class="btn btn-primary" onclick="pmAddDo()">Thêm</button></div></div>`;
-  document.body.appendChild(ov); setTimeout(() => document.getElementById('pmAddQ').focus(), 50);
-}
-function pmAddDo() {
-  const v = (document.getElementById('pmAddQ').value || '').trim(), code = v.split('—')[0].trim();
-  if (!EMP_DB[code]) { toast('⚠️ Chọn nhân viên trong danh sách gợi ý.'); return; }
-  document.getElementById('pmAddModal').remove(); pmAdd(code);
-}
-function pmCard(e, edit, projs) {
-  const teams = pmTeamsOf(e), list = e.pm.projs || [], c = emJs(e.code).replace(/'/g, '&#39;');
-  const tbtn = t => `<button class="pm-tb${teams.includes(t) ? ' on pm-' + t : ''}"${edit ? ` onclick="pmToggleTeam('${c}','${t}')"` : ' disabled'}>${PM_TEAMS[t]}</button>`;
-  const rows = list.map((a, i) => {
-    const ex = pmProjExists(a.k), s = pmSplitKey(a.k);
-    return `<tr><td>${ex ? `<b>${emEsc(s.p)}</b> <span style="color:var(--text3);font-size:11px">${emEsc(s.g)}</span>` : `<span style="color:#C0392B">${emEsc(s.p)} (dự án đã xoá)</span>`}</td>
-      <td>${edit ? `<select onchange="pmSetDisc('${c}',${i},this.value)">${Object.keys(PM_DISC).map(d => `<option value="${d}"${(a.d || '') === d ? ' selected' : ''}>${PM_DISC[d]}</option>`).join('')}</select>` : `<span class="pg-pill" style="background:#8a8f98">${PM_DISC[a.d || '']}</span>`}</td>
-      <td style="text-align:right;color:var(--text2)">${ex ? pmProjEmpCount(a.k) + ' NV' : ''}</td>${edit ? `<td style="width:30px"><button class="pg-ib" title="Bỏ dự án này" onclick="pmUnassign('${c}',${i})">✕</button></td>` : ''}</tr>`;
-  }).join('');
-  const taken = new Set(list.map(a => a.k + '|' + (a.d || '')));
-  return `<div class="card pm-card${e.status === 'left' ? ' pm-left' : ''}"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <div style="font-size:15px;font-weight:800">${emEsc(e.name)}</div><span style="color:var(--text3);font-size:12px">${emEsc(e.code)}${e.dept ? ' · ' + emEsc(e.dept) : ''}${e.status === 'left' ? ' · đã nghỉ việc' : ''}</span>
-      <span style="display:flex;gap:6px;margin-left:8px">${tbtn('CS')}${tbtn('PB')}</span>
-      ${edit ? `<button class="btn" style="margin-left:auto;padding:3px 10px;color:#C0392B" onclick="pmRemove('${c}')" title="Bỏ khỏi danh bạ PM">Bỏ PM</button>` : ''}</div>
-    ${rows ? `<div class="pg-tblw" style="margin-top:8px"><table class="pg-tbl"><thead><tr><th style="text-align:left">Dự án phụ trách</th><th style="text-align:left">Mảng</th><th style="text-align:right">Nhân sự</th>${edit ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>` : `<div style="font-size:12px;color:var(--text2);margin-top:8px">Chưa được gán dự án nào.</div>`}
-    ${edit ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="pmSel_${emEsc(e.code)}"><option value="">＋ Gán dự án…</option>${projs.map(x => `<option value="${emEsc(x.k)}">${emEsc(x.p)}</option>`).join('')}</select>
-      <select id="pmDisc_${emEsc(e.code)}">${Object.keys(PM_DISC).map(d => `<option value="${d}">${PM_DISC[d]}</option>`).join('')}</select>
-      <button class="btn" onclick="pmAssignFromUi('${c}')">Gán</button></div>` : ''}</div>`;
-}
-function pmAssignFromUi(code) {
-  const k = document.getElementById('pmSel_' + code)?.value, d = document.getElementById('pmDisc_' + code)?.value || '';
-  if (!k) { toast('⚠️ Chọn dự án cần gán.'); return; } pmAssign(code, k, d);
-}
-function renderPmTab() {
-  const box = document.getElementById('pmBody'); if (!box) return;
-  const edit = isManager(), q = pmQ.trim().toLowerCase(), all = pmList(), projs = pmAllProjects().filter(x => x.p !== UNASSIGNED_PROJ).sort((a, b) => a.p.localeCompare(b.p));
-  const teamOf = e => { const t = pmTeamsOf(e); return t.length === 2 ? 'both' : t[0] || 'none'; };
-  const cnt = k => all.filter(e => e.status !== 'left' && (k === 'all' || teamOf(e) === k)).length;
-  const rows = all.filter(e => (pmFTeam === 'all' || teamOf(e) === pmFTeam) && (!q || (e.code + ' ' + e.name).toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-  const noPm = projs.filter(x => !pmOfProject(x.g, x.p).length && !x.p.startsWith('__'));
-  const chip = (k, l) => `<button class="btn${pmFTeam === k ? ' btn-primary' : ''}" onclick="pmFTeam='${k}';renderPmTab()">${l} (${cnt(k)})</button>`;
-  box.innerHTML = `<div class="mp-kpi">
-      <div class="mk"><b>${cnt('all')}</b><span>PM đang làm</span></div><div class="mk"><b>${cnt('CS') + cnt('both')}</b><span>Nhóm CS</span></div><div class="mk"><b>${cnt('PB') + cnt('both')}</b><span>Nhóm Project Base</span></div>
-      <div class="mk"><b>${cnt('both')}</b><span>Cả CS + Project Base</span></div><div class="mk"><b style="color:${cnt('none') ? '#E8A33D' : 'inherit'}">${cnt('none')}</b><span>Chưa phân nhóm</span></div>
-      <div class="mk"><b style="color:${noPm.length ? '#E8A33D' : 'inherit'}">${noPm.length}</b><span>Dự án chưa có PM</span></div></div>
-    <div class="card"><div class="action-row">${edit ? '<button class="btn btn-primary" onclick="pmAddDialog()">＋ Thêm PM</button>' : ''}
-      ${chip('all', 'Tất cả')}${chip('CS', 'CS')}${chip('PB', 'Project Base')}${chip('both', 'CS + PB')}${chip('none', 'Chưa phân nhóm')}
-      <input type="text" placeholder="Tìm PM…" value="${emEsc(pmQ)}" oninput="pmQ=this.value;pmRefocus(this)" style="width:170px"></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6">Đây là <b>nguồn duy nhất</b> về PM: Action Plan, PU Delivery, Tiến độ dự án và báo cáo OT theo PM đều đọc từ đây — sửa ở đây thì mọi nơi tự cập nhật. 1 dự án có thể nhiều PM (mảng E / M); 1 PM có thể phụ trách nhiều dự án và thuộc cả CS lẫn Project Base.${edit ? '' : ' (Chỉ Quản lý/Admin được chỉnh sửa.)'}</div></div>
-    ${noPm.length ? `<div class="card" style="border-left:4px solid #E8A33D"><div style="font-size:12.5px"><b>Dự án chưa có PM:</b> ${noPm.map(x => emEsc(x.p)).join(' · ')}</div></div>` : ''}
-    ${rows.map(e => pmCard(e, edit, projs)).join('') || `<div class="card" style="text-align:center;color:var(--text2)">Chưa có PM. ${edit ? 'Bấm <b>＋ Thêm PM</b> để chọn từ danh sách nhân viên.' : ''}</div>`}`;
-}
-function pmRefocus(inp) { const pos = inp.selectionStart; renderPmTab(); const ni = document.querySelector('#pmBody input[type=text]'); if (ni) { ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (e) {} } }
 
 // ── Báo cáo OT theo PM / nhóm (Dashboard) — dùng `totals` đã tính cho kỳ đang xem ──
 function renderDashPmCard(totals) {
@@ -259,12 +207,14 @@ function apBuildPmTable(group, tbodyId, mk) {
     const mp = getMonthPlan(group, key, mk), legacy = (mp.reason || mp.plan) ? '' : apLegacyText(projs, mk);
     const tm = pmTeamsOf(e);
     const pmCell = `<div style="font-weight:700;font-size:13.5px">${apEsc(e.name)}</div><div style="margin-top:3px">${tm.length ? tm.map(t => `<span class="pm-tag pm-${t}" style="margin-left:0;margin-right:4px">${PM_TEAMS[t]}</span>`).join('') : '<span style="font-size:11px;color:#E8A33D">Chưa phân nhóm</span>'}</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">${apEsc(e.code)}</div>`;
-    const projCell = projs.length ? projs.map(x => `<div style="margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${apEsc(x.p)}</span>${x.dLabel !== 'E+M' ? `<span class="pm-tag" style="background:#8a8f98;color:#fff;margin-left:0">${x.dLabel}</span>` : ''}${edit ? `<button class="btn" style="padding:1px 6px;font-size:10.5px" onclick="renameProjectPrompt('${apJs(x.g)}','${apJs(x.p)}')" title="Đổi tên dự án">Đổi tên</button><button class="btn btn-danger" style="padding:1px 6px;font-size:10.5px" onclick="deleteProjectConfirm('${apJs(x.g)}','${apJs(x.p)}')" title="Xoá dự án">Xoá</button>` : ''}</div>`).join('') : '<span style="font-size:12px;color:var(--text3)">Chưa gán dự án — vào Nhân lực → PM để gán</span>';
+    const projCell0 = projs.length ? projs.map(x => `<div style="margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${apEsc(x.p)}</span>${x.dLabel !== 'E+M' ? `<span class="pm-tag" style="background:#8a8f98;color:#fff;margin-left:0">${x.dLabel}</span>` : ''}${edit ? `<button class="btn" style="padding:1px 6px;font-size:10.5px" onclick="renameProjectPrompt('${apJs(x.g)}','${apJs(x.p)}')" title="Đổi tên dự án">Đổi tên</button><button class="btn btn-danger" style="padding:1px 6px;font-size:10.5px" onclick="deleteProjectConfirm('${apJs(x.g)}','${apJs(x.p)}')" title="Xoá dự án">Xoá</button>` : ''}</div>`).join('') : '<span style="font-size:12px;color:var(--text3)">Chưa gán dự án</span>';
+    const addBtn = edit ? `<button class="btn" style="padding:3px 10px;font-size:12px;margin-top:2px" onclick="catAssignDialog('${apJs(e.code)}')" title="Gán thêm dự án cho PM này">＋ Gán dự án</button>` : '';
+    const projCell = projCell0 + addBtn;
     rows.push(apRowHtml(++n, mk, { pg: group, pp: key, pmCell, projCell, otCell: projs.length ? apOtLines(projs, mk) : '<span style="color:var(--text3)">—</span>', staffCell: apStaffCellPm(e.code, projs, mk), legacy }));
   });
   // 3) Dự án chưa có PM: giữ hàng riêng từng dự án (như bản cũ) để không mất dữ liệu
   projectsInGroup(group).filter(p => p !== UNASSIGNED_PROJ && !p.startsWith('__') && !inPm.has(pmProjKey(group, p))).sort().forEach(proj => {
-    rows.push(apRowHtml(++n, mk, { pg: group, pp: proj, pmCell: '<span style="font-size:12px;color:var(--text3)">Chưa có PM</span>' + (pmNames(proj, group) ? '' : ''), projCell: projNameCellHtml(group, proj, mk), otCell: apOtLines([{ g: group, p: proj, dLabel: '' }], mk), staffCell: staffCellHtml(group, proj, mk) }));
+    rows.push(apRowHtml(++n, mk, { pg: group, pp: proj, pmCell: '<span style="font-size:12px;color:var(--text3)">Chưa có PM</span>' + (edit ? `<div style="margin-top:4px"><button class="btn" style="padding:3px 10px;font-size:12px" onclick="catAssignDialog('','${apJs(pmProjKey(group, proj))}')" title="Gán PM cho dự án này">＋ Gán PM</button></div>` : ''), projCell: projNameCellHtml(group, proj, mk), otCell: apOtLines([{ g: group, p: proj, dLabel: '' }], mk), staffCell: staffCellHtml(group, proj, mk) }));
   });
   tbody.innerHTML = rows.join('') || `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án / PM. Bấm "+ Thêm dự án" hoặc vào Nhân lực → PM.</td></tr>`;
 }
