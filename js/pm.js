@@ -186,3 +186,106 @@ function renderDashPmCard(totals) {
     rows.map(r => `<tr><td><b>${emEsc(r.e.name)}</b><div style="font-size:11px;color:var(--text3)">${r.ks.map(k => emEsc(pmSplitKey(k).p.replace(/^HCM[\s-]+/i, ''))).join(', ') || '—'}</div></td><td>${emEsc(pmTeamLabel(r.e))}</td><td style="text-align:right">${r.ks.length}</td><td style="text-align:right">${r.nv}</td><td style="text-align:right"><b>${fmt(r.ot)}</b></td><td style="text-align:right">${fmt(r.own)}</td></tr>`).join('')}</tbody></table></div>
     <div style="font-size:11px;color:var(--text3);margin-top:6px">OT các dự án phụ trách = tổng OT của toàn bộ nhân sự trong dự án (không tách riêng mảng E/M; dự án có nhiều PM thì mỗi PM đều thấy đủ OT dự án). Dòng nhóm CS / Project Base chỉ tính mỗi dự án 1 lần.</div>`;
 }
+
+// ============================================================
+//  ACTION PLAN theo PM — mỗi dòng 1 PM (tên + nhóm CS/PB), nhiều dự án, OT từng dự án, nhân sự tổng, Lý do/Kế hoạch.
+//  Lý do/Kế hoạch/Duyệt/Ghi chú của PM lưu theo THÁNG trong PROJECTS_DB['HCM-EC']['__PM_<mã PM>'].plans[tháng]
+//  (cùng cơ chế với hàng "S-ED (tất cả)") → dùng lại toàn bộ lưu/đồng bộ/duyệt có sẵn.
+// ============================================================
+const AP_PM_PREFIX = '__PM_';
+const apPmKey = code => AP_PM_PREFIX + code;
+const apIsPmKey = p => String(p || '').startsWith(AP_PM_PREFIX);
+function apPmEmp(proj) { return apIsPmKey(proj) ? EMP_DB[proj.slice(AP_PM_PREFIX.length)] : null; }
+// Tên hiển thị của "dự án" trong popup/thông báo (hàng PM → "PM Tên (CS)")
+function apDisp(proj) {
+  if (proj === '__SED_ALL__') return 'S-ED (tất cả)';
+  const e = apPmEmp(proj); if (e) return `PM ${e.name} — ${pmTeamLabel(e)}`;
+  return proj;
+}
+const apEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const apJs = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+const AP_EYE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const AP_PEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
+
+function apPmProjects(code) {   // các dự án (còn tồn tại) của PM, gộp mảng E/M theo dự án
+  const m = new Map();
+  pmProjectsOf(code).filter(a => pmProjExists(a.k)).forEach(a => { const s = pmSplitKey(a.k); const o = m.get(a.k) || { k: a.k, g: s.g, p: s.p, d: [] }; o.d.push(a.d || ''); m.set(a.k, o); });
+  return [...m.values()].map(o => Object.assign(o, { dLabel: o.d.includes('') || (o.d.includes('E') && o.d.includes('M')) ? 'E+M' : o.d[0] })).sort((a, b) => a.p.localeCompare(b.p));
+}
+function apLegacyText(projs, mk) {   // Lý do/Kế hoạch cũ nhập theo từng dự án (trước khi chuyển sang theo PM) — hiện mờ nếu PM chưa nhập
+  return projs.map(x => { const mp = (PROJECTS_DB[x.g] && PROJECTS_DB[x.g][x.p] && PROJECTS_DB[x.g][x.p].plans || {})[mk]; if (!mp) return ''; const t = [mp.reason, mp.plan].filter(Boolean).join(' / '); return t ? `${x.p.replace(/^HCM[\s-]+/i, '')}: ${t}` : ''; }).filter(Boolean).join(' · ');
+}
+function apOtLines(projs, mk) {
+  return projs.map(x => {
+    const s = getProjectOTStats(x.g, x.p, mk), nm = apEsc(x.p.replace(/^HCM[\s-]+/i, ''));
+    return `<div style="margin-bottom:6px"><b>${nm}</b>${x.dLabel && x.dLabel !== 'E+M' ? ` <span class="pm-tag" style="background:#8a8f98;color:#fff">${x.dLabel}</span>` : ''}<br>
+      OT thường: <b>${fmtH(s.otNormal)}</b> · OT đêm: <b style="color:#C0392B">${fmtH(s.otNight)}</b><br>
+      Số NV OT: <b style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${apJs(x.g)}','${apJs(x.p)}','${mk}')" title="Xem các NV này ở Danh sách NV OT">${s.nvCount}</b> người${s.overPay > 0 ? ` · <span style="color:#C0392B">vượt 70h: ${s.overPay}</span>` : ''}</div>`;
+  }).join('');
+}
+function apStaffCellPm(code, projs, mk) {
+  const set = new Set(); projs.forEach(x => projectEmployeesForMonth(x.g, x.p, mk).forEach(c => set.add(c)));
+  return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90px;gap:6px"><div style="font-size:12.5px"><strong style="font-size:16px">${set.size}</strong> NV<div style="font-size:10.5px;color:var(--text3)">${projs.length} dự án</div></div>
+    <button class="btn" style="padding:6px 12px;line-height:1;display:inline-flex;align-items:center" onclick="apStaffView('${apJs(code)}','${mk}')" title="Xem nhân sự từng dự án của PM">${AP_EYE}</button></div>`;
+}
+function apPlanBtns(group, proj, mk, hasContent) {
+  const g = apJs(group), p = apJs(proj);
+  return `<div style="display:flex;gap:6px;margin-top:4px">${hasContent ? `<button class="btn" style="padding:5px 9px;line-height:1" onclick="openPlanViewModal('${g}','${p}','${mk}')" title="Xem đầy đủ">${AP_EYE}</button>` : ''}<button class="btn" style="padding:5px 9px;line-height:1" onclick="openPlanEditModal('${g}','${p}','${mk}')" title="Sửa Lý do / Kế hoạch">${AP_PEN}</button></div>`;
+}
+function apRowHtml(i, mk, o) {
+  const mp = getMonthPlan(o.pg, o.pp, mk), rej = (mp.approvedBy || '').startsWith('REJECTED|');
+  const noteTa = `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${apJs(o.pg)}','${apJs(o.pp)}','note',this.value,'${mk}')">${apEsc(mp.note || '')}</textarea>`;
+  return `<tr class="${rej ? 'row-rejected' : ''}"><td style="text-align:center;color:var(--text2)">${i}</td><td>${o.pmCell}</td><td>${o.projCell}</td>
+    <td style="font-size:12px;line-height:1.6">${o.otCell}</td><td>${o.staffCell}</td><td>${planCellHtml(o.pg, o.pp, mk, mp, o.legacy)}</td><td>${approvalBoxHtml(o.pg, o.pp, mp, mk)}</td><td>${noteTa}</td></tr>`;
+}
+function apBuildPmTable(group, tbodyId, mk) {
+  const tbody = document.getElementById(tbodyId); if (!tbody) return;
+  const edit = isManager(), rows = [];
+  let n = 0;
+  // 1) NV chưa gán dự án (như trước): chờ PM xác nhận
+  const curM = currentProjectMap(), unKey = group + '::' + UNASSIGNED_PROJ;
+  if (PROJECTS_DB[group] && PROJECTS_DB[group][UNASSIGNED_PROJ] && Object.keys(curM).some(c => curM[c] === unKey) && projectEmployeesForMonth(group, UNASSIGNED_PROJ, mk).length) {
+    rows.push(apRowHtml(++n, mk, { pg: group, pp: UNASSIGNED_PROJ, pmCell: '<span style="color:#B8730F;font-weight:700">⚠️ Chờ xác nhận</span>', projCell: projNameCellHtml(group, UNASSIGNED_PROJ, mk), otCell: apOtLines([{ g: group, p: UNASSIGNED_PROJ, dLabel: '' }], mk), staffCell: staffCellHtml(group, UNASSIGNED_PROJ, mk) }));
+  }
+  // 2) Mỗi PM 1 dòng (CS trước, rồi Project Base)
+  const ord = e => { const t = pmTeamsOf(e); return t[0] === 'CS' ? 0 : t[0] === 'PB' ? 1 : 2; };
+  const pms = pmList().filter(e => e.status !== 'left').sort((a, b) => ord(a) - ord(b) || a.name.localeCompare(b.name, 'vi'));
+  const inPm = new Set();
+  pms.forEach(e => {
+    const projs = apPmProjects(e.code); projs.forEach(x => inPm.add(x.k));
+    const key = apPmKey(e.code);
+    if (!PROJECTS_DB[group]) PROJECTS_DB[group] = {};
+    if (!PROJECTS_DB[group][key]) PROJECTS_DB[group][key] = { employees: [], plans: {} };
+    const mp = getMonthPlan(group, key, mk), legacy = (mp.reason || mp.plan) ? '' : apLegacyText(projs, mk);
+    const tm = pmTeamsOf(e);
+    const pmCell = `<div style="font-weight:700;font-size:13.5px">${apEsc(e.name)}</div><div style="margin-top:3px">${tm.length ? tm.map(t => `<span class="pm-tag pm-${t}" style="margin-left:0;margin-right:4px">${PM_TEAMS[t]}</span>`).join('') : '<span style="font-size:11px;color:#E8A33D">Chưa phân nhóm</span>'}</div><div style="font-size:10.5px;color:var(--text3);margin-top:2px">${apEsc(e.code)}</div>`;
+    const projCell = projs.length ? projs.map(x => `<div style="margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${apEsc(x.p)}</span>${x.dLabel !== 'E+M' ? `<span class="pm-tag" style="background:#8a8f98;color:#fff;margin-left:0">${x.dLabel}</span>` : ''}${edit ? `<button class="btn" style="padding:1px 6px;font-size:10.5px" onclick="renameProjectPrompt('${apJs(x.g)}','${apJs(x.p)}')" title="Đổi tên dự án">Đổi tên</button><button class="btn btn-danger" style="padding:1px 6px;font-size:10.5px" onclick="deleteProjectConfirm('${apJs(x.g)}','${apJs(x.p)}')" title="Xoá dự án">Xoá</button>` : ''}</div>`).join('') : '<span style="font-size:12px;color:var(--text3)">Chưa gán dự án — vào Nhân lực → PM để gán</span>';
+    rows.push(apRowHtml(++n, mk, { pg: group, pp: key, pmCell, projCell, otCell: projs.length ? apOtLines(projs, mk) : '<span style="color:var(--text3)">—</span>', staffCell: apStaffCellPm(e.code, projs, mk), legacy }));
+  });
+  // 3) Dự án chưa có PM: giữ hàng riêng từng dự án (như bản cũ) để không mất dữ liệu
+  projectsInGroup(group).filter(p => p !== UNASSIGNED_PROJ && !p.startsWith('__') && !inPm.has(pmProjKey(group, p))).sort().forEach(proj => {
+    rows.push(apRowHtml(++n, mk, { pg: group, pp: proj, pmCell: '<span style="font-size:12px;color:var(--text3)">Chưa có PM</span>' + (pmNames(proj, group) ? '' : ''), projCell: projNameCellHtml(group, proj, mk), otCell: apOtLines([{ g: group, p: proj, dLabel: '' }], mk), staffCell: staffCellHtml(group, proj, mk) }));
+  });
+  tbody.innerHTML = rows.join('') || `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text2)">Chưa có dự án / PM. Bấm "+ Thêm dự án" hoặc vào Nhân lực → PM.</td></tr>`;
+}
+
+// ── Popup nhân sự theo dự án của 1 PM (chia cột đều, phóng to được) ──
+let apStaffCtx = null;
+function apStaffView(code, mk, zoom) {
+  apStaffCtx = { code, mk, zoom: !!zoom };
+  let ov = document.getElementById('apStaffModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'apStaffModal'; ov.className = 'pg-modal'; ov.style.display = 'flex'; ov.onclick = ev => { if (ev.target === ov) apStaffClose(); }; document.body.appendChild(ov); }
+  const e = EMP_DB[code] || { name: code }, projs = apPmProjects(code), z = apStaffCtx.zoom;
+  const cols = projs.map(x => {
+    const codes = projectEmployeesForMonth(x.g, x.p, mk);
+    return `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;min-height:0"><div style="padding:8px 12px;background:var(--bg2);display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${apEsc(x.p)}</b><span style="font-size:12px;color:var(--text2)">${codes.length} NV</span>
+      <button class="btn" style="margin-left:auto;padding:2px 9px;font-size:11.5px" onclick="apStaffEdit('${apJs(x.g)}','${apJs(x.p)}','${mk}')" title="Thêm / chuyển nhân sự dự án này">Thêm / chuyển</button></div>
+      <div style="padding:6px 12px;overflow:auto;flex:1;font-size:12.5px;line-height:1.9">${codes.length ? codes.map(c => `<div><span style="color:var(--text3)">${apEsc(c)}</span> · ${apEsc(employeeNameByCode(c))}</div>`).join('') : '<span style="color:var(--text3)">Chưa có nhân sự</span>'}</div></div>`;
+  }).join('');
+  ov.innerHTML = `<div class="pg-mbox" style="max-width:none;width:${z ? '98vw' : 'min(1180px,94vw)'};height:${z ? '94vh' : 'min(720px,86vh)'};display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:17px;font-weight:800">Nhân sự theo dự án — ${apEsc(e.name)}</div><span style="font-size:12px;color:var(--text2)">Tháng ${fmtMK(mk)} · ${projs.length} dự án</span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" onclick="apStaffView('${apJs(code)}','${mk}',${!z})">${z ? '⤡ Thu nhỏ' : '⤢ Phóng to'}</button><button class="btn" onclick="apStaffClose()">✕ Đóng</button></span></div>
+    <div style="flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(${z ? 260 : 230}px,1fr));gap:10px;align-content:start">${cols || '<div style="color:var(--text2)">PM này chưa được gán dự án.</div>'}</div></div>`;
+}
+function apStaffClose() { const o = document.getElementById('apStaffModal'); if (o) o.remove(); apStaffCtx = null; }
+function apStaffEdit(g, p, mk) { apStaffClose(); openStaffEditModal(g, p, mk); }

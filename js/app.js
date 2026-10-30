@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.120';
+const APP_VERSION = '2026.121';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -4685,7 +4685,7 @@ function loadProjectsDB() {
 function saveProjectsDB() { try { localStorage.setItem(PROJECTS_DB_KEY, JSON.stringify(PROJECTS_DB)); } catch(e) {} cloudTouch(); try { if (typeof rosterSyncPlan === 'function') rosterSyncPlan(); } catch(e) {} }
 
 function projectGroups() { return Object.keys(PROJECTS_DB || {}); }
-function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}); }
+function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB[group]) || {}).filter(n => n.indexOf('__PM_') !== 0); }   // '__PM_<mã>' = Lý do/Kế hoạch theo PM (Action Plan), không phải dự án
 // ── Gán NV vào dự án THEO THÁNG HIỆU LỰC (v2026.61) ──
 // PROJECTS_DB[g][p].employees = vị trí MỚI NHẤT của NV (đã gồm các lần chuyển sắp có hiệu lực).
 // PROJ_MOVES lưu lịch sử chuyển: { staffCode: { "2026-11": {key:"HCM-EC::HCM X", prev:"HCM-EC::HCM Y", at:ts} } }
@@ -5192,9 +5192,9 @@ function openApprovalModal(group, proj, mk) {
   const mp = getMonthPlan(group, proj, mk) || {};
   const raw = mp.approvedBy || '';
   approvalChoice = raw.startsWith('APPROVED|') ? 'APPROVED' : raw.startsWith('REJECTED|') ? 'REJECTED' : '';
-  document.getElementById('approvalProjName').textContent = proj === '__SED_ALL__' ? 'S-ED (tất cả)' : proj;
+  document.getElementById('approvalProjName').textContent = apDisp(proj);
   document.getElementById('approvalProjMeta').textContent = `Duyệt Action Plan · Tháng: ${mk ? fmtMK(mk) : '—'}`;
-  const sum = [(pmNames(proj, group) || mp.pm) ? '👤 ' + (pmNames(proj, group) || mp.pm) : '', mp.reason ? 'Lý do: ' + mp.reason : '', mp.plan ? 'KH: ' + mp.plan : ''].filter(Boolean).join(' · ');
+  const sum = [(apPmEmp(proj) ? apPmEmp(proj).name : (pmNames(proj, group) || mp.pm)) ? '👤 ' + (apPmEmp(proj) ? apPmEmp(proj).name : (pmNames(proj, group) || mp.pm)) : '', mp.reason ? 'Lý do: ' + mp.reason : '', mp.plan ? 'KH: ' + mp.plan : ''].filter(Boolean).join(' · ');
   const sEl = document.getElementById('approvalSummary'); sEl.textContent = sum; sEl.style.display = sum ? 'block' : 'none';
   document.getElementById('approvalComment').value = raw.includes('|') ? raw.slice(raw.indexOf('|')+1) : '';
   approvalPaint();
@@ -5223,7 +5223,7 @@ function saveApprovalModal() {
   renderActionPlan();
   toast(window.CLOUD_ON ? (approvalChoice === 'APPROVED' ? '✅ Đã duyệt — mọi người thấy ngay.' : '❌ Đã từ chối — mọi người thấy ngay.') : (approvalChoice === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'));
   notify('all', { type:'approval', k:`approval:${group}::${proj}::${mk}`, ic: approvalChoice === 'APPROVED' ? '✅' : '❌',
-    title: `${approvalChoice === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'} Action Plan — ${proj === '__SED_ALL__' ? 'S-ED' : proj}`,
+    title: `${approvalChoice === 'APPROVED' ? 'Đã duyệt' : 'Đã từ chối'} Action Plan — ${apDisp(proj)}`,
     body: `Tháng ${fmtMK(mk)} · ${notifActorLabel()}${comment ? ' · ' + comment.slice(0, 120) : ''}`, mk });
 }
 
@@ -5237,9 +5237,9 @@ function openPlanEditModal(group, proj, mk, viewOnly) {
   planEditCtx = { group, proj, mk };
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   const mp = getMonthPlan(group, proj, mk);
-  document.getElementById('planEditProjName').textContent = proj;
+  document.getElementById('planEditProjName').textContent = apDisp(proj);
   document.getElementById('planEditProjMeta').textContent = `Tháng: ${mk ? fmtMK(mk) : '—'}`;
-  { const dn = pmNames(proj, group), el = document.getElementById('planEditPm'); el.value = dn || mp.pm || ''; el.dataset.dir = dn ? '1' : ''; el.title = dn ? 'PM lấy từ Nhân lực → PM (sửa ở đó)' : ''; }
+  { const pe = apPmEmp(proj), dn = pe ? pe.name : pmNames(proj, group), el = document.getElementById('planEditPm'); el.value = dn || mp.pm || ''; el.dataset.dir = dn ? '1' : ''; el.title = dn ? 'PM lấy từ Nhân lực → PM (sửa ở đó)' : ''; }
   document.getElementById('planEditReason').value = mp.reason || '';
   document.getElementById('planEditPlan').value = mp.plan || '';
   ['planEditPm','planEditReason','planEditPlan'].forEach(id => document.getElementById(id).disabled = !!viewOnly || (id === 'planEditPm' && document.getElementById(id).dataset.dir === '1'));
@@ -5278,7 +5278,7 @@ function savePlanEditModal() {
   renderActionPlan();
   if (changed) {
     const mpN = getMonthPlan(group, proj, mk);
-    notify('mgr', { type:'plan', k:`plan:${group}::${proj}::${mk}`, ic:'📝', title:`${notifActorLabel()} nhập Lý do/Kế hoạch — ${proj}`,
+    notify('mgr', { type:'plan', k:`plan:${group}::${proj}::${mk}`, ic:'📝', title:`${notifActorLabel()} nhập Lý do/Kế hoạch — ${apDisp(proj)}`,
       body: `Tháng ${fmtMK(mk)}${(pmNames(proj, group) || mpN.pm) ? ' · PM: ' + (pmNames(proj, group) || mpN.pm) : ''}${mpN.reason ? ' · Lý do: ' + mpN.reason.slice(0, 100) : ''}`, mk });
   }
   toast(window.CLOUD_ON ? '✅ Đã lưu — mọi người thấy ngay.' : 'Đã lưu tạm thời — nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên để người khác thấy.');
@@ -5426,25 +5426,22 @@ function staffCellHtml(group, proj, mk) {
   </div>`;
 }
 
-// Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện tóm tắt + icon Xem/Sửa.
-function planCellHtml(group, proj, mk, mp) {
-  const pmDirTxt = pmNames(proj, group), pmBdg = pmBadges(proj, group);
+// Ô hiển thị trong bảng: rỗng thì hiện nút "+", có nội dung thì hiện vài dòng gọn + icon mắt (xem) và bút (sửa).
+function planCellHtml(group, proj, mk, mp, legacy) {
+  const isPmRow = apIsPmKey(proj);
+  const pmDirTxt = isPmRow ? '' : pmNames(proj, group), pmBdg = isPmRow ? '' : pmBadges(proj, group);
   const hasContent = (pmDirTxt||mp.pm||mp.reason||mp.plan||'').trim();
-  const projEsc = proj.replace(/'/g,"\\'");
+  const g = apJs(group), p = apJs(proj);
+  const clamp = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;word-break:break-word';
+  const lg = legacy ? `<div style="font-size:11px;color:var(--text3);font-style:italic;${clamp}" title="Nhập theo dự án trước đây — bấm bút để nhập theo PM">${apEsc(legacy)}</div>` : '';
   if (!hasContent) {
-    return `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:90px">
-      <button class="btn btn-primary" style="padding:10px 26px;font-size:22px;font-weight:800;line-height:1;border-radius:10px" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')" title="Nhập PM / Lý do / Kế hoạch">+</button>
-    </div>`;
+    return `<div style="display:flex;flex-direction:column;justify-content:center;min-height:90px;gap:4px">${lg}<div style="display:flex;gap:6px">${legacy ? `<button class="btn" style="padding:5px 9px;line-height:1" onclick="openPlanViewModal('${g}','${p}','${mk}')" title="Xem">${AP_EYE}</button>` : ''}<button class="btn btn-primary" style="padding:6px 16px;font-size:18px;font-weight:800;line-height:1;border-radius:8px" onclick="openPlanEditModal('${g}','${p}','${mk}')" title="Nhập Lý do / Kế hoạch">+</button></div></div>`;
   }
-  const short = (s, n) => s && s.length > n ? s.slice(0,n)+'…' : (s||'');
-  return `<div style="display:flex;flex-direction:column;justify-content:center;height:100%;min-height:90px;gap:3px">
-    ${(pmDirTxt || mp.pm) ? `<div style="font-weight:600;font-size:12.5px">👤 ${short(pmDirTxt || mp.pm,60)} ${pmBdg}</div>` : ''}
-    ${mp.reason ? `<div style="font-size:11.5px;color:var(--text2)">Lý do: ${short(mp.reason,40)}</div>` : ''}
-    ${mp.plan ? `<div style="font-size:11.5px;color:var(--text2)">KH: ${short(mp.plan,40)}</div>` : ''}
-    <div style="display:flex;gap:6px;margin-top:4px">
-      <button class="btn" style="padding:5px 12px;font-size:12px;font-weight:600" onclick="openPlanViewModal('${group}','${projEsc}','${mk}')" title="Xem đầy đủ, không sửa">👁️ Xem</button>
-      <button class="btn" style="padding:5px 12px;font-size:12px;font-weight:600" onclick="openPlanEditModal('${group}','${projEsc}','${mk}')">✏️ Sửa</button>
-    </div>
+  return `<div style="display:flex;flex-direction:column;justify-content:center;min-height:90px;gap:3px">
+    ${(pmDirTxt || mp.pm) ? `<div style="font-weight:600;font-size:12.5px">👤 ${apEsc(pmDirTxt || mp.pm)} ${pmBdg}</div>` : ''}
+    ${mp.reason ? `<div style="font-size:11.5px;color:var(--text2);${clamp}"><b>Lý do:</b> ${apEsc(mp.reason)}</div>` : ''}
+    ${mp.plan ? `<div style="font-size:11.5px;color:var(--text2);${clamp}"><b>KH:</b> ${apEsc(mp.plan)}</div>` : ''}
+    ${apPlanBtns(group, proj, mk, true)}
   </div>`;
 }
 
@@ -5462,6 +5459,7 @@ function projNameCellHtml(group, proj, mk) {
 }
 
 function buildActionPlanTable(group, tbodyId, mk) {
+  if (typeof apBuildPmTable === 'function') return apBuildPmTable(group, tbodyId, mk);
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
   let projNames = projectsInGroup(group).sort();
