@@ -226,7 +226,10 @@ function renderPuDelivery() {
   const fPm = pmSel ? pmSel.value : '__all__', fTeam = document.getElementById('puTeamFilter')?.value || '__all__';
   const pmOk = x => (fPm === '__all__' || pmOfProject(x.g, x.p).some(m => m.code === fPm)) && (fTeam === '__all__' || pmTeamsOfProject(x.p, x.g).includes(fTeam));
   projs.filter(x => (c.proj === '__all__' || x.p === c.proj) && pmOk(x)).forEach(({ p, g }) => {
-    const rows = all.filter(a => a.proj === p), shown = rows.filter(match);
+    const allRows = all.filter(a => a.proj === p);
+    const discs = [...new Set(allRows.map(a => a.x.disc || ''))].sort(); if (!discs.length) discs.push('');
+    discs.forEach(d => {   // mỗi hạng mục E / M một khung riêng, không gộp chung
+    const rows = allRows.filter(a => (a.x.disc || '') === d), shown = rows.filter(match), pk = p + (d ? '\u0001' + d : '');
     if (!rows.length && c.hideEmpty && c.proj === '__all__') return;
     if (rows.length && !shown.length && (c.st !== 'all' || c.q)) return;
     let pms = [...new Set(rows.map(a => a.x.pm ? (a.x.pm + (a.x.disc ? ` (${a.x.disc})` : '')) : '').filter(Boolean))];
@@ -234,17 +237,18 @@ function renderPuDelivery() {
     const apPm = puApPm(p), mt = puMeta(p);
     const discJobs = [...new Set(rows.map(a => a.x.disc || ''))].sort().map(d => ({ d, jobs: [...new Set(rows.filter(a => (a.x.disc || '') === d).flatMap(a => String(a.x.job || '').split(',').map(puClean).filter(Boolean)))] }));
     const chips = PU_ST_LIST.map(([k, l]) => { const n = rows.filter(a => a.s.k === k).length; return n ? `<span style="font-size:11px;color:#fff;background:${PU_STATUS_COLOR[k]};padding:1px 8px;border-radius:999px" title="${l}">${n} ${l}</span>` : ''; }).join(' ');
-    const open = puOpen[p] !== undefined ? puOpen[p] : (rows.length > 0 && (c.q || c.st !== 'all' || rows.some(a => ['late', 'soon7', 'miss'].includes(a.s.k))));
-    puLast[p] = !!open;
-    html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(p)}')">
+    const open = puOpen[pk] !== undefined ? puOpen[pk] : (rows.length > 0 && (c.q || c.st !== 'all' || rows.some(a => ['late', 'soon7', 'miss'].includes(a.s.k))));
+    puLast[pk] = !!open;
+    html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(pk)}')">
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
-      <div style="font-size:16px;font-weight:800">${puEsc(p)}</div>
-      ${discJobs.map(dj => `<span class="pu-jobchip" title="Hạng mục ${dj.d || ''} · Job No.">${dj.d ? `<b class="pu-disc pu-disc-${dj.d}">${dj.d}</b>` : ''}Job No.: <b>${puEsc(dj.jobs.join(', ') || '—')}</b></span>`).join('')}
+      <div style="font-size:16px;font-weight:800">${puEsc(p)}${d ? ` <span class="pu-disc pu-disc-${d}" style="font-size:12.5px;padding:2px 9px" title="${d === 'E' ? 'Điện' : d === 'M' ? 'Cơ khí' : ''}">${d}</span>` : ''}</div>
+      ${discJobs.map(dj => `<span class="pu-jobchip" title="Hạng mục ${dj.d || ''} · Job No.">Job No.: <b>${puEsc(dj.jobs.join(', ') || '—')}</b></span>`).join('')}
       <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(apPm && pmNames(p, g) ? apPm : ((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—'))))}</b> ${pmBadges(p, g)}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>
-      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}')">＋ Thêm hàng</button></span></div>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}','${d}')">＋ Thêm hàng</button></span></div>
       ${open ? (shown.length ? `<div style="margin-top:10px">${puTable(shown.map((a, i) => puRow(a.x, a.x.no || i + 1)).join(''))}</div>` : '<div style="padding:10px;color:var(--text2);font-size:12px">Chưa có hàng hóa.</div>') : ''}</div>`;
+    });
   });
   host.innerHTML = html || '<div class="card" style="text-align:center;color:var(--text2)">Chưa có dữ liệu. Bấm "Nhập Excel" để nạp file Equipment Order Record, hoặc "＋ Thêm hàng" trong từng dự án.</div>';
 }
@@ -293,7 +297,7 @@ function renderPuChart(all) {
   const card = document.getElementById('puChartCard'), box = document.getElementById('puChartBox'), cv = document.getElementById('cPuProg');
   if (!card || !cv || typeof Chart === 'undefined') return;
   if (typeof killChart === 'function') killChart('cPuProg');
-  const groups = {}; all.forEach(a => { const k = a.proj || 'Chưa gán dự án'; (groups[k] = groups[k] || []).push(a); });
+  const groups = {}; all.forEach(a => { const k = (a.proj || 'Chưa gán dự án') + (a.x.disc ? ' (' + a.x.disc + ')' : ''); (groups[k] = groups[k] || []).push(a); });
   const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
   card.style.display = names.length ? '' : 'none'; if (!names.length) return;
   box.style.height = Math.max(240, names.length * 34 + 90) + 'px';
@@ -317,8 +321,9 @@ function puAssignSrc(encSrc, proj) {
 // ── Thêm / sửa ──
 const PU_FIELDS = { puFSup: 'supplier', puFName: 'name', puFQuote: 'quote', puFOrigin: 'origin', puFQty: 'qty', puFUnit: 'unit', puFCode: 'code', puFPr: 'pr', puFPo: 'po', puFPm: 'pm', puFJob: 'job', puFReason: 'reason', puFRemarks: 'remarks' };
 const PU_DATES = { puFPrDate: 'prDate', puFOrdPlan: 'ordPlan', puFOrdAct: 'ordActual', puFEff: 'eff', puFAdv: 'adv', puFDesired: 'desired', puFE0: 'e0', puFE1: 'e1', puFE2: 'e2', puFE3: 'e3', puFActual: 'actual' };
-function openPuModal(id, encProj) {
-  puEditId = id || null;
+let puNewDisc = '';
+function openPuModal(id, encProj, disc) {
+  puEditId = id || null; puNewDisc = id ? '' : (disc || '');
   const x = id ? PU_DB[id] : {}; if (id && !x) return;
   puEditProj = id ? (puProjOf(x) || x.proj || '') : (encProj ? decodeURIComponent(encProj) : '');
   Object.entries(PU_FIELDS).forEach(([el, f]) => { document.getElementById(el).value = x[f] || ''; });
@@ -338,6 +343,7 @@ function savePuModal() {
   if (!v('puFName')) { toast('⚠️ Nhập tên hàng hóa (Name of Items).'); return; }
   const now = Date.now(), id = puEditId || ('p' + now.toString(36) + Math.random().toString(36).slice(2, 5)), old = PU_DB[id] || {};
   const o = { ...old, id, proj: v('puFProj'), ct: old.ct || now, at: now };
+  if (!puEditId && puNewDisc) o.disc = puNewDisc;
   Object.entries(PU_FIELDS).forEach(([el, f]) => { o[f] = v(el); });
   Object.entries(PU_DATES).forEach(([el, f]) => { o[f] = v(el); });
   PU_DB[id] = o; savePuDb(); closePuModal(); renderPuDelivery(); toast('💾 Đã lưu.');
