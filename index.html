@@ -26,34 +26,78 @@
      "Đăng nhập": xem/thao tác bình thường nhưng KHÔNG xoá được tháng/tuần, KHÔNG vào được Cài đặt.
      "Admin": toàn quyền như trước giờ.
 ══════════════════════════════════════ -->
-<div id="roleGate" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1E4D8C,#2D6CDF);display:flex;align-items:center;justify-content:center;padding:20px">
-  <div style="background:#fff;border-radius:20px;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);text-align:center">
-
-    <div id="roleGateMain">
-      <img src="img/icon.png" alt="HCM-MD" style="width:64px;height:auto;display:block;margin:0 auto 14px;border-radius:12px">
-      <div style="font-size:17px;font-weight:800;color:var(--text)">HCM Management Dashboard</div>
-      <div style="font-size:12.5px;color:var(--text2);margin-top:4px;margin-bottom:20px">Đăng nhập để tiếp tục <span style="opacity:.7">/ Sign in</span></div>
-      <div id="loginBusy" style="display:none;font-size:13px;color:var(--text2);padding:18px 0">Đang kiểm tra đăng nhập…</div>
-      <form id="loginForm" onsubmit="cloudLogin(event)" style="text-align:left">
-        <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" required style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px">
-        <input id="loginPw" type="password" autocomplete="current-password" placeholder="Mật khẩu" required style="width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-size:13px;margin-bottom:8px">
-        <div id="loginError" style="display:none;color:var(--red);font-size:11.5px;margin-bottom:8px"></div>
-        <button id="loginBtn" type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px">Đăng nhập</button>
-        <button type="button" class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="cloudForgotPassword()">Quên mật khẩu?</button>
-      </form>
-      <div style="font-size:11px;color:var(--text3);margin-top:14px;line-height:1.6">Chưa có tài khoản? Liên hệ Admin để được cấp. Dữ liệu tự động lưu &amp; đồng bộ cho mọi người.</div>
+<div id="roleGate" class="lg-gate" style="display:flex">
+  <section class="lg-art" aria-hidden="true">
+    <div class="lg-art-bg" style="background-image:url(img/login-bg.jpg)"></div>
+    <div class="lg-art-shade"></div>
+    <div class="lg-art-top"><img src="img/icon.png" alt=""><span>HCM-MD</span></div>
+    <div class="lg-art-copy">
+      <div class="lg-bar"></div>
+      <h1>Quản lý OT &amp; Nhân lực</h1>
+      <p>Taikisha Vietnam Engineering · Hồ Chí Minh &amp; Hà Nội</p>
+      <div class="lg-chips"><span>OT &amp; Đi trễ</span><span>Action Plan</span><span>PU Delivery</span><span>Tiến độ dự án</span></div>
     </div>
+  </section>
 
-    <div id="siteChooser" style="display:none">
-      <img src="img/icon.png" alt="HCM-MD" style="width:64px;height:auto;display:block;margin:0 auto 14px;border-radius:12px">
-      <div style="font-size:17px;font-weight:800;color:var(--text)">Chọn miền làm việc</div>
-      <div style="font-size:12.5px;color:var(--text2);margin:4px 0 18px">Select site</div>
-      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;margin-bottom:10px" onclick="siteSelect('HCM')">📍 Hồ Chí Minh</button>
-      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;margin-bottom:10px" onclick="siteSelect('HN')">📍 Hà Nội</button>
-      <button class="btn" style="width:100%;padding:8px;font-size:12.5px" onclick="cloudLogout()">Đăng xuất</button>
+  <section class="lg-panel">
+    <div class="lg-card">
+
+      <div id="roleGateMain">
+        <div class="lg-brand"><img src="img/icon.png" alt="HCM-MD"><div><b>HCM Management Dashboard</b><small>Đăng nhập để tiếp tục · Sign in</small></div></div>
+        <h2 class="lg-title">Chào mừng trở lại</h2>
+        <div id="loginBusy" style="display:none;font-size:13px;color:var(--text2);padding:18px 0">Đang kiểm tra đăng nhập…</div>
+        <form id="loginForm" onsubmit="cloudLogin(event)">
+          <label class="lg-lab" for="loginEmail">Email</label>
+          <input id="loginEmail" class="lg-in" type="email" autocomplete="username" placeholder="ten@congty.com" required>
+          <label class="lg-lab" for="loginPw">Mật khẩu</label>
+          <input id="loginPw" class="lg-in" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          <div id="loginError" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px"></div>
+          <button id="loginBtn" type="submit" class="lg-btn">Đăng nhập</button>
+          <button type="button" class="lg-link" onclick="cloudForgotPassword()">Quên mật khẩu?</button>
+        </form>
+        <div class="lg-foot">Chưa có tài khoản? Liên hệ Admin để được cấp. Dữ liệu tự động lưu &amp; đồng bộ cho mọi người.</div>
+      </div>
+
+      <div id="siteChooser" style="display:none">
+        <div class="lg-brand"><img src="img/icon.png" alt="HCM-MD"><div><b>HCM Management Dashboard</b><small>Select site</small></div></div>
+        <h2 class="lg-title">Bạn làm việc ở khu vực nào?</h2>
+        <div class="lg-sites">
+          <button class="lg-site lg-hcm" onclick="siteSelect('HCM')">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+              <path class="lg-wave" d="M0 104 Q40 96 80 104 T160 104 T240 104 T320 104 V120 H0Z"/>
+              <g class="lg-sil">
+                <path d="M118 104 V52 L124 30 L128 12 L131 2 L134 12 L138 30 L144 52 V104Z"/>
+                <rect x="150" y="62" width="16" height="42"/><rect x="100" y="70" width="14" height="34"/>
+                <rect x="170" y="78" width="22" height="26"/><rect x="78" y="80" width="18" height="24"/>
+                <path d="M196 104 V70 L204 56 L212 70 V104Z"/><rect x="216" y="84" width="20" height="20"/><rect x="52" y="88" width="22" height="16"/>
+              </g>
+            </svg>
+            <span class="lg-site-txt"><b>Hồ Chí Minh</b><small>Ho Chi Minh City</small></span>
+            <span class="lg-go">→</span>
+          </button>
+          <button class="lg-site lg-hn" onclick="siteSelect('HN')">
+            <svg viewBox="0 0 300 120" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+              <path class="lg-wave" d="M0 106 Q40 98 80 106 T160 106 T240 106 T320 106 V120 H0Z"/>
+              <g class="lg-sil">
+                <rect x="112" y="78" width="5" height="28"/><rect x="132" y="78" width="5" height="28"/><rect x="163" y="78" width="5" height="28"/><rect x="183" y="78" width="5" height="28"/>
+                <path d="M100 78 Q112 72 124 66 L128 66 Q136 72 156 78Z" opacity=".0"/>
+                <path d="M104 80 H196 L186 70 H114Z"/>
+                <rect x="124" y="54" width="52" height="16"/>
+                <path d="M114 54 Q150 50 186 54 L176 44 H124Z"/>
+                <path d="M132 44 H168 L160 34 Q150 28 140 34Z"/>
+                <rect x="147" y="20" width="6" height="14"/>
+                <rect x="60" y="92" width="26" height="14"/><rect x="210" y="90" width="30" height="16"/><path d="M36 106 V96 L48 90 L60 96 V106Z"/>
+              </g>
+            </svg>
+            <span class="lg-site-txt"><b>Hà Nội</b><small>Hanoi</small></span>
+            <span class="lg-go">→</span>
+          </button>
+        </div>
+        <button class="lg-link" onclick="cloudLogout()">Đăng xuất</button>
+      </div>
+
     </div>
-
-  </div>
+  </section>
 </div>
 
 <!-- ══════════════════════════════════════
