@@ -25,6 +25,10 @@ function pmOfProject(g, p) {
   pmList().forEach(e => (e.pm.projs || []).forEach(a => { const s = pmSplitKey(a.k); if (s.p === p && (!g || s.g === g)) out.push({ code: e.code, name: e.name, d: a.d || '', teams: pmTeamsOf(e), left: e.status === 'left' }); }));
   return out;
 }
+// PM của dự án theo hạng mục: d = 'E' | 'M' → PM phụ trách đúng hạng mục đó (hoặc cả E&M); d rỗng → tất cả
+function pmOfProjectD(g, p, d) { return pmOfProject(g, p).filter(x => !d || !x.d || x.d === d); }
+function pmNamesD(p, g, d) { return pmOfProjectD(g, p, d).map(x => pmShortName(x.name)).join(', '); }
+function pmBadgesD(p, g, d) { const s = new Set(); pmOfProjectD(g, p, d).forEach(x => x.teams.forEach(t => s.add(t))); return [...s].map(t => `<span class="pm-tag pm-${t}">${PM_TEAMS[t]}</span>`).join(''); }
 function pmShortName(n) { return String(n || '').trim(); }
 // "Nguyen A (E), Tran B (M)" — rỗng nếu chưa gán PM
 function pmNames(p, g) {

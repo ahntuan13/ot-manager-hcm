@@ -230,11 +230,16 @@ function renderPuDelivery() {
     const discs = [...new Set(allRows.map(a => a.x.disc || ''))].sort(); if (!discs.length) discs.push('');
     discs.forEach(d => {   // mỗi hạng mục E / M một khung riêng, không gộp chung
     const rows = allRows.filter(a => (a.x.disc || '') === d), shown = rows.filter(match), pk = p + (d ? '\u0001' + d : '');
+    if (d && fPm !== '__all__' && pmOfProject(g, p).length && !pmOfProjectD(g, p, d).some(m => m.code === fPm)) return;
+    if (d && fTeam !== '__all__' && pmOfProject(g, p).length && !pmOfProjectD(g, p, d).some(m => m.teams.includes(fTeam))) return;
     if (!rows.length && c.hideEmpty && c.proj === '__all__') return;
     if (rows.length && !shown.length && (c.st !== 'all' || c.q)) return;
     let pms = [...new Set(rows.map(a => a.x.pm ? (a.x.pm + (a.x.disc ? ` (${a.x.disc})` : '')) : '').filter(Boolean))];
     { const nm = [...new Set(rows.map(a => a.x.pm).filter(Boolean))]; if (nm.length === 1) pms = nm; }
     const apPm = puApPm(p), mt = puMeta(p);
+    // PM theo đúng hạng mục E / M (lấy từ Danh mục); chưa có thì dùng PM ghi trong file Excel của hạng mục đó
+    const dirD = pmNamesD(p, g, d), rowPm = [...new Set(rows.map(a => a.x.pm).filter(Boolean))].join(', ');
+    const pmShow = dirD || (pmOfProject(g, p).length ? (rowPm || '—') : (d ? (rowPm || (mt && mt.pm) || apPm || '—') : ((mt && mt.pm) || (pms.length ? pms.join(', ') : (apPm || '—')))));
     const discJobs = [...new Set(rows.map(a => a.x.disc || ''))].sort().map(d => ({ d, jobs: [...new Set(rows.filter(a => (a.x.disc || '') === d).flatMap(a => String(a.x.job || '').split(',').map(puClean).filter(Boolean)))] }));
     const chips = PU_ST_LIST.map(([k, l]) => { const n = rows.filter(a => a.s.k === k).length; return n ? `<span style="font-size:11px;color:#fff;background:${PU_STATUS_COLOR[k]};padding:1px 8px;border-radius:999px" title="${l}">${n} ${l}</span>` : ''; }).join(' ');
     const open = puOpen[pk] !== undefined ? puOpen[pk] : (rows.length > 0 && (c.q || c.st !== 'all' || rows.some(a => ['late', 'soon7', 'miss'].includes(a.s.k))));
@@ -243,7 +248,7 @@ function renderPuDelivery() {
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
       <div style="font-size:16px;font-weight:800">${puEsc(p)}${d ? ` <span class="pu-disc pu-disc-${d}" style="font-size:12.5px;padding:2px 9px" title="${d === 'E' ? 'Điện' : d === 'M' ? 'Cơ khí' : ''}">${d}</span>` : ''}</div>
       ${discJobs.map(dj => `<span class="pu-jobchip" title="Hạng mục ${dj.d || ''} · Job No.">Job No.: <b>${puEsc(dj.jobs.join(', ') || '—')}</b></span>`).join('')}
-      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(apPm && pmNames(p, g) ? apPm : ((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—'))))}</b> ${pmBadges(p, g)}</div>
+      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(pmShow)}</b> ${pmBadgesD(p, g, d)}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>
       <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}','${d}')">＋ Thêm hàng</button></span></div>
@@ -443,7 +448,7 @@ function exportPuExcel() {
       const jl = String(x.job || '').split(',').map(puClean).filter(Boolean);
       const ext = acc && acc.every((j, k) => jl[k] === j);
       if (!ext || i === 0) {
-        const meta = puMeta(p), mp = pmNames(p) || (meta && meta.pm) || x.pm || puApPm(p) || '';
+        const meta = puMeta(p), mp = pmNamesD(p, undefined, disc) || pmNames(p) && x.pm || (meta && meta.pm) || x.pm || puApPm(p) || '';
         const pm = mp && !/^\s*(mr|mrs|ms)\b/i.test(mp) ? 'Mr. ' + mp : mp;
         const pr = blank(); pr[0] = `Project Name: ${p}${disc ? ` (${disc})` : ''}${pm ? ' - ' + pm : ''}`; aoa.push(pr);
         acc = [];
