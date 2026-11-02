@@ -246,7 +246,7 @@ function renderPuDelivery() {
     puLast[pk] = !!open;
     html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(pk)}')">
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
-      <div style="font-size:16px;font-weight:800">${puEsc(p)}${d ? ` <span class="pu-disc pu-disc-${d}" style="font-size:12.5px;padding:2px 9px" title="${d === 'E' ? 'Điện' : d === 'M' ? 'Cơ khí' : ''}">${d}</span>` : ''}</div>
+      <div style="font-size:16px;font-weight:800">${puEsc(d ? p.replace(/\s*[-–]\s*[EM]$/i, '') : p)}${d ? ` <span class="pu-disc pu-disc-${d}" style="font-size:12.5px;padding:2px 9px" title="${d === 'E' ? 'Điện' : d === 'M' ? 'Cơ khí' : ''}">${d}</span>` : ''}</div>
       ${discJobs.map(dj => `<span class="pu-jobchip" title="Hạng mục ${dj.d || ''} · Job No.">Job No.: <b>${puEsc(dj.jobs.join(', ') || '—')}</b></span>`).join('')}
       <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(pmShow)}</b> ${pmBadgesD(p, g, d)}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
@@ -302,7 +302,7 @@ function renderPuChart(all) {
   const card = document.getElementById('puChartCard'), box = document.getElementById('puChartBox'), cv = document.getElementById('cPuProg');
   if (!card || !cv || typeof Chart === 'undefined') return;
   if (typeof killChart === 'function') killChart('cPuProg');
-  const groups = {}; all.forEach(a => { const k = (a.proj || 'Chưa gán dự án') + (a.x.disc ? ' (' + a.x.disc + ')' : ''); (groups[k] = groups[k] || []).push(a); });
+  const groups = {}; all.forEach(a => { const k = (a.x.disc ? (a.proj || 'Chưa gán dự án').replace(/\s*[-–]\s*[EM]$/i, '') : (a.proj || 'Chưa gán dự án')) + (a.x.disc ? ' (' + a.x.disc + ')' : ''); (groups[k] = groups[k] || []).push(a); });
   const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
   card.style.display = names.length ? '' : 'none'; if (!names.length) return;
   box.style.height = Math.max(240, names.length * 34 + 90) + 'px';
