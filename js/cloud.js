@@ -26,6 +26,7 @@
   let auth = null, db = null, unsubData = null, unsubMe = null;
   let ready = false, cloudEmpty = false, applying = false, flushing = false, again = false;
   let pushTimer = null, saveTimer = null, loginMsg = '';
+  const HN = !!window.SITE_HN, COL = HN ? 'data_hn' : 'data';   // mỗi miền một collection riêng
   const remote = {}; // id -> { j, ver }  (bản đã biết trên server)
   const GATE_PREFIXES_DELETE = ['ot_', 'late_', 'off_', 'proj_', 'mv_', 'hc_', 'pu_', 'prog_', 'emp_'];
   const FORCE_PREFIXES = ['ot_', 'late_', 'off_', 'wlb', 'nt_', 'pu_', 'emp_']; // ghi đè thẳng (không kiểm tra phiên bản)
@@ -94,10 +95,26 @@
       const prof = snap.data();
       if (prof.active === false) { loginMsg = 'Tài khoản đã bị khoá. Liên hệ Admin.'; await auth.signOut(); return; }
       const role = prof.role === 'admin' ? 'admin' : prof.role === 'sub' ? 'sub' : 'user';
-      window.CLOUD_USER = { uid: user.uid, email: user.email, name: prof.name || user.email, role, pages: Array.isArray(prof.pages) ? prof.pages : null };
+      const sites = role === 'admin' ? ['HCM', 'HN'] : (Array.isArray(prof.sites) && prof.sites.length ? prof.sites.filter(s => s === 'HCM' || s === 'HN') : ['HCM']);
+      window.CLOUD_USER = { uid: user.uid, email: user.email, name: prof.name || user.email, role, pages: Array.isArray(prof.pages) ? prof.pages : null, sites };
+      // Chọn miền sau khi đăng nhập (mỗi tab một miền)
+      let sel = null; try { sel = sessionStorage.getItem('ot_site_sel'); } catch (e) {}
+      if (!sel || !sites.includes(sel)) {
+        if (sites.length === 1) { try { sessionStorage.setItem('ot_site_sel', sites[0]); } catch (e) {} if (sites[0] !== window.SITE) { location.reload(); return; } }
+        else {
+          $('loginBusy').style.display = 'none'; $('loginForm').style.display = 'none';
+          const gate = $('roleGate'); if (gate) gate.style.display = 'flex';
+          const ch = $('siteChooser'); if (ch) ch.style.display = 'block'; const rm = $('roleGateMain'); if (rm) rm.style.display = 'none';
+          return;
+        }
+      }
       try { const last = localStorage.getItem('ot_last_uid'); if (last && last !== user.uid) wipeLocalData(); localStorage.setItem('ot_last_uid', user.uid); } catch (e) {}
       document.body.classList.add('cloud-on');
       enterAsRole(role, window.CLOUD_USER.name);
+      try {
+        const sb = $('siteBadge');
+        if (sb) { sb.style.display = ''; sb.innerHTML = '📍 ' + window.SITE_LABEL[window.SITE] + (sites.length > 1 ? ' · <a href="#" style="color:#fff;text-decoration:underline" onclick="siteChoose();return false">Đổi miền</a>' : ''); }
+      } catch (e) {}
       watchMe(ref, role);
       startListen();
       if (role === 'admin') renderCloudAdmin();
@@ -111,6 +128,7 @@
       if (!window.CLOUD_USER) return;
       const d = s.exists ? s.data() : null;
       if (!d || d.active === false) { loginMsg = 'Tài khoản đã bị khoá hoặc gỡ quyền.'; auth.signOut(); }
+      else if (d.role !== 'admin' && !(Array.isArray(d.sites) && d.sites.length ? d.sites : ['HCM']).includes(window.SITE)) { loginMsg = 'Tài khoản không còn quyền vào miền này.'; auth.signOut(); }
       else if (JSON.stringify(Array.isArray(d.pages) ? d.pages : null) !== JSON.stringify(window.CLOUD_USER.pages || null) || (d.role === 'admin' ? 'admin' : d.role === 'sub' ? 'sub' : 'user') !== role) { toast('Quyền của bạn vừa thay đổi — đang tải lại…'); setTimeout(() => location.reload(), 900); }
     }, () => {});
   }
@@ -122,7 +140,7 @@
   // Khoá dữ liệu lưu cục bộ trong trình duyệt (bản nháp của dữ liệu Cloud) — xoá khi đăng xuất để máy dùng chung không lộ dữ liệu.
   const LOCAL_DATA_KEYS = ['ot_manager_v3', 'ot_manager_late_db_v1', 'ot_manager_off_db_v1', 'ot_manager_projects_db_v1', 'ot_manager_hc_plan_v1', 'ot_manager_proj_moves_v1',
     'ot_manager_projects_tombstone_v1', 'ot_manager_dirty_plan_keys_v1', 'ot_manager_wlb_xls_v1', 'ot_manager_notifs_v1', 'ot_manager_pu_v2', 'ot_manager_prog_v1', 'ot_manager_emp_v1'];
-  function wipeLocalData() { LOCAL_DATA_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }
+  function wipeLocalData() { if (window.siteWipeAll) window.siteWipeAll(); LOCAL_DATA_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }
   let saveFailed = false;
   window.cloudLogout = async function () {
     try { if (ready && window.CLOUD_USER) { clearTimeout(pushTimer); clearTimeout(saveTimer); await flush(false); } } catch (e) {}
@@ -246,17 +264,17 @@
   function startListen() {
     if (unsubData) unsubData();
     setStatus('busy', 'Đang tải dữ liệu…');
-    unsubData = db.collection('data').onSnapshot(onSnap, err => {
+    unsubData = db.collection(COL).onSnapshot(onSnap, err => {
       console.error(err); setStatus('err', 'Lỗi kết nối');
       toast('⚠️ Không đọc được dữ liệu Cloud: ' + (err && err.message || err) + ' — kiểm tra Firestore Rules.');
     });
   }
   function onSnap(snap) {
     if (!ready) {
-      if (snap.size === 0) { cloudEmpty = true; setStatus('off', 'Cloud trống'); renderCloudBanner(); return; }
+      if (snap.size === 0 && !HN) { cloudEmpty = true; setStatus('off', 'Cloud trống'); renderCloudBanner(); return; }
       applying = true;
       try {
-        resetLocal(snap.docs.some(d => d.id === 'wlb'));
+        resetLocal(snap.docs.some(d => d.id === 'wlb'));   // (miền Hà Nội trống vẫn bắt đầu bình thường)
         snap.docs.forEach(d => applyDoc(d.id, d.data()));
         ensureShape();
       } finally { applying = false; }
@@ -361,7 +379,7 @@
       list.slice(0, 100).forEach(o => {
         lastSnapAt[o.id] = now;
         const ref = db.collection('log').doc();   // 'meta' nhẹ (có ts, hiện ở danh sách) + 'nội dung' nặng ở doc riêng (chỉ đọc khi khôi phục)
-        batch.set(ref, { kind: 'snap', ts: now, docId: o.id, oldVer: remote[o.id].ver || 0, del: !!o.del, size: remote[o.id].j.length, by: window.CLOUD_USER.name, uid: window.CLOUD_USER.uid });
+        batch.set(ref, { kind: 'snap', ts: now, docId: (HN ? 'hn__' : '') + o.id, oldVer: remote[o.id].ver || 0, del: !!o.del, size: remote[o.id].j.length, by: window.CLOUD_USER.name, uid: window.CLOUD_USER.uid });
         batch.set(db.collection('log').doc(ref.id + '~j'), { kind: 'snapdata', j: remote[o.id].j, uid: window.CLOUD_USER.uid });
       });
       batch.commit().catch(() => {});
@@ -377,7 +395,7 @@
       while (i < forced.length && grp.length < 200 && size < 3.5e6) {
         const o = forced[i++]; grp.push(o); size += (o.j ? o.j.length : 0);
         if (size > 900000) toast('⚠️ Dữ liệu "' + o.id + '" rất lớn (' + Math.round(size / 1024) + ' KB) — gần giới hạn 1MB của Firestore.');
-        const ref = db.collection('data').doc(o.id);
+        const ref = db.collection(COL).doc(o.id);
         if (o.del) batch.delete(ref); else { o.pl = payload(o.id, o.j); batch.set(ref, o.pl); }
       }
       await batch.commit();
@@ -385,7 +403,7 @@
     }
     // 2) Dự án / di chuyển / kế hoạch: kiểm tra phiên bản — nếu người khác vừa sửa thì tải bản của họ về
     for (const o of checked) {
-      const ref = db.collection('data').doc(o.id);
+      const ref = db.collection(COL).doc(o.id);
       try {
         const res = await db.runTransaction(async tx => {
           const s = await tx.get(ref);
@@ -415,7 +433,7 @@
   }
   function logChange(ops) {
     try {
-      db.collection('log').add({ at: Date.now(), by: window.CLOUD_USER.name, uid: window.CLOUD_USER.uid, n: ops.length, ids: ops.slice(0, 12).map(o => (o.del ? '−' : '') + o.id) }).catch(() => {});
+      db.collection('log').add({ at: Date.now(), by: window.CLOUD_USER.name, uid: window.CLOUD_USER.uid, n: ops.length, ids: ops.slice(0, 12).map(o => (o.del ? '−' : '') + (HN ? 'HN:' : '') + o.id) }).catch(() => {});
     } catch (e) {}
   }
 
@@ -438,13 +456,14 @@
     rerender();
   }
   window.cloudPushLocal = async function () {
-    if (!isAdmin()) return;
+    if (!isAdmin() || HN) return;
     if (!Object.keys(DB).length) { toast('Máy này chưa có dữ liệu OT để đưa lên.'); return; }
     if (!confirm('Đưa toàn bộ dữ liệu đang có trên máy này lên Cloud?')) return;
     await startFromLocal('trên máy này');
   };
   window.cloudImportSheet = async function () {
     if (!isAdmin()) return;
+    if (HN) { toast('Chức năng này chỉ dùng cho miền Hồ Chí Minh.'); return; }
     const url = (typeof DEFAULT_SYNC_URL !== 'undefined') ? DEFAULT_SYNC_URL : '';
     if (!url) { toast('Không có URL Sheet cũ.'); return; }
     if (ready && !confirm('Cloud đã có dữ liệu. Nhập từ Sheet cũ sẽ GHI ĐÈ dữ liệu trên Cloud bằng dữ liệu của Sheet. Tiếp tục?')) return;
@@ -494,10 +513,12 @@
       const sn = await db.collection('log').doc(snapId).get(); if (!sn.exists) { toast('Không thấy bản lưu.'); return; }
       const d = sn.data(), jd = await db.collection('log').doc(snapId + '~j').get(); if (!jd.exists) { toast('Không thấy nội dung bản lưu.'); return; }
       d.j = jd.data().j;
+      const dHn = String(d.docId).startsWith('hn__'); if (dHn !== HN) { toast('Bản lưu này thuộc miền ' + (dHn ? 'Hà Nội' : 'Hồ Chí Minh') + ' — chuyển sang miền đó để khôi phục.'); return; }
+      d.docId = dHn ? d.docId.slice(4) : d.docId;
       if (!confirm(`Khôi phục "${d.docId}" về bản lúc ${new Date(d.ts).toLocaleString('vi-VN')}?\nDữ liệu hiện tại của mục này sẽ bị thay bằng bản cũ (bản hiện tại vẫn được lưu lại để quay về nếu cần).`)) return;
       const cur = remote[d.docId]; if (cur) snapshotOld([{ id: d.docId }]);
       const pl = { j: d.j, ver: ((cur && cur.ver) || 0) + 1, by: window.CLOUD_USER.uid, byName: window.CLOUD_USER.name, at: Date.now() };
-      await db.collection('data').doc(d.docId).set(pl);
+      await db.collection(COL).doc(d.docId).set(pl);
       remote[d.docId] = { j: d.j, ver: pl.ver };
       applying = true; try { applyDoc(d.docId, pl); ensureShape(); } finally { applying = false; }
       persistLocal(); rerender(); toast('✅ Đã khôi phục.'); renderCloudAdmin();
@@ -525,10 +546,11 @@
       <div class="card-title">👥 Tài khoản người dùng<i style="font-weight:400;font-size:11px;color:var(--text3)"> / Users</i></div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Mỗi người đăng nhập bằng email + mật khẩu riêng. Nhiều người dùng cùng lúc; mọi thay đổi tự lưu và hiện ngay cho người khác.</div>
       ${pend.length ? `<div style="background:var(--accent-bg);border-radius:8px;padding:10px 12px;margin-bottom:10px"><b style="font-size:12.5px">Đang chờ duyệt (${pend.length})</b>${pend.map(p => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><span style="flex:1;min-width:160px">${esc(p.email)}</span><select id="pd_${esc(p.id)}"><option value="user">User</option><option value="sub">Quản lý (Sub-admin)</option></select><button class="btn btn-primary" style="padding:3px 10px;font-size:11px" data-email="${esc(p.email)}" onclick="cloudApprove('${p.id}',this.dataset.email)">Cấp quyền</button><button class="btn" style="padding:3px 10px;font-size:11px" onclick="cloudRejectPending('${p.id}')">Từ chối</button></div>`).join('')}</div>` : ''}
-      <div style="overflow:auto"><table><thead><tr><th>Tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      ${users.map(u => `<tr><td>${esc(u.name || '')}</td><td>${esc(u.email || '')}</td><td>${roleSel(u.id, u.role, u.id === me)}</td>
+      <div style="overflow:auto"><table><thead><tr><th>Tên</th><th>Email</th><th>Vai trò</th><th>Miền</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${users.map(u => `<tr><td>${esc(u.name || '')}</td><td>${esc(u.email || '')}</td><td>${roleSel(u.id, u.role, u.id === me)}</td><td>${u.role === 'admin' ? 'HCM + HN' : (Array.isArray(u.sites) && u.sites.length ? u.sites.join(' + ') : 'HCM')}</td>
         <td>${u.active === false ? '<span style="color:var(--red)">Đã khoá</span>' : '<span style="color:var(--green)">Hoạt động</span>'}</td>
         <td style="white-space:nowrap"><button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudRename('${u.id}')">Đổi tên</button>
+        <button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudEditSites('${u.id}')" title="Chọn miền được vào: Hồ Chí Minh / Hà Nội">Miền</button>
         <button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudEditPages('${u.id}')" title="Chọn các mục được phép xem">Mục được xem${Array.isArray(u.pages) ? ' (' + u.pages.length + ')' : ''}</button>
         <button class="btn" style="padding:3px 8px;font-size:11px" data-email="${esc(u.email)}" onclick="cloudResetPw(this.dataset.email)">Gửi mail đặt lại MK</button>
         ${u.id === me ? '' : `<button class="btn" style="padding:3px 8px;font-size:11px" onclick="cloudToggleActive('${u.id}',${u.active === false})">${u.active === false ? 'Mở khoá' : 'Khoá'}</button>
@@ -539,6 +561,7 @@
           <input id="nuEmail" type="email" placeholder="Email" style="flex:1;min-width:190px">
           <input id="nuName" type="text" placeholder="Tên hiển thị" style="flex:1;min-width:130px">
           <input id="nuPw" type="text" placeholder="Mật khẩu tạm (≥ 6 ký tự)" style="flex:1;min-width:150px">
+          <label style="font-size:12px"><input type="checkbox" id="nuSHCM" checked> HCM</label><label style="font-size:12px"><input type="checkbox" id="nuSHN"> Hà Nội</label>
           <select id="nuRole"><option value="user">User</option><option value="sub">Quản lý (Sub-admin)</option><option value="admin">Admin</option></select>
           <button class="btn btn-primary" onclick="cloudCreateUser()">Tạo</button></div>
         <div style="font-size:11px;color:var(--text3);margin-top:6px">Gửi email + mật khẩu tạm cho người dùng; họ đăng nhập rồi đổi mật khẩu ở menu tài khoản (bấm vào tên app ở góc trái). Người đã tự có tài khoản Firebase chỉ cần đăng nhập 1 lần → hiện ở mục "Đang chờ duyệt".</div></div>
@@ -580,6 +603,21 @@
     if (sel && !arr.length) { toast('⚠️ Chọn ít nhất 1 mục.'); return; }
     try { await db.collection('users').doc(uid).update({ pages: sel ? arr : firebase.firestore.FieldValue.delete() }); document.getElementById('pagesModal').remove(); toast('✅ Đã lưu mục được xem.'); renderCloudAdmin(); } catch (e) { toast('⚠️ ' + e.message); }
   };
+  window.cloudEditSites = async function (uid) {
+    let u = {}; try { const d = (await db.collection('users').get()).docs.find(x => x.id === uid); u = d ? d.data() : {}; } catch (e) { toast('⚠️ ' + e.message); return; }
+    const cur = Array.isArray(u.sites) && u.sites.length ? u.sites : ['HCM'];
+    const m = document.createElement('div'); m.className = 'cloud-modal'; m.id = 'sitesModal';
+    m.innerHTML = `<div class="pg-perm"><div style="font-size:18px;font-weight:800;margin-bottom:2px">Miền được vào</div><div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(u.name || '')} · ${esc(u.email || '')}${u.role === 'admin' ? ' (Admin luôn vào được cả 2 miền)' : ''}</div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px"><input type="checkbox" id="stHCM" ${cur.includes('HCM') ? 'checked' : ''}> Hồ Chí Minh</label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:12px"><input type="checkbox" id="stHN" ${cur.includes('HN') ? 'checked' : ''}> Hà Nội</label>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="cloudSaveSites('${uid}')">Lưu</button><button class="btn" onclick="document.getElementById('sitesModal').remove()">Huỷ</button></div></div>`;
+    document.body.appendChild(m);
+  };
+  window.cloudSaveSites = async function (uid) {
+    const arr = [$('stHCM').checked ? 'HCM' : null, $('stHN').checked ? 'HN' : null].filter(Boolean);
+    if (!arr.length) { toast('⚠️ Chọn ít nhất 1 miền.'); return; }
+    try { await db.collection('users').doc(uid).update({ sites: arr }); $('sitesModal').remove(); toast('✅ Đã lưu miền được vào.'); renderCloudAdmin(); } catch (e) { toast('⚠️ ' + e.message); }
+  };
   window.cloudSetRole = async function (uid, role) { try { await db.collection('users').doc(uid).update({ role }); toast('Đã đổi vai trò.'); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
   window.cloudToggleActive = async function (uid, active) { try { await db.collection('users').doc(uid).update({ active }); toast(active ? 'Đã mở khoá.' : 'Đã khoá tài khoản.'); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
   window.cloudRename = async function (uid) { const n = prompt('Tên hiển thị mới:'); if (!n) return; try { await db.collection('users').doc(uid).update({ name: n.trim() }); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
@@ -591,7 +629,7 @@
   window.cloudApprove = async function (uid, email) {
     const role = ($('pd_' + uid) || {}).value || 'user';
     const name = prompt('Tên hiển thị cho ' + email + ':', email.split('@')[0]); if (!name) return;
-    try { await db.collection('users').doc(uid).set({ email, name: name.trim(), role, active: true, createdAt: Date.now() }); await db.collection('pending').doc(uid).delete(); toast('Đã cấp quyền cho ' + email); } catch (e) { toast('⚠️ ' + e.message); }
+    try { await db.collection('users').doc(uid).set({ email, name: name.trim(), role, sites: ['HCM'], active: true, createdAt: Date.now() }); await db.collection('pending').doc(uid).delete(); toast('Đã cấp quyền cho ' + email); } catch (e) { toast('⚠️ ' + e.message); }
     refreshAdmin();
   };
   window.cloudRejectPending = async function (uid) { try { await db.collection('pending').doc(uid).delete(); } catch (e) { toast('⚠️ ' + e.message); } refreshAdmin(); };
@@ -603,7 +641,9 @@
       const a2 = sec.auth();
       const cred = await a2.createUserWithEmailAndPassword(email, pw);
       const uid = cred.user.uid; await a2.signOut();
-      await db.collection('users').doc(uid).set({ email, name, role, active: true, createdAt: Date.now() });
+      const sites = [$('nuSHCM') && $('nuSHCM').checked ? 'HCM' : null, $('nuSHN') && $('nuSHN').checked ? 'HN' : null].filter(Boolean);
+      if (!sites.length) sites.push('HCM');
+      await db.collection('users').doc(uid).set({ email, name, role, sites, active: true, createdAt: Date.now() });
       toast(`Đã tạo tài khoản ${email}. Gửi email + mật khẩu tạm cho người đó.`);
       refreshAdmin();
     } catch (e) { toast('⚠️ ' + authMsg(e)); }

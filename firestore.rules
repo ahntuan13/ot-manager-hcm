@@ -30,12 +30,25 @@ service cloud.firestore {
       allow read, delete: if isAdmin();
     }
 
+    // Miền được vào: users/{uid}.sites (mặc định ['HCM']); Admin vào cả 2 miền. Dữ liệu Hồ Chí Minh ở collection "data", Hà Nội ở "data_hn".
+    function inSite(s)  { return isAdmin() || (active() && myDoc().get('sites', ['HCM']).hasAny([s])); }
+
     // Dữ liệu ứng dụng: mỗi doc là 1 phần nhỏ (tháng OT, 1 dự án, 1 nhân viên...).
     match /data/{id} {
-      allow read: if active();
+      allow read: if active() && inSite('HCM');
       // Admin: ghi tất cả. Quản lý: ghi tất cả trừ file WLB.
       // Người dùng: chỉ ghi Action Plan (proj_), PU Delivery (pu_), Tiến độ dự án (prog_) và thông báo (nt_).
-      allow create, update, delete: if active() && (
+      allow create, update, delete: if active() && inSite('HCM') && (
+        isAdmin()
+        || (isMgr() && id != 'wlb')
+        || id.matches('(proj_|pu_|prog_|nt_).*')
+      );
+    }
+
+    // Dữ liệu miền Hà Nội (cùng cấu trúc, tách riêng hoàn toàn khỏi HCM)
+    match /data_hn/{id} {
+      allow read: if active() && inSite('HN');
+      allow create, update, delete: if active() && inSite('HN') && (
         isAdmin()
         || (isMgr() && id != 'wlb')
         || id.matches('(proj_|pu_|prog_|nt_).*')

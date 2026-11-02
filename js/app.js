@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.122';
+const APP_VERSION = '2026.123';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -187,6 +187,7 @@ function switchRole() {
 // ── Phân quyền theo MỤC (menu): Admin chọn mục được xem cho từng tài khoản (users/{uid}.pages). Không đặt = theo vai trò.
 const PAGE_KEYS = [['dash','Tổng quan OT'],['dept','OT phòng ban'],['employees','Danh sách NV OT'],['compare','So sánh OT'],['late','Đi trễ'],['wlb','WLB'],['action','Action Plan'],['manpower','Nhân lực'],['pudelivery','PU Delivery'],['progress','Tiến độ dự án'],['interview','Tuyển dụng'],['report','Báo cáo'],['formula','Công thức tính']];
 function pageAllowed(p) {
+  if (window.SITE_HN && !(window.HN_PAGES || []).includes(p)) return false;   // Hà Nội: chỉ OT + Đi trễ (+ Công thức, Hướng dẫn, Cài đặt)
   if (p === 'guide') return true;                     // Hướng dẫn: ai cũng xem được
   if (p === 'settings') return isAdmin();
   if (isAdmin()) return true;
@@ -1361,7 +1362,7 @@ function tryParseCheckinOutFormat(ws) {
     const name = row[nameCol];
     if (!name || !String(name).trim()) continue;
     const dept = String(row[deptCol] || 'Chưa phân loại').trim();
-    if (!ALLOWED_DEPTS.has(dept)) continue;
+    if (!window.SITE_HN && !ALLOWED_DEPTS.has(dept)) continue;
     const staffCode = codeCol >= 0 ? String(row[codeCol] || '').trim() : '';
 
     dayCols.forEach(dc => {
@@ -1502,6 +1503,7 @@ const NEW_DEPT_MAP = [
 ];
 function mapNewDept(v) {
   const t = String(v || '').trim();
+  if (window.SITE_HN) return t || null;   // Hà Nội: mã phòng ban theo đúng file chấm công, không quy đổi
   if (/^(HCM-EC|S-AD|S-ED|S-QC|S-PU|S-PD|S-AZ)$/.test(t)) return t;
   const m = NEW_DEPT_MAP.find(([re]) => re.test(t)); return m ? m[1] : null;
 }
@@ -1539,6 +1541,7 @@ function tryParseLongFormat(ws) {
   const projMap = (typeof currentProjectMap === 'function') ? currentProjectMap() : {};
   const isHanoi = c => {
     if (!c) return false;
+    if (window.SITE_HN) { const d = devs[c] || new Set(); return d.has('HCM') && !d.has('HN'); }   // miền Hà Nội: chỉ loại NV chỉ chấm ở thiết bị HCM
     if (projMap[c]) return false;
     if (typeof EMP_DB !== 'undefined' && EMP_DB[c] && EMP_DB[c].status !== 'excl') return false;
     const d = devs[c] || new Set();
@@ -1555,7 +1558,7 @@ function tryParseLongFormat(ws) {
     const iso0 = toIso(row[cDate]); if (iso0 && iso0 > fileMaxIso) fileMaxIso = iso0; }
   const keyOf = {}, codeOfKey = {}; // mã NV → khoá tên trong DB (tránh gộp nhầm 2 người trùng họ tên)
   let cnt = 0; const months = new Set(), lateMonths = new Set(), monthMaxIso = {}, skipped = new Set();
-  const rosterOn = (typeof rosterList === 'function') && rosterList().length > 0;   // đã có danh sách NV HCM → CHỈ tính OT cho người trong danh sách
+  const rosterOn = !window.SITE_HN && (typeof rosterList === 'function') && rosterList().length > 0;   // đã có danh sách NV HCM → CHỈ tính OT cho người trong danh sách
   for (let r = h + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row) continue;
     const name = String(row[cName] || '').trim(); const iso = toIso(row[cDate]);
@@ -1579,6 +1582,7 @@ function tryParseLongFormat(ws) {
       dept = ro.dept;                                                              // phòng ban lấy từ danh sách NV HCM (Nhân lực)
     } else {
       dept = ro && ro.dept ? ro.dept : null;                                       // file không có Phòng ban → lấy từ danh sách NV HCM
+      if (!dept && window.SITE_HN) dept = 'HN';                                    // Hà Nội: file không có cột Phòng ban → gộp 1 nhóm 'HN'
       if (!dept) {
         if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
         if (!staffCode) continue;
@@ -1588,7 +1592,7 @@ function tryParseLongFormat(ws) {
       }
     }
     if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
-    if (cDept >= 0 && !rosterOn && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
+    if (cDept >= 0 && !rosterOn && !window.SITE_HN && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
     const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
     if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
     let key = keyOf[staffCode];
@@ -1716,7 +1720,7 @@ function runUpload(bins, review) {
     `${mArr.length} tháng: ${mArr.map(fmtMK).join(', ')}`
   ];
   const hn = okResults.reduce((a, r) => a + (r.hanoiSkipped || 0), 0);
-  if (hn) summaryParts.push(`Đã bỏ ${hn} NV Hà Nội (chỉ lấy NV HCM)`);
+  if (hn) summaryParts.push(window.SITE_HN ? `Đã bỏ ${hn} NV HCM (chỉ lấy NV Hà Nội)` : `Đã bỏ ${hn} NV Hà Nội (chỉ lấy NV HCM)`);
   if (allLateMonths.size) summaryParts.push('Đã tự động cập nhật dữ liệu Đi trễ');
   if (failResults.length) summaryParts.push(`Lỗi: ${failResults.map(r=>r.fileName).join(', ')}`);
   document.getElementById('upLog').textContent = summaryParts.join(' · ');
@@ -4396,8 +4400,15 @@ async function syncLoad() {
 //  Unit: MINUTES (more intuitive for small late durations).
 // ============================================================
 const LATE_STORAGE_KEY = 'ot_manager_late_db_v1';
-const LATE_ALLOWED_DEPTS = new Set(['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED']);
-const LATE_DEPT_LIST = ['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED'];
+const LATE_ALLOWED_DEPTS = window.SITE_HN ? { has: () => true } : new Set(['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED']);
+const LATE_DEPT_LIST = window.SITE_HN ? [] : ['S-AD','S-AZ','S-PD','S-PU','S-QC','S-ED'];
+// Hà Nội: danh sách phòng ban Đi trễ = mọi phòng ban có trong dữ liệu OT (cập nhật tại chỗ để các biểu đồ dùng chung)
+function syncHnLateDepts() {
+  if (!window.SITE_HN) return;
+  const s = new Set(); Object.values(DB).forEach(m => Object.keys(m.depts || {}).forEach(d => s.add(d)));
+  Object.values(LATE_DB || {}).forEach(m => Object.keys(m.depts || {}).forEach(d => s.add(d)));
+  LATE_DEPT_LIST.splice(0, LATE_DEPT_LIST.length, ...[...s].sort());
+}
 let LATE_DB = {};
 let activeLateMK = null;
 let activeLateWeekMK = null;
@@ -4675,6 +4686,7 @@ function loadProjectsDB() {
   } catch(e) {}
   // Chưa có dữ liệu lưu trước đó — khởi tạo từ seed (chỉ chạy đúng 1 lần duy nhất)
   PROJECTS_DB = {};
+  if (window.SITE_HN) return;   // Hà Nội: không dùng dữ liệu dự án mẫu của HCM
   Object.keys(PROJECTS_SEED).forEach(group => {
     PROJECTS_DB[group] = {};
     Object.entries(PROJECTS_SEED[group]).forEach(([proj, codes]) => {
@@ -6946,6 +6958,7 @@ function renderLateWeek() {
 }
 
 function rebuildLateUI() {
+  syncHnLateDepts();
   updateLateSelects();
   if (lateTab === 'quarter') renderLateQuarter();
   else if (lateTab === 'week') renderLateWeek();
