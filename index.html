@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HCM Management Dashboard (HCM-MD)</title>
+<title>TVE Management Dashboard (TVE-MD)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,11 +30,11 @@
   <section class="lg-art" aria-hidden="true">
     <div class="lg-art-bg" style="background-image:url(img/login-bg.jpg)"></div>
     <div class="lg-art-shade"></div>
-    <div class="lg-art-top"><img src="img/icon.png" alt=""><span>HCM-MD</span></div>
+    <div class="lg-art-top"><img src="img/icon.png" alt=""><span>TVE - MD</span></div>
     <div class="lg-art-copy">
       <div class="lg-bar"></div>
-      <h1>Quản lý OT &amp; Nhân lực</h1>
-      <p>Taikisha Vietnam Engineering · Hồ Chí Minh &amp; Hà Nội</p>
+      <h1>Quản lý OT &amp; Dự án</h1>
+      <p>Taikisha Vietnam Engineering · Hà Nội &amp; Hồ Chí Minh</p>
       <div class="lg-chips"><span>OT &amp; Đi trễ</span><span>Action Plan</span><span>PU Delivery</span><span>Tiến độ dự án</span></div>
     </div>
   </section>
@@ -43,7 +43,7 @@
     <div class="lg-card">
 
       <div id="roleGateMain">
-        <div class="lg-brand"><img src="img/icon.png" alt="HCM-MD"><div><b>HCM Management Dashboard</b><small>Đăng nhập để tiếp tục · Sign in</small></div></div>
+        <div class="lg-brand"><img src="img/icon.png" alt="TVE-MD"><div><b>TVE Management Dashboard</b><small>Đăng nhập để tiếp tục · Sign in</small></div></div>
         <h2 class="lg-title">Chào mừng trở lại</h2>
         <div id="loginBusy" style="display:none;font-size:13px;color:var(--text2);padding:18px 0">Đang kiểm tra đăng nhập…</div>
         <form id="loginForm" onsubmit="cloudLogin(event)">
@@ -59,7 +59,7 @@
       </div>
 
       <div id="siteChooser" style="display:none">
-        <div class="lg-brand"><img src="img/icon.png" alt="HCM-MD"><div><b>HCM Management Dashboard</b><small>Select site</small></div></div>
+        <div class="lg-brand"><img src="img/icon.png" alt="TVE-MD"><div><b>TVE Management Dashboard</b><small>Select site</small></div></div>
         <h2 class="lg-title">Bạn làm việc ở khu vực nào?</h2>
         <div class="lg-sites">
           <button class="lg-site lg-hcm" onclick="siteSelect('HCM')">
@@ -139,7 +139,7 @@
   <div class="sb-brand" onclick="switchRole()" style="cursor:pointer" title="Bấm để đổi vai trò (User/Admin)">
     <div class="sb-brand-icon" style="background:none;padding:0"><img src="img/icon.png" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:8px"></div>
     <div>
-      <h1>HCM-MD <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
+      <h1>TVE - MD <span class="beta-badge" id="appVersionBadge">v2026.1</span></h1>
       <p title="Dữ liệu được tính theo chu kỳ lương hàng tháng, từ ngày 16 của tháng hiện tại đến ngày 15 của tháng kế tiếp.">Chu kỳ 16→15 · OT 45h/tháng</p>
       <p id="roleBadge" style="font-size:10px;font-weight:700;margin-top:3px;color:#EAF2FC">👤 User</p>
       <p id="siteBadge" style="font-size:10px;font-weight:700;margin-top:3px;color:#EAF2FC;display:none"></p>
@@ -1574,6 +1574,7 @@
 <script src="js/catalog.js"></script>
 <script src="js/interview.js"></script>
 <script src="js/hero.js"></script>
+<script src="js/festive.js"></script>
 <script src="js/guide.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

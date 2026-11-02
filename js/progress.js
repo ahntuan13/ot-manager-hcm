@@ -186,7 +186,7 @@ async function progSaveClose() {
 }
 function progBack() {
   if (window.opener && pgHash()) { window.close(); if (!window.closed) return; }
-  history.replaceState(null, '', location.pathname + location.search); progSolo = false; progSel = ''; document.body.classList.remove('prog-solo'); document.title = 'HCM-MD'; renderProgress();
+  history.replaceState(null, '', location.pathname + location.search); progSolo = false; progSel = ''; document.body.classList.remove('prog-solo'); document.title = 'TVE-MD'; renderProgress();
 }
 function progSwitch(name) { progSel = PROG_DB[name] ? name : ''; if (pgHash()) history.replaceState(null, '', '#prog=' + encodeURIComponent(name)); document.title = name + ' — Tiến độ'; progPuOpen = null; renderProgress(); }
 function progSetView(v) { progView = v; renderProgress(); }

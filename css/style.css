@@ -958,3 +958,15 @@ body[data-page="pudelivery"] #greetSub{display:none}
 .lg-hn .lg-go{color:#a5561f}.lg-site:hover .lg-go{transform:translateX(6px)}
 @media(max-width:860px){.lg-gate{flex-direction:column}.lg-art{flex:0 0 190px;padding:18px 22px}.lg-art-copy h1{font-size:22px}.lg-art-copy p,.lg-chips{display:none}.lg-panel{max-width:none;min-width:0;flex:1;align-items:flex-start;padding:22px 20px}}
 @media(prefers-reduced-motion:reduce){.lg-art-bg,.lg-card{animation:none}}
+
+/* ── Hero: đếm ngược lễ + hiệu ứng nền ── */
+.hero{position:relative;overflow:hidden}
+.hero>*{position:relative;z-index:1}
+.hero>.hero-fx{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.fest-cd{display:flex;gap:6px;justify-content:center;margin-top:12px}
+.fest-i{flex:1;min-width:0;padding:6px 4px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);display:flex;flex-direction:column;align-items:center;line-height:1.15}
+.fest-i.on{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.5);box-shadow:0 0 14px rgba(255,255,255,.18)}
+.fest-ic{font-size:13px}.fest-i b{font-size:17px;font-weight:800;color:#fff}
+.fest-i small{font-size:9px;color:#BFD3EA;white-space:nowrap}
+.fest-i b em{font-style:normal;font-size:10px;font-weight:600;color:#BFD3EA}
+.fest-i b{font-size:15px}

@@ -27,8 +27,6 @@
     document.documentElement.classList.add('site-hn');
     document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.add('site-hn');
-      document.title = 'Hanoi Management Dashboard (HN-MD)';
-      const h = document.querySelector('.sidebar h1'); if (h && h.firstChild) h.firstChild.textContent = 'HN-MD ';
     });
   }
 })();
