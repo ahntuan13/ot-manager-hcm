@@ -72,8 +72,7 @@ function festRun(cv, kind) {
       const hero = document.querySelector('#dashHero .hero'), right = hero && hero.querySelector('.hero-r'); if (!hero) return r;
       const list = festList(), near = list.filter(f => f.days >= 0).sort((a, b) => a.days - b.days)[0] || list[0];
       if (right) right.insertAdjacentHTML('beforeend', festCountdownHtml(list, near));
-      const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (near && near.days <= 60 && !reduce) {
+      if (near && near.days <= 60) {
         const cv = document.createElement('canvas'); cv.className = 'hero-fx'; hero.insertBefore(cv, hero.firstChild);
         festRun(cv, near.k === 'xmas' ? 'xmas' : near.k === 'ny' ? 'ny' : 'tet');
       }

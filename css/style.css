@@ -957,7 +957,6 @@ body[data-page="pudelivery"] #greetSub{display:none}
 .lg-go{position:absolute;left:20px;bottom:16px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.95);color:#1f6a4a;display:flex;align-items:center;justify-content:center;font-weight:800;transition:transform .25s}
 .lg-hn .lg-go{color:#a5561f}.lg-site:hover .lg-go{transform:translateX(6px)}
 @media(max-width:860px){.lg-gate{flex-direction:column}.lg-art{flex:0 0 190px;padding:18px 22px}.lg-art-copy h1{font-size:22px}.lg-art-copy p,.lg-chips{display:none}.lg-panel{max-width:none;min-width:0;flex:1;align-items:flex-start;padding:22px 20px}}
-@media(prefers-reduced-motion:reduce){.lg-art-bg,.lg-card{animation:none}}
 
 /* ── Hero: đếm ngược lễ + hiệu ứng nền ── */
 .hero{position:relative;overflow:hidden}
