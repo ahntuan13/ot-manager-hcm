@@ -95,8 +95,12 @@ function puSplitProject(line) {
   let s = puClean(String(line).replace(/^project name\s*:/i, ''));
   let pm = ''; const m = /(?:\s*[-\/]\s*|\s+)(?:mr|mrs|ms)\.?\s*(.*)$/i.exec(s);
   if (m) { pm = puClean(m[1]); s = puClean(s.slice(0, m.index)); }
-  let disc = ''; const d = /\(\s*([EM])\s*\)|[-\s]([EM])$/i.exec(s);
-  if (d) { disc = (d[1] || d[2]).toUpperCase(); s = puClean(s.replace(d[0], ' ')); }
+  let disc = ''; const dm = /\(\s*([EM])\s*\)/i.exec(s);
+  if (dm) {   // "RED DRAGON (E) - Chu Ngoc Dan": phần sau (E)/(M) là tên PM (khi không có Mr/Ms)
+    disc = dm[1].toUpperCase();
+    const tail = puClean(s.slice(dm.index + dm[0].length).replace(/^[\s\-–\/]+/, '')); s = puClean(s.slice(0, dm.index));
+    if (tail && !pm) pm = tail;
+  } else { const d = /[-\s]([EM])$/i.exec(s); if (d) { disc = d[1].toUpperCase(); s = puClean(s.replace(d[0], ' ')); } }
   return { name: s.replace(/[-\/\s]+$/, ''), disc, pm };
 }
 const puNorm = s => String(s || '').toUpperCase().replace(/^HCM[\s_-]*/, '').replace(/[^A-Z0-9]/g, '');
@@ -176,13 +180,14 @@ function puRow(x, no) {
   const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
     <td style="white-space:nowrap;text-align:center"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td>
+    <td style="text-align:center">${x.disc ? `<span class="pu-disc pu-disc-${x.disc}">${puEsc(x.disc)}</span>` : ''}</td><td style="white-space:nowrap;font-weight:700;color:var(--accent)">${puEsc(x.job)}</td>
     ${T(x.supplier)}<td title="${puEsc(s.t)}" style="white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(x.name)}</span></td>${T(x.quote)}${T(x.origin)}<td class="pu-q" style="white-space:nowrap">${puEsc(x.qty)}</td>${T(x.unit)}${T(x.code)}
     ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
     ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
     <td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`;
 }
 const PU_HEAD = `<thead>
-  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2" class="pu-q">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
+  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2" title="Hạng mục: E = Điện, M = Cơ khí">E/M</th><th rowspan="2">Job No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2" class="pu-q">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
   <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2" class="pu-d">PO/Contract Effective Date</th><th rowspan="2" class="pu-d">Advance Payment Date</th><th rowspan="2" class="pu-d">Desired date to be on site (SITE CONFIRM)</th>
   <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2" class="pu-d">Actual date on Site</th><th rowspan="2">Remarks</th></tr>
   <tr><th>No.</th><th class="pu-d">Approved Date</th><th class="pu-d">Plan</th><th class="pu-d">Actual</th><th class="pu-d">As contract</th><th class="pu-d">1st Change</th><th class="pu-d">2nd Change</th><th class="pu-d">3rd Change</th></tr></thead>`;
@@ -205,7 +210,7 @@ function renderPuDelivery() {
   if (kpi) kpi.innerHTML = `<div class="mk pu-tile" onclick="openPuDetail('all')" title="Bấm để xem chi tiết"><b>${all.length}</b><span>Tổng hàng hóa</span></div>` +
     [['late', 'Trễ tiến độ'], ['soon7', 'Sắp giao (≤ 2 ngày)'], ['miss', 'Thiếu KH đặt hàng'], ['done', 'Đã giao']].map(([k, l]) => `<div class="mk pu-tile" onclick="openPuDetail('${k}')" title="Bấm để xem chi tiết"><b style="color:${PU_STATUS_COLOR[k]}">${cnt(k)}</b><span>${l}</span></div>`).join('');
   renderPuChart(all);
-  const match = a => (c.showDone || c.st === 'done' || a.s.k !== 'done') && (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
+  const match = a => (c.showDone || c.st === 'done' || a.s.k !== 'done') && (c.st === 'all' || a.s.k === c.st) && (!c.q || [a.x.name, a.x.supplier, a.x.po, a.x.pm, a.x.job, a.x.remarks, a.x.reason].some(v => String(v || '').toLowerCase().includes(c.q)));
   let html = '';
   // Dòng chưa gán được dự án Action Plan → gom theo tên dự án trong Excel, cho phép gán hàng loạt
   const orphans = all.filter(a => !a.proj && match(a));
@@ -225,16 +230,18 @@ function renderPuDelivery() {
     const rows = all.filter(a => a.proj === p), shown = rows.filter(match);
     if (!rows.length && c.hideEmpty && c.proj === '__all__') return;
     if (rows.length && !shown.length && (c.st !== 'all' || c.q)) return;
-    const pms = [...new Set(rows.map(a => a.x.pm ? (a.x.pm + (a.x.disc ? ` (${a.x.disc})` : '')) : '').filter(Boolean))];
+    let pms = [...new Set(rows.map(a => a.x.pm ? (a.x.pm + (a.x.disc ? ` (${a.x.disc})` : '')) : '').filter(Boolean))];
+    { const nm = [...new Set(rows.map(a => a.x.pm).filter(Boolean))]; if (nm.length === 1) pms = nm; }
     const apPm = puApPm(p), mt = puMeta(p);
-    const jobs = [...new Set(rows.flatMap(a => String(a.x.job || '').split(',').map(puClean).filter(Boolean)))];
+    const discJobs = [...new Set(rows.map(a => a.x.disc || ''))].sort().map(d => ({ d, jobs: [...new Set(rows.filter(a => (a.x.disc || '') === d).flatMap(a => String(a.x.job || '').split(',').map(puClean).filter(Boolean)))] }));
     const chips = PU_ST_LIST.map(([k, l]) => { const n = rows.filter(a => a.s.k === k).length; return n ? `<span style="font-size:11px;color:#fff;background:${PU_STATUS_COLOR[k]};padding:1px 8px;border-radius:999px" title="${l}">${n} ${l}</span>` : ''; }).join(' ');
     const open = puOpen[p] !== undefined ? puOpen[p] : (rows.length > 0 && (c.q || c.st !== 'all' || rows.some(a => ['late', 'soon7', 'miss'].includes(a.s.k))));
     puLast[p] = !!open;
     html += `<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer" onclick="puToggle('${encodeURIComponent(p)}')">
       <span style="font-size:15px">${open ? '▾' : '▸'}</span>
-      <div style="font-size:15px;font-weight:800">${puEsc(p)}</div>
-      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(apPm && pmNames(p, g) ? apPm : ((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—'))))}</b> ${pmBadges(p, g)}${jobs.length ? ` · Job: ${puEsc(jobs.join(', '))}` : ''}</div>
+      <div style="font-size:16px;font-weight:800">${puEsc(p)}</div>
+      ${discJobs.map(dj => `<span class="pu-jobchip" title="Hạng mục ${dj.d || ''} · Job No.">${dj.d ? `<b class="pu-disc pu-disc-${dj.d}">${dj.d}</b>` : ''}Job No.: <b>${puEsc(dj.jobs.join(', ') || '—')}</b></span>`).join('')}
+      <div style="font-size:12.5px;color:var(--text2)">👤 PM: <b>${puEsc(apPm && pmNames(p, g) ? apPm : ((mt && mt.pm) ? mt.pm : (pms.length ? pms.join(', ') : (apPm || '—'))))}</b> ${pmBadges(p, g)}</div>
       <div style="font-size:12px;color:var(--text2)">${rows.length} hàng hóa</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>
       <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" style="padding:3px 10px" title="Sửa tên PM / dự án" onclick="event.stopPropagation();openPuProj('${encodeURIComponent(p)}')">✎ Dự án</button><button class="btn" style="padding:3px 10px" onclick="event.stopPropagation();openPuModal(null,'${encodeURIComponent(p)}')">＋ Thêm hàng</button></span></div>
@@ -365,12 +372,32 @@ async function importPuExcel(inp) {
     });
     if (!list.length) { toast('⚠️ Không đọc được hàng hóa nào.'); inp.value = ''; return; }
     const old = puItems().filter(x => x.src);
-    if (!confirm(`Nhập ${list.length} hàng hóa từ file "${f.name}".\nDanh sách cũ nhập từ Excel (${old.length} hàng) sẽ được THAY THẾ bằng file này. Hàng thêm tay giữ nguyên. Tiếp tục?`)) { inp.value = ''; return; }
-    old.forEach(x => delete PU_DB[x.id]);
-    list.forEach((x, i) => { const id = 'p' + (base + i).toString(36) + Math.random().toString(36).slice(2, 5); PU_DB[id] = { ...x, id, proj: '', ct: base + i, at: base + i }; });
+    const nk = v => String(v || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    const keyOf = x => [x.src, x.disc, x.supplier, x.name, x.code, x.po].map(nk).join('|');
+    const edited = o => (o.at || 0) > (o.ct || 0);   // đã sửa trong app sau lần nhập Excel
+    const oldMap = {}; old.forEach(o => (oldMap[keyOf(o)] = oldMap[keyOf(o)] || []).push(o));
+    const nEdited = list.filter(x => (oldMap[keyOf(x)] || []).some(edited)).length + old.filter(o => edited(o) && !list.some(x => keyOf(x) === keyOf(o))).length;
+    if (!confirm(`Nhập ${list.length} hàng hóa từ file "${f.name}".\nHàng cũ nhập từ Excel: ${old.length}. Hàng thêm tay giữ nguyên.\nHàng khớp sẽ được cập nhật theo file, hàng mới thêm vào, hàng không còn trong file bị bỏ. Tiếp tục?`)) { inp.value = ''; return; }
+    let keepEdits = true;
+    if (nEdited) keepEdits = confirm(`Có ${nEdited} hàng đã được sửa trong app.\n\nOK = GIỮ các chỉnh sửa trong app (không bị file Excel ghi đè).\nCancel = ghi đè tất cả bằng file Excel.`);
+    let nKeep = 0, nUpd = 0, nAdd = 0, nDel = 0;
+    const used = new Set();
+    list.forEach((x, i) => {
+      const q = oldMap[keyOf(x)], o = q && q.length ? q.shift() : null;
+      if (o) {
+        used.add(o.id);
+        if (keepEdits && edited(o)) { nKeep++; return; }
+        PU_DB[o.id] = { ...x, id: o.id, proj: o.proj || '', ct: o.ct || base + i, at: o.ct || base + i }; nUpd++;
+      } else {
+        const id = 'p' + (base + i).toString(36) + Math.random().toString(36).slice(2, 5);
+        PU_DB[id] = { ...x, id, proj: '', ct: base + i, at: base + i }; nAdd++;
+      }
+    });
+    old.forEach(o => { if (used.has(o.id)) return; if (keepEdits && edited(o)) { nKeep++; return; } delete PU_DB[o.id]; nDel++; });
     savePuDb(); renderPuDelivery();
+    toast(`✅ Nhập xong: cập nhật ${nUpd}, thêm mới ${nAdd}, bỏ ${nDel}${nKeep ? `, giữ nguyên ${nKeep} hàng đã sửa trong app` : ''}.`);
     const unm = [...new Set(puItems().filter(x => x.src && !puProjOf(x)).map(x => x.src))];
-    toast(`✅ Đã nhập ${list.length} hàng hóa.${unm.length ? ` ${unm.length} nhóm chưa khớp dự án Action Plan — hãy gán ở mục cảnh báo vàng.` : ''}`);
+    if (unm.length) setTimeout(() => toast(`⚠️ ${unm.length} nhóm chưa khớp dự án Action Plan — hãy gán ở mục cảnh báo vàng.`), 2500);
   } catch (e) { console.error(e); toast('⚠️ Không đọc được file: ' + e.message); }
   inp.value = '';
 }

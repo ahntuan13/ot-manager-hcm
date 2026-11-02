@@ -907,3 +907,8 @@ body:has(#pg-progress.show) #greetSub{display:none}
 .cat-x{border:0;background:transparent;color:#A32D2D;cursor:pointer;font-size:12px;padding:0 6px}
 .cat-bad{border-color:#C0392B;color:#C0392B}
 .pm-tag.pm-x{background:#8a8f98;color:#fff}
+
+.pu-disc{display:inline-block;min-width:20px;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:800;color:#fff;background:#6B7280;text-align:center}
+.pu-disc-E{background:#E8A33D}.pu-disc-M{background:#2D6CDF}
+.pu-jobchip{display:inline-flex;gap:6px;align-items:center;padding:3px 10px;border-radius:999px;background:var(--accent-bg);color:var(--accent);font-size:12.5px;border:1px solid var(--accent)}
+.pu-jobchip b{font-weight:800}
