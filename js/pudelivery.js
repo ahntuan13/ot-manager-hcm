@@ -180,14 +180,13 @@ function puRow(x, no) {
   const T = v => `<td style="white-space:nowrap">${puEsc(v)}</td>`, D = v => `<td style="white-space:nowrap;text-align:center">${puFmt(v)}</td>`;
   return `<tr>
     <td style="white-space:nowrap;text-align:center"><button class="btn" style="padding:3px 8px" title="Sửa" onclick="openPuModal('${x.id}')">✎</button>${canDel ? ` <button class="btn" style="padding:3px 8px" title="Xoá" onclick="deletePu('${x.id}')">🗑</button>` : ''}</td>
-    <td style="text-align:center">${x.disc ? `<span class="pu-disc pu-disc-${x.disc}">${puEsc(x.disc)}</span>` : ''}</td><td style="white-space:nowrap;font-weight:700;color:var(--accent)">${puEsc(x.job)}</td>
     ${T(x.supplier)}<td title="${puEsc(s.t)}" style="white-space:nowrap"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:#fff;background:${PU_STATUS_COLOR[s.k]}">${puEsc(x.name)}</span></td>${T(x.quote)}${T(x.origin)}<td class="pu-q" style="white-space:nowrap">${puEsc(x.qty)}</td>${T(x.unit)}${T(x.code)}
     ${T(x.pr)}${D(x.prDate)}${T(x.po)}${D(x.ordPlan)}${D(x.ordActual)}${D(x.eff)}${D(x.adv)}${D(x.desired)}
     ${D(x.e0)}${D(x.e1)}${D(x.e2)}${D(x.e3)}<td style="min-width:150px;white-space:nowrap">${puEsc(x.reason)}</td>${D(x.actual)}
     <td style="min-width:260px;white-space:normal;font-size:11.5px;color:var(--text2)">${puEsc(x.remarks)}</td></tr>`;
 }
 const PU_HEAD = `<thead>
-  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2" title="Hạng mục: E = Điện, M = Cơ khí">E/M</th><th rowspan="2">Job No.</th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2" class="pu-q">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
+  <tr><th rowspan="2" class="pu-act"></th><th rowspan="2">Supplier Name</th><th rowspan="2">Name of Items</th><th rowspan="2">Quotation No.</th><th rowspan="2">Origin Country</th><th rowspan="2" class="pu-q">Q'ty</th><th rowspan="2">Unit</th><th rowspan="2">Code No.</th>
   <th colspan="2">PR</th><th rowspan="2">PO/CO No.</th><th colspan="2">Order Date</th><th rowspan="2" class="pu-d">PO/Contract Effective Date</th><th rowspan="2" class="pu-d">Advance Payment Date</th><th rowspan="2" class="pu-d">Desired date to be on site (SITE CONFIRM)</th>
   <th colspan="4">Estimate date on Site (SUPPLIER CONFIRM)</th><th rowspan="2">Reason for The Schedule Change</th><th rowspan="2" class="pu-d">Actual date on Site</th><th rowspan="2">Remarks</th></tr>
   <tr><th>No.</th><th class="pu-d">Approved Date</th><th class="pu-d">Plan</th><th class="pu-d">Actual</th><th class="pu-d">As contract</th><th class="pu-d">1st Change</th><th class="pu-d">2nd Change</th><th class="pu-d">3rd Change</th></tr></thead>`;
