@@ -912,3 +912,5 @@ body:has(#pg-progress.show) #greetSub{display:none}
 .pu-disc-E{background:#E8A33D}.pu-disc-M{background:#2D6CDF}
 .pu-jobchip{display:inline-flex;gap:6px;align-items:center;padding:3px 10px;border-radius:999px;background:var(--accent-bg);color:var(--accent);font-size:12.5px;border:1px solid var(--accent)}
 .pu-jobchip b{font-weight:800}
+
+body[data-page="pudelivery"] #greetSub{display:none}

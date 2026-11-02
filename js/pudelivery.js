@@ -402,6 +402,17 @@ async function importPuExcel(inp) {
   inp.value = '';
 }
 
+// ── Xoá toàn bộ hàng hóa (chỉ Admin) để nhập lại từ đầu. Giữ lại cách gán nhóm Excel → dự án và tên PM đã lưu. ──
+function puDeleteAll() {
+  if (typeof requireAdmin === 'function' && !requireAdmin('xoá toàn bộ hàng hóa PU Delivery')) return;
+  const n = puItems().length;
+  if (!n) { toast('PU Delivery đang trống.'); return; }
+  if (!confirm(`XOÁ TẤT CẢ ${n} hàng hóa trong PU Delivery (${window.SITE_HN ? 'miền Hà Nội' : 'miền Hồ Chí Minh'})?\n\nNên bấm "Xuất Excel" để lưu bản sao trước. Hành động này không hoàn tác được (Admin có thể khôi phục từ Cài đặt → Khôi phục dữ liệu cũ).`)) return;
+  if (!confirm('Xác nhận lần cuối: xoá hết để nhập lại toàn bộ từ file Excel?')) return;
+  Object.keys(PU_DB).forEach(k => { const x = PU_DB[k]; if (x && !x.meta && x.name !== undefined) delete PU_DB[k]; });
+  savePuDb(); renderPuDelivery(); toast(`🗑 Đã xoá ${n} hàng hóa. Bấm "Nhập Excel" để nạp lại.`);
+}
+
 // ── Xuất Excel đúng mẫu file Equipment Order Record (nhập lại được bằng chính nút "Nhập Excel") ──
 function exportPuExcel() {
   const serial = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 + 25569 : null; };

@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.124';
+const APP_VERSION = '2026.125';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1055,6 +1055,7 @@ function goPage(p, deptFilter, keepProjectFilter) {
     return;
   }
   if (!pageAllowed(p === 'roster' ? 'manpower' : p)) { toast('🔒 Bạn chưa được cấp quyền vào mục này. Liên hệ Admin.'); return; }
+  document.body.dataset.page = p;
   if (p === 'roster') { if (!isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); return; } window.mpTab = 'roster'; p = 'manpower'; }
   if (p === 'manpower' && !canSeeManpower()) {
     toast('🔒 Mục Manpower đang khoá — chỉ Admin xem được.');
