@@ -969,3 +969,6 @@ body[data-page="pudelivery"] #greetSub{display:none}
 .fest-i small{font-size:9px;color:#BFD3EA;white-space:nowrap}
 .fest-i b em{font-style:normal;font-size:10px;font-weight:600;color:#BFD3EA}
 .fest-i b{font-size:15px}
+
+/* Admin: ẩn các mục phụ trên sidebar */
+body.hide-aux .sb-nav .nt[data-page="manpower"],body.hide-aux .sb-nav .nt[data-page="catalog"],body.hide-aux .sb-nav .nt[data-page="pudelivery"],body.hide-aux .sb-nav .nt[data-page="progress"],body.hide-aux .sb-nav .nt[data-page="interview"]{display:none !important}

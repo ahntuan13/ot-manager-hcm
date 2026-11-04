@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.134';
+const APP_VERSION = '2026.135';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -201,6 +201,18 @@ function applyPageAccess() {
   const cur = document.querySelector('.sb-nav .nt.active'), cp = cur && cur.dataset.page;
   if (cp && !pageAllowed(cp)) { const first = [...document.querySelectorAll('.sb-nav .nt[data-page]')].find(el => pageAllowed(el.dataset.page)); if (first) goPage(first.dataset.page); }
 }
+// Admin: nút ẩn/hiện các mục phụ (Nhân lực, Danh mục, PU Delivery, Tiến độ dự án, Tuyển dụng) — chỉ ảnh hưởng giao diện máy này, không xoá dữ liệu / quyền.
+function applyAuxNav() {
+  let on = false; try { on = isAdmin() && localStorage.getItem('ot_hide_aux') === '1'; } catch (e) {}
+  document.body.classList.toggle('hide-aux', on);
+  const tx = document.getElementById('auxToggleTxt'); if (tx) tx.textContent = on ? 'Hiện mục phụ' : 'Ẩn mục phụ';
+  if (on) { const cur = document.querySelector('.sb-nav .nt.active'); if (cur && ['manpower', 'catalog', 'pudelivery', 'progress', 'interview'].includes(cur.dataset.page)) goPage('dash'); }
+}
+function toggleAuxNav() {
+  if (!isAdmin()) return;
+  try { localStorage.setItem('ot_hide_aux', document.body.classList.contains('hide-aux') ? '0' : '1'); } catch (e) {}
+  applyAuxNav();
+}
 function applyRoleUI() {
   const adminSection = document.querySelector('.sb-admin');
   if (adminSection) adminSection.style.display = isAdmin() ? 'block' : 'none';
@@ -208,6 +220,7 @@ function applyRoleUI() {
   document.querySelectorAll('.mp-nav').forEach(el => { el.style.display = canSeeManpower() ? '' : 'none'; });
   document.querySelectorAll('.mgr-nav').forEach(el => { el.style.display = isManager() ? '' : 'none'; });
   try { applyPageAccess(); } catch (e) { console.warn(e); }
+  try { applyAuxNav(); } catch (e) { console.warn(e); }
   const badge = document.getElementById('roleBadge');
   const uname = sessionStorage.getItem('ot_manager_username');
   if (badge) badge.textContent = isAdmin() ? '🔑 Admin' : isSubAdmin() ? `🧑‍💼 Quản lý · ${uname || 'sub-admin'}` : (uname ? `👤 ${uname}` : '👤 User');
