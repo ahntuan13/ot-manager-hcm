@@ -10,14 +10,20 @@
   window.HN_PAGES = ['dash', 'dept', 'employees', 'compare', 'late', 'formula', 'settings'];
 
   const P = Storage.prototype, g = P.getItem, s = P.setItem, r = P.removeItem;
+  // Không giữ bản nháp dữ liệu trên máy: các khoá dữ liệu (OT, đi trễ, nhân viên, dự án…) không bao giờ ghi vào localStorage — dữ liệu chỉ nằm trên Cloud.
+  // Các khoá cài đặt nhỏ (giao diện, tên đăng nhập, miền…) vẫn dùng bình thường.
+  const NOSTORE = /^ot_manager_(v3|late_db_v1|off_db_v1|projects_db_v1|hc_plan_v1|proj_moves_v1|projects_tombstone_v1|dirty_plan_keys_v1|wlb_xls_v1|notifs_v1|pu_v1|pu_v2|prog_v1|emp_v1)(@HN)?$/;
+  window.siteNoStore = k => typeof k === 'string' && NOSTORE.test(k);
   const map = (self, k) => (window.SITE_HN && self === window.localStorage && typeof k === 'string' && k.indexOf('ot_manager_') === 0) ? k + '@HN' : k;
-  P.getItem = function (k) { return g.call(this, map(this, k)); };
-  P.setItem = function (k, v) { return s.call(this, map(this, k), v); };
+  P.getItem = function (k) { return (this === window.localStorage && window.siteNoStore(k)) ? null : g.call(this, map(this, k)); };
+  P.setItem = function (k, v) { if (this === window.localStorage && window.siteNoStore(k)) return; return s.call(this, map(this, k), v); };
   P.removeItem = function (k) { return r.call(this, map(this, k)); };
   // Xoá sạch dữ liệu cục bộ của CẢ 2 miền (khi đăng xuất / đổi người dùng)
   window.siteWipeAll = function () {
     try { Object.keys(localStorage).filter(k => k.indexOf('ot_manager_') === 0).forEach(k => r.call(localStorage, k)); } catch (e) {}
   };
+  // Dọn bản nháp cũ còn sót từ các phiên bản trước
+  try { Object.keys(localStorage).filter(k => window.siteNoStore(k)).forEach(k => r.call(localStorage, k)); } catch (e) {}
   window.siteSelect = function (v) {
     try { sessionStorage.setItem('ot_site_sel', v === 'HN' ? 'HN' : 'HCM'); } catch (e) {}
     location.reload();

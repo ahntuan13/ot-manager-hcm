@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.135';
+const APP_VERSION = '2026.136';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1534,7 +1534,7 @@ function tryParseLongFormat(ws) {
   const col = re => hdr.findIndex(c => re.test(c));
   const cCode = col(/mã nhân viên/), cName = col(/họ và tên|họ tên/), cDept = col(/phòng ban/), cDate = col(/ngày làm việc/), cIn = col(/giờ vào/), cOut = col(/giờ ra/);
   if (cName < 0 || cDate < 0 || cIn < 0 || cOut < 0) return false;   // cột Phòng ban có thể không có → lấy phòng ban từ danh sách Nhân viên HCM
-  const cPos = col(/chức vụ/), cMail = col(/^email/);
+  const cPos = col(/chức vụ/);
   try { if (typeof rosterSyncPlan === 'function') rosterSyncPlan(); } catch (e) {}   // NV trong Action Plan đã có trong danh sách trước khi đọc file
   const toIso = v => {
     if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 10); }
@@ -1606,7 +1606,7 @@ function tryParseLongFormat(ws) {
       }
     }
     if (HCM_ONLY_FILTER && isHanoi(staffCode)) { hanoiSkipped.add(staffCode); continue; }
-    if (cDept >= 0 && !rosterOn && !window.SITE_HN && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', email: cMail >= 0 ? String(row[cMail] || '').trim() : '', src: 'file' });
+    if (cDept >= 0 && !rosterOn && !window.SITE_HN && staffCode && typeof rosterUpsert === 'function') rosterUpsert(staffCode, { name, dept, pos: cPos >= 0 ? String(row[cPos] || '').trim() : '', src: 'file' });
     const mk = companyMonthKeyOf(new Date(iso + 'T00:00:00'));
     if (!DB[mk]) DB[mk] = { employees: {}, names: [], depts: {}, snapshots: [] };
     let key = keyOf[staffCode];
@@ -1646,7 +1646,6 @@ function tryParseLongFormat(ws) {
       lateMonths.add(mk);
     }
   }
-  if (typeof rosterRecordDevices === 'function') { rosterRecordDevices(devAll, fileMaxIso); saveEmpDb(); }
   const newEmployees = Object.values(newEmp).sort((a, b) => a.code.localeCompare(b.code));
   if (!months.size && !newEmployees.length) return false;
   months.forEach(mk => {

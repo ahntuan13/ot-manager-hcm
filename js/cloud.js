@@ -26,6 +26,8 @@
   let auth = null, db = null, unsubData = null, unsubMe = null;
   let ready = false, cloudEmpty = false, applying = false, flushing = false, again = false;
   let pushTimer = null, saveTimer = null, loginMsg = '';
+  let unsaved = false;   // còn thay đổi chưa lên Cloud (máy không giữ bản nháp → cảnh báo khi đóng tab)
+  window.addEventListener('beforeunload', ev => { if (unsaved && window.CLOUD_USER) { ev.preventDefault(); ev.returnValue = ''; } });
   const HN = !!window.SITE_HN, COL = HN ? 'data_hn' : 'data';   // mỗi miền một collection riêng
   const remote = {}; // id -> { j, ver }  (bản đã biết trên server)
   const GATE_PREFIXES_DELETE = ['ot_', 'late_', 'off_', 'proj_', 'mv_', 'hc_', 'pu_', 'prog_', 'emp_'];
@@ -278,6 +280,7 @@
         snap.docs.forEach(d => applyDoc(d.id, d.data()));
         ensureShape();
       } finally { applying = false; }
+      try { if (typeof rosterPurgeSensitive === 'function') rosterPurgeSensitive(); } catch (e) {}   // email / tên thiết bị chấm công không còn được lưu → dọn bản cũ
       ready = true; cloudEmpty = false; removeBanner(); setTimeout(backupReminder, 2500); setTimeout(() => { try { if (typeof progBoot === 'function') progBoot(); } catch (e) {} }, 300);
       persistLocal(); rerender(); setStatus('ok', 'Đã đồng bộ · ' + hhmm());
       return;
@@ -299,7 +302,7 @@
       });
       ensureShape();
     } finally { applying = false; }
-    if (changed) { persistLocal(); rerender(); setStatus('ok', 'Cập nhật · ' + hhmm()); }
+    if (changed) { try { if (typeof rosterPurgeSensitive === 'function') rosterPurgeSensitive(); } catch (e) {} persistLocal(); rerender(); setStatus('ok', 'Cập nhật · ' + hhmm()); }
     if (needPush) window.cloudPush();
   }
   function persistLocal() {
@@ -334,7 +337,7 @@
   // ── Đẩy thay đổi lên Cloud ──────────────────────────────────────
   window.cloudPush = function () {
     if (applying || !ready) return;
-    setStatus('busy', 'Đang lưu…');
+    setStatus('busy', 'Đang lưu…'); unsaved = true;
     clearTimeout(pushTimer); pushTimer = setTimeout(() => flush(false), 450);
   };
   window.cloudFlushNow = function (manual) { clearTimeout(pushTimer); return flush(!!manual); };
@@ -357,7 +360,7 @@
         const okOps = ops.filter(o => canWrite(o.id));   // không gửi thao tác vượt quyền (một thao tác bị từ chối sẽ làm hỏng cả lô)
         if (okOps.length) await commit(okOps);
       } while (again);
-      saveFailed = false; setStatus('ok', 'Đã lưu · ' + hhmm());
+      saveFailed = false; if (!again) unsaved = false; setStatus('ok', 'Đã lưu · ' + hhmm());
       if (typeof apUnsynced !== 'undefined') apUnsynced = false;
       if (typeof DIRTY_PLAN_KEYS !== 'undefined') { DIRTY_PLAN_KEYS.clear(); try { saveDirtyPlanKeys(); } catch (e) {} }
       if (manual) toast('✅ Đã lưu — mọi người thấy ngay.');
