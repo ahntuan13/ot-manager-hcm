@@ -326,6 +326,10 @@
       <div class="tab-pill">
         <button id="dashTabWeek"  class="wbtn active" onclick="setDashTab('week')"  style="font-size:12px;padding:5px 14px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
         <button id="dashTabMonth" class="wbtn"        onclick="setDashTab('month')" style="font-size:12px;padding:5px 14px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
+
+        <button id="dashTabQuarter" class="wbtn"        onclick="setDashTab('quarter')" style="font-size:12px;padding:5px 14px">Theo quý <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Quarterly</i></button>
+
+        <button id="dashTabYear" class="wbtn"        onclick="setDashTab('year')" style="font-size:12px;padding:5px 14px">Theo năm <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Yearly</i></button>
       </div>
     </div>
   </div>
@@ -440,6 +444,10 @@
       <div style="display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
         <button id="empTabWeek"  class="wbtn" onclick="setEmpTab('week')"  style="font-size:12px;padding:5px 12px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
         <button id="empTabMonth" class="wbtn active" onclick="setEmpTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
+
+        <button id="empTabQuarter" class="wbtn " onclick="setEmpTab('quarter')" style="font-size:12px;padding:5px 12px">Theo quý <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Quarterly</i></button>
+
+        <button id="empTabYear" class="wbtn " onclick="setEmpTab('year')" style="font-size:12px;padding:5px 12px">Theo năm <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Yearly</i></button>
       </div>
     </div>
   </div>
@@ -478,6 +486,10 @@
     <div style="margin-left:auto;display:flex;gap:3px;background:var(--bg2);padding:3px;border-radius:8px;border:1px solid var(--border)">
       <button id="deptTabWeek" class="wbtn active" onclick="setDeptTab('week')" style="font-size:12px;padding:5px 12px">Theo tuần <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Weekly</i></button>
       <button id="deptTabMonth" class="wbtn" onclick="setDeptTab('month')" style="font-size:12px;padding:5px 12px">Theo tháng <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Monthly</i></button>
+
+      <button id="deptTabQuarter" class="wbtn" onclick="setDeptTab('quarter')" style="font-size:12px;padding:5px 12px">Theo quý <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Quarterly</i></button>
+
+      <button id="deptTabYear" class="wbtn" onclick="setDeptTab('year')" style="font-size:12px;padding:5px 12px">Theo năm <i style="font-weight:400;opacity:.7;font-size:10.5px">/ Yearly</i></button>
     </div>
   </div>
   <!-- Week view: show period selector -->
@@ -1581,6 +1593,7 @@
 <script src="js/interview.js"></script>
 <script src="js/hero.js"></script>
 <script src="js/festive.js"></script>
+<script src="js/periodview.js"></script>
 <script src="js/guide.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

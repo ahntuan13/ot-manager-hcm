@@ -972,3 +972,4 @@ body[data-page="pudelivery"] #greetSub{display:none}
 
 /* Admin: ẩn các mục phụ trên sidebar */
 body.hide-aux .sb-nav .nt[data-page="manpower"],body.hide-aux .sb-nav .nt[data-page="catalog"],body.hide-aux .sb-nav .nt[data-page="pudelivery"],body.hide-aux .sb-nav .nt[data-page="progress"],body.hide-aux .sb-nav .nt[data-page="interview"]{display:none !important}
+.pv-hide{display:none !important}

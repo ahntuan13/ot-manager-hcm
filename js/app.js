@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.137';
+const APP_VERSION = '2026.138';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -984,6 +984,8 @@ function setDashTab(tab) {
   dashTab = tab;
   document.getElementById('dashTabWeek').classList.toggle('active',  tab==='week');
   document.getElementById('dashTabMonth').classList.toggle('active', tab==='month');
+  document.getElementById('dashTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('dashTabYear').classList.toggle('active', tab==='year');
   document.getElementById('dashWeekBar').style.display = tab==='week' ? 'flex' : 'none';
   renderDash();
   scheduleChartResize();
@@ -993,6 +995,8 @@ function setDeptTab(tab) {
   deptTab = tab;
   document.getElementById('deptTabWeek').classList.toggle('active', tab==='week');
   document.getElementById('deptTabMonth').classList.toggle('active', tab==='month');
+  document.getElementById('deptTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('deptTabYear').classList.toggle('active', tab==='year');
   document.getElementById('deptWeekBar').style.display = tab==='week' ? 'flex' : 'none';
   renderDept();
   scheduleChartResize();
@@ -1855,6 +1859,8 @@ function renderPeriodChips() {
 function setActivePeriod(i) { activePeriod = i; renderDash(); }
 
 function renderDash() {
+  if (dashTab === 'quarter' || dashTab === 'year') { pvRender('dash'); return; }
+  pvLeave('dash');
   renderMonthChips();
   // Show/hide period chips based on tab
   document.getElementById('dashWeekBar').style.display = dashTab==='week' ? 'flex' : 'none';
@@ -2524,6 +2530,8 @@ function setEmpTab(tab) {
   empTab = tab;
   document.getElementById('empTabWeek').classList.toggle('active', tab==='week');
   document.getElementById('empTabMonth').classList.toggle('active', tab==='month');
+  document.getElementById('empTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('empTabYear').classList.toggle('active', tab==='year');
   document.getElementById('empWeekBar').style.display = tab==='week' ? 'flex' : 'none';
   renderEmployeeList();
 }
@@ -2633,6 +2641,8 @@ function toggleEmpOtDetailRow(rowKey, mk, name) {
 }
 
 function renderEmployeeList() {
+  if (empTab === 'quarter' || empTab === 'year') { pvRender('emp'); return; }
+  pvLeave('emp');
   renderEmployeeMonthSel();
   const weekBar = document.getElementById('empWeekBar');
   if (weekBar) weekBar.style.display = empTab==='week' ? 'flex' : 'none';
@@ -2673,6 +2683,8 @@ function renderEmployeeList() {
 //  PHÒNG BAN
 // ============================================================
 function renderDept() {
+  if (deptTab === 'quarter' || deptTab === 'year') { pvRender('dept'); return; }
+  pvLeave('dept');
   const dSel = document.getElementById('deptSel').value;
   const mk   = document.getElementById('deptMonthSel').value || activeMK;
   if (!mk || !DB[mk]) return;
@@ -3201,16 +3213,35 @@ function periodRelabel(id, year) {   // đổi chữ Quý→Năm trong khung dù
     n.nodeValue = year ? n.__o.replace(/Quarterly/g, 'Yearly').replace(/Quarter/g, 'Year').replace(/quarter/g, 'year').replace(/Quý/g, 'Năm').replace(/quý/g, 'năm') : n.__o;
   }
 }
+let PERIOD_YEAR_SEL = '';
+function periodYears() { return [...new Set(Object.keys(DB).map(m => m.slice(0, 4)))].sort(); }
+function periodKeys(keys) {   // các kỳ để vẽ: Quý → mỗi quý có dữ liệu; Năm → đủ 12 tháng T1–T12 của năm đã chọn
+  if (PERIOD_YEAR) return Array.from({ length: 12 }, (_, i) => `${PERIOD_YEAR_SEL}-${String(i + 1).padStart(2, '0')}`);
+  return [...new Set(keys.map(quarterKeyOf))].sort();
+}
 function periodRun(tab, panelId, fn) {
+  const ys = periodYears();
+  if (!ys.includes(PERIOD_YEAR_SEL)) PERIOD_YEAR_SEL = ys[ys.length - 1] || String(new Date().getFullYear());
   PERIOD_YEAR = tab === 'year';
   try { fn(); } finally { PERIOD_YEAR = false; }
   periodRelabel(panelId, tab === 'year');
+  const panel = document.getElementById(panelId); if (!panel) return;
+  let bar = panel.querySelector('.py-bar');
+  if (tab === 'year') {
+    if (!bar) { bar = document.createElement('div'); bar.className = 'py-bar'; bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px'; panel.insertBefore(bar, panel.firstChild); }
+    bar.style.display = 'flex';
+    bar.innerHTML = `<span style="font-size:12px;color:var(--text2)">Năm:</span><select onchange="PERIOD_YEAR_SEL=this.value;periodRerender('${panelId}')" style="min-width:110px">${ys.map(y => `<option${y === PERIOD_YEAR_SEL ? ' selected' : ''}>${y}</option>`).join('')}</select><span style="font-size:12px;color:var(--text2)">Tháng 1 → Tháng 12</span>`;
+  } else if (bar) bar.style.display = 'none';
+}
+function periodRerender(panelId) {
+  if (panelId === 'cmp-quarter') setCmpTab('year'); else if (panelId === 'late-quarter') setLateTab('year'); else if (panelId === 'wlb-quarter') setWlbTab('year');
 }
 function quarterKeyOf(mk) {
   const [y, m] = mk.split('-').map(Number);
-  return PERIOD_YEAR ? String(y) : `${y}-Q${Math.ceil(m/3)}`;
+  return PERIOD_YEAR ? (String(y) === PERIOD_YEAR_SEL ? mk : '') : `${y}-Q${Math.ceil(m/3)}`;
 }
 function fmtQK(qk) {
+  if (/^\d{4}-\d{2}$/.test(qk)) return `T${+qk.slice(5)}/${qk.slice(0, 4)}`;
   if (!/-Q/.test(qk)) return `Năm ${qk} (${MONTH_NAMES_EN[0].slice(0, 3)}–${MONTH_NAMES_EN[11].slice(0, 3)})`;
   const [y, qStr] = qk.split('-Q');
   const q = Number(qStr);
@@ -3221,6 +3252,7 @@ function fmtQK(qk) {
 }
 function monthsInQuarterKey(qk) {
   // Trả về 3 month-key YYYY-MM thuộc quý lịch (kể cả tháng chưa có dữ liệu); khoá năm → 12 tháng
+  if (/^\d{4}-\d{2}$/.test(qk)) return [qk];
   if (!/-Q/.test(qk)) return Array.from({ length: 12 }, (_, i) => `${qk}-${String(i + 1).padStart(2, '0')}`);
   const [y, qStr] = qk.split('-Q');
   const q = Number(qStr);
@@ -3231,11 +3263,12 @@ function renderCompareQuarter() {
   const keys = Object.keys(DB).sort();
   if (!keys.length) { ['cQtrTrend','cQtrDept','cQtrRisk'].forEach(killChart); return; }
   const allDepts = getAllDepts();
-  const qKeys = [...new Set(keys.map(quarterKeyOf))].sort();
+  const qKeys = periodKeys(keys);
 
   // Tổng OT toàn công ty trong quý = tổng OT của tất cả các tháng thuộc quý đó
   const totalByQ = qKeys.map(qk => {
     const mks = keys.filter(mk => quarterKeyOf(mk) === qk);
+    if (!mks.length) return null;
     const monthlyTotals = mks.map(mk => {
       const tots = DB[mk].names.map(n => totalOf(DB[mk].employees[n]));
       return tots.reduce((a,b)=>a+b,0);
@@ -3371,7 +3404,8 @@ function renderCompareQuarter() {
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text2)">Không có dữ liệu.</td></tr>';
 
   // Chart mới: OT theo dự án (HCM-EC) — quý gần nhất có dữ liệu
-  const lastQk = qKeys[qKeys.length-1];
+  const qKeysData = qKeys.filter(qk => keys.some(mk => quarterKeyOf(mk) === qk));
+  const lastQk = qKeysData[qKeysData.length-1];
   const lblQ2 = document.getElementById('cmpProjQtrLabel');
   if (lblQ2) lblQ2.textContent = lastQk ? fmtQK(lastQk) : '';
   if (lastQk) {
@@ -6663,18 +6697,23 @@ function renderWlbCore() {
     // ── Biểu đồ 2: Line — WLB các quý, từng phòng ban ──
     document.getElementById('wlbQtrCmpLeg').innerHTML =
       allDepts.map((d,i)=>`<span><span class="ldot" style="background:${DEPT_COLORS[i%DEPT_COLORS.length]}"></span>${d}</span>`).join('');
-    if (qKeys.length && allDepts.length) {
+    // Năm: trục T1 → T12 của năm đang chọn; Quý: mỗi quý một điểm
+    const cmpKeys = wlbYear ? Array.from({ length: 12 }, (_, i) => `${selQk}-${String(i + 1).padStart(2, '0')}`) : qKeys;
+    const cmpMks = ck => wlbYear ? (hasOffDataForMk(ck) ? [ck] : []) : qMks(ck);
+    const cmpLbl = ck => wlbYear ? 'T' + (+ck.slice(5)) : qLabel[ck];
+    const cmpThr = ck => wlbYear ? getWlbThreshold(ck) : qThr(ck);
+    if (qKeys.length && allDepts.length && (!wlbYear || selQk)) {
       safeMakeChart(WLB_CH, killWlbChart, 'cWlbQtrCmp', document.getElementById('cWlbQtrCmp'), {
         type:'line',
-        data:{ labels: qKeys.map(qk=>qLabel[qk]),
+        data:{ labels: cmpKeys.map(cmpLbl),
           datasets:[
             ...allDepts.map((d,i)=>({
               label:d,
-              data: qKeys.map(qk => { const mks=qMks(qk); return wlbRatio(mks.reduce((s,mk)=>s+getOffDays(mk,d),0), mks.reduce((s,mk)=>s+getTotalOT(mk,d),0)); }),
+              data: cmpKeys.map(qk => { const mks=cmpMks(qk); return mks.length ? wlbRatio(mks.reduce((s,mk)=>s+getOffDays(mk,d),0), mks.reduce((s,mk)=>s+getTotalOT(mk,d),0)) : null; }),
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label: wlbYear ? 'Ngưỡng (theo tháng cuối: 10% trước T10, 15% từ T10)' : 'Ngưỡng (Q1–Q3: 10%, Q4: 15%)', data:qKeys.map(qk=>qThr(qk)),
+            { label: wlbYear ? 'Ngưỡng (10% trước T10, 15% từ T10)' : 'Ngưỡng (Q1–Q3: 10%, Q4: 15%)', data:cmpKeys.map(qk=>cmpThr(qk)),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -7185,7 +7224,7 @@ function renderLateQuarter() {
     if (lqrt) lqrt.innerHTML = '<tr><td style="text-align:center;padding:14px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
     return;
   }
-  const qKeys = [...new Set(keys.map(quarterKeyOf))].sort();
+  const qKeys = periodKeys(keys);
 
   // ── Bảng tỷ lệ % phòng ban đi trễ — theo quý (mỗi quý 1 cột %) ──
   document.getElementById('lateQtrRateTHead').innerHTML =
