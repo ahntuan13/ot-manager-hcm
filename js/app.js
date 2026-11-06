@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.136';
+const APP_VERSION = '2026.137';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1003,13 +1003,14 @@ function setCmpTab(tab) {
   document.getElementById('cmpTabWeek').classList.toggle('active',  tab==='week');
   document.getElementById('cmpTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('cmpTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('cmpTabYear').classList.toggle('active', tab==='year');
   document.getElementById('cmp-week').style.display    = tab==='week'    ? 'block' : 'none';
   document.getElementById('cmp-month').style.display   = tab==='month'   ? 'block' : 'none';
-  document.getElementById('cmp-quarter').style.display = tab==='quarter' ? 'block' : 'none';
+  document.getElementById('cmp-quarter').style.display = (tab==='quarter'||tab==='year') ? 'block' : 'none';
   const monthRow = document.getElementById('cmpMonthSelRow');
-  if (monthRow) monthRow.style.display = tab === 'quarter' ? 'none' : 'flex';
+  if (monthRow) monthRow.style.display = (tab === 'quarter' || tab === 'year') ? 'none' : 'flex';
   if (tab === 'week') renderCompareWeek();
-  else if (tab === 'quarter') renderCompareQuarter();
+  else if (tab === 'quarter' || tab === 'year') periodRun(tab, 'cmp-quarter', renderCompareQuarter);
   else renderCompareMonth();
   scheduleChartResize();
 }
@@ -1026,10 +1027,11 @@ function setLateTab(tab) {
   document.getElementById('lateTabWeek').classList.toggle('active', tab==='week');
   document.getElementById('lateTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('lateTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('lateTabYear').classList.toggle('active', tab==='year');
   document.getElementById('late-week').style.display    = tab==='week'    ? 'block' : 'none';
   document.getElementById('late-month').style.display   = tab==='month'   ? 'block' : 'none';
-  document.getElementById('late-quarter').style.display = tab==='quarter' ? 'block' : 'none';
-  if (tab === 'quarter') renderLateQuarter();
+  document.getElementById('late-quarter').style.display = (tab==='quarter'||tab==='year') ? 'block' : 'none';
+  if (tab === 'quarter' || tab === 'year') periodRun(tab, 'late-quarter', renderLateQuarter);
   else if (tab === 'week') renderLateWeek();
   else renderLate();
   scheduleChartResize();
@@ -1123,7 +1125,7 @@ function goSub(p) {
   if (p === 'dash')    renderDash();
   if (p === 'dept')    renderDept();
   if (p === 'compare') renderCompare();
-  if (p === 'late')    { if (lateTab === 'quarter') renderLateQuarter(); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
+  if (p === 'late')    { if (lateTab === 'quarter' || lateTab === 'year') periodRun(lateTab, 'late-quarter', renderLateQuarter); else if (lateTab === 'week') renderLateWeek(); else renderLate(); }
   if (p === 'wlb')     { renderWlbSummary(); renderWlb(); }
   // Lưới an toàn cuối cùng: dù render function ở trên có tính đúng kích thước hay không, ép TẤT
   // CẢ chart hiện có đo lại kích thước thật ngay khi trang này đã thực sự hiện ra trên màn hình.
@@ -2833,7 +2835,7 @@ function renderCompare() {
 
   // Chỉ render đúng tab đang active (tránh dựng dư 3 lần biểu đồ cho cả 3 tab mỗi lần vào trang).
   if (cmpTab === 'week') renderCompareWeek();
-  else if (cmpTab === 'quarter') renderCompareQuarter();
+  else if (cmpTab === 'quarter' || cmpTab === 'year') periodRun(cmpTab, 'cmp-quarter', renderCompareQuarter);
   else renderCompareMonth();
 }
 
@@ -3189,11 +3191,27 @@ function renderCompareMonth() {
 }
 
 // ── Quý lịch chuẩn: Q1=T1–T3, Q2=T4–T6, Q3=T7–T9, Q4=T10–T12 ──
+// Tab "Theo năm" dùng lại đúng các hàm/biểu đồ của tab Quý, chỉ đổi cách gom kỳ: cả năm thay vì từng quý.
+let PERIOD_YEAR = false;
+function periodRelabel(id, year) {   // đổi chữ Quý→Năm trong khung dùng chung (và trả lại khi quay về tab Quý)
+  const el = document.getElementById(id); if (!el) return;
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) {
+    if (n.__o === undefined) n.__o = n.nodeValue;
+    n.nodeValue = year ? n.__o.replace(/Quarterly/g, 'Yearly').replace(/Quarter/g, 'Year').replace(/quarter/g, 'year').replace(/Quý/g, 'Năm').replace(/quý/g, 'năm') : n.__o;
+  }
+}
+function periodRun(tab, panelId, fn) {
+  PERIOD_YEAR = tab === 'year';
+  try { fn(); } finally { PERIOD_YEAR = false; }
+  periodRelabel(panelId, tab === 'year');
+}
 function quarterKeyOf(mk) {
   const [y, m] = mk.split('-').map(Number);
-  return `${y}-Q${Math.ceil(m/3)}`;
+  return PERIOD_YEAR ? String(y) : `${y}-Q${Math.ceil(m/3)}`;
 }
 function fmtQK(qk) {
+  if (!/-Q/.test(qk)) return `Năm ${qk} (${MONTH_NAMES_EN[0].slice(0, 3)}–${MONTH_NAMES_EN[11].slice(0, 3)})`;
   const [y, qStr] = qk.split('-Q');
   const q = Number(qStr);
   const startM = (q - 1) * 3; // 0-based index into MONTH_NAMES_EN
@@ -3202,7 +3220,8 @@ function fmtQK(qk) {
   return `Quý ${q}/${y} (${a}–${b})`;
 }
 function monthsInQuarterKey(qk) {
-  // Trả về 3 month-key YYYY-MM thuộc quý lịch (kể cả tháng chưa có dữ liệu)
+  // Trả về 3 month-key YYYY-MM thuộc quý lịch (kể cả tháng chưa có dữ liệu); khoá năm → 12 tháng
+  if (!/-Q/.test(qk)) return Array.from({ length: 12 }, (_, i) => `${qk}-${String(i + 1).padStart(2, '0')}`);
   const [y, qStr] = qk.split('-Q');
   const q = Number(qStr);
   const start = (q - 1) * 3 + 1;
@@ -4483,8 +4502,9 @@ function setWlbTab(tab) {
   wlbTab = tab;
   document.getElementById('wlbTabMonth').classList.toggle('active', tab==='month');
   document.getElementById('wlbTabQuarter').classList.toggle('active', tab==='quarter');
+  document.getElementById('wlbTabYear').classList.toggle('active', tab==='year');
   document.getElementById('wlb-month').style.display   = tab==='month'   ? 'block' : 'none';
-  document.getElementById('wlb-quarter').style.display = tab==='quarter' ? 'block' : 'none';
+  document.getElementById('wlb-quarter').style.display = (tab==='quarter'||tab==='year') ? 'block' : 'none';
   renderWlb();
   scheduleChartResize();
 }
@@ -6271,7 +6291,8 @@ function renderWlbRecon(mks) {
   body.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text2)">Chưa có dữ liệu.</td></tr>';
 }
 
-function renderWlb() {
+function renderWlb() { renderWlbCore(); periodRelabel('wlb-quarter', wlbTab === 'year'); }
+function renderWlbCore() {
   const allMks  = wlbAllMks();
   try { renderWlbRecon(allMks); } catch(e) { console.warn('recon', e); }
   const allDepts = getAllDeptsForWlb();
@@ -6548,16 +6569,17 @@ function renderWlb() {
   } else {
     // ── TAB QUARTER — WLB theo QUÝ LỊCH (không chồng lấp): Q1 T1–T3, Q2 T4–T6, Q3 T7–T9, Q4 T10–T12.
     // Ngưỡng: Q4 (từ T10) > 15% là Đạt; Q1–Q3 giữ > 10%.
+    const wlbYear = wlbTab === 'year';
     const wlbQGroups = [];
     const qByKey = {};
     allMks.forEach(mk => {
       const [y, m] = mk.split('-').map(Number);
-      const q = Math.ceil(m/3), key = `${y}-Q${q}`;
-      if (!qByKey[key]) { qByKey[key] = { key, label: `Quý ${q}/${y} (${MONTH_NAMES_VI[3*q-3]}–${MONTH_NAMES_VI[3*q-1]})`, mks: [], q, y }; wlbQGroups.push(qByKey[key]); }
+      const q = wlbYear ? 4 : Math.ceil(m/3), key = wlbYear ? String(y) : `${y}-Q${q}`;
+      if (!qByKey[key]) { qByKey[key] = { key, label: wlbYear ? `Năm ${y} (${MONTH_NAMES_VI[0]}–${MONTH_NAMES_VI[11]})` : `Quý ${q}/${y} (${MONTH_NAMES_VI[3*q-3]}–${MONTH_NAMES_VI[3*q-1]})`, mks: [], q, y }; wlbQGroups.push(qByKey[key]); }
       qByKey[key].mks.push(mk);
     });
     wlbQGroups.sort((a,b)=> a.key<b.key?-1:1);
-    const qThr = (qk) => { const g = qByKey[qk]; return g ? getWlbThreshold(`${g.y}-${String(3*g.q).padStart(2,'0')}`) : THRESHOLD; };
+    const qThr = (qk) => { const g = qByKey[qk]; return g ? getWlbThreshold(wlbYear ? (g.mks[g.mks.length-1] || `${g.y}-12`) : `${g.y}-${String(3*g.q).padStart(2,'0')}`) : THRESHOLD; };
     const qKeys = wlbQGroups.map(g => g.key);
     const qLabel = {}; wlbQGroups.forEach(g => { qLabel[g.key] = g.label; });
     const qMks = (qk) => (wlbQGroups.find(g => g.key === qk) || {mks:[]}).mks;
@@ -6652,7 +6674,7 @@ function renderWlb() {
               borderColor:DEPT_COLORS[i%DEPT_COLORS.length], backgroundColor:'transparent',
               tension:.3, borderWidth:2, pointRadius:5, spanGaps:true
             })),
-            { label:'Ngưỡng (Q1–Q3: 10%, Q4: 15%)', data:qKeys.map(qk=>qThr(qk)),
+            { label: wlbYear ? 'Ngưỡng (theo tháng cuối: 10% trước T10, 15% từ T10)' : 'Ngưỡng (Q1–Q3: 10%, Q4: 15%)', data:qKeys.map(qk=>qThr(qk)),
               borderColor:'#C0392B', borderDash:[6,4], borderWidth:1.5, pointRadius:0, backgroundColor:'transparent' }
           ]},
         options: lineOpts()
@@ -6973,7 +6995,7 @@ function renderLateWeek() {
 function rebuildLateUI() {
   syncHnLateDepts();
   updateLateSelects();
-  if (lateTab === 'quarter') renderLateQuarter();
+  if (lateTab === 'quarter' || lateTab === 'year') periodRun(lateTab, 'late-quarter', renderLateQuarter);
   else if (lateTab === 'week') renderLateWeek();
   else renderLate();
 }
