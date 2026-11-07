@@ -327,7 +327,7 @@
         else if (id === 'manpower' && typeof renderManpower === 'function') renderManpower();
         else if (id === 'pudelivery' && typeof renderPuDelivery === 'function') renderPuDelivery();
         else if (id === 'progress' && typeof renderProgress === 'function') renderProgress();
-        else if (id === 'roster' && typeof renderRoster === 'function') renderRoster();
+        else if (id === 'catalog' && typeof renderCatalog === 'function') renderCatalog();
         else if (['dept', 'compare', 'late', 'wlb'].includes(id)) goSub(id);
         else if (id === 'settings') { renderSavedMonths(); }
       } catch (e) { console.warn(e); }

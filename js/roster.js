@@ -173,7 +173,7 @@ function rosterPurge(code) {
 
 // ── Trang "Nhân viên HCM" (tab trong Nhân lực) ──
 function mpSetTab(t) {
-  if (t === 'roster' && !isManager()) { toast('🔒 Danh sách nhân viên HCM chỉ dành cho Quản lý và Admin.'); t = 'main'; }
+  if (t === 'roster') { goPage('roster'); return; }   // danh sách NV đã chuyển sang Danh mục → Nhân viên
   window.mpTab = t;
   const a = document.getElementById('mpMain'), b = document.getElementById('mpRoster'), c = document.getElementById('mpPm'); if (a) a.style.display = t === 'main' ? '' : 'none'; if (b) b.style.display = t === 'roster' ? '' : 'none'; if (c) c.style.display = t === 'pm' ? '' : 'none';
   document.querySelectorAll('#mpTabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
@@ -340,7 +340,7 @@ function rosterNewConfirm() {
   saveEmpDb(); document.getElementById('rosterNew').remove();
   toast(`✅ Đã thêm ${ok} nhân viên${pj ? `, gán dự án cho ${pj} người` : ''}${ex ? `, loại ${ex} người khỏi OT` : ''}.`);
   if (typeof window._rosterNewDone === 'function') window._rosterNewDone();
-  if (window.mpTab === 'roster') renderRoster();
+  if (document.getElementById('rosterBody')) renderRoster();
 }
 // Quyền riêng tư: KHÔNG lưu email và tên thiết bị chấm công. Dọn mọi dữ liệu cũ còn sót (gọi khi tải dữ liệu từ cloud).
 function rosterPurgeSensitive() {

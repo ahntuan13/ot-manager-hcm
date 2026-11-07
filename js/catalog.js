@@ -141,7 +141,7 @@ function catImportApply() {
 
 // ── Vẽ trang ──
 function catTabs() {
-  const t = [['pm', '🧑‍💼 PM — Nhóm — Dự án'], ['proj', '🏗️ Dự án'], ['staff', '👥 Nhân viên']];
+  const t = [['pm', '🧑‍💼 PM — Nhóm — Dự án'], ['proj', '🏗️ Dự án']]; if (isManager()) t.push(['staff', '👥 Nhân viên HCM']);
   return `<div class="mp-tabs">${t.map(([k, l]) => `<button class="${catTab === k ? 'on' : ''}" onclick="catSetTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 function catDiscSel(code, a, i) {
@@ -186,16 +186,12 @@ function catProjTab(edit) {
   return `<div class="card"><div class="action-row">${edit ? '<button class="btn btn-primary" onclick="catPromptAddProject()">＋ Thêm dự án</button>' : ''}<span style="font-size:12px;color:var(--text2)">${projs.length} dự án (HCM-EC). Đổi tên / xoá dự án ở đây thì mọi trang khác đổi theo.</span></div></div>
     <div class="card"><div class="pg-tblw"><table class="pg-tbl"><thead><tr><th>#</th><th style="text-align:left">Project name</th><th style="text-align:left">PM — Nhóm</th><th style="text-align:right">Nhân sự</th>${edit ? '<th></th>' : ''}</tr></thead><tbody>${tr}</tbody></table></div></div>`;
 }
-function catStaffTab(edit) {
-  const all = rosterList(), ot = all.filter(e => e.status === 'ot').length, pms = pmList().length;
-  return `<div class="card"><div style="font-size:13px;line-height:1.8">Danh sách nhân viên HCM (mã, họ tên, phòng ban, dự án) quản lý ở <b>Nhân lực → Danh sách nhân viên HCM</b> — đây là nguồn chung về nhân viên.<br>
-    Hiện có <b>${ot}</b> nhân viên đang tính OT, trong đó <b>${pms}</b> người là PM. Nhân sự của từng dự án (và lịch sử chuyển dự án theo chu kỳ OT) quản lý ở <b>Action Plan → Kế hoạch nhân sự</b>.</div>
-    <div class="action-row" style="margin-top:10px"><button class="btn btn-primary" onclick="goPage('roster')">Mở danh sách nhân viên</button><button class="btn" onclick="goPage('action')">Mở Action Plan</button></div></div>`;
-}
 function renderCatalog() {
   const box = document.getElementById('catBody'); if (!box) return;
   const edit = isManager();
-  box.innerHTML = catTabs() + (catTab === 'proj' ? catProjTab(edit) : catTab === 'staff' ? catStaffTab(edit) : catPmTab(edit));
+  if (catTab === 'staff' && !edit) catTab = 'pm';
+  box.innerHTML = catTabs() + (catTab === 'proj' ? catProjTab(edit) : catTab === 'staff' ? '<div id="rosterBody"></div>' : catPmTab(edit));
+  if (catTab === 'staff' && typeof renderRoster === 'function') renderRoster();
 }
 function catRefocus(inp) { const pos = inp.selectionStart; renderCatalog(); const ni = document.querySelector('#catBody input[type=text]'); if (ni) { ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (e) {} } }
 
