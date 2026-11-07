@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.138';
+const APP_VERSION = '2026.139';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -2791,7 +2791,7 @@ function renderDept() {
       <td>${ds.nvCount}</td>
       <td style="font-weight:700;font-family:var(--font-mono)">${fmtH(ds.total)}</td>
       <td>${ds.over>0?`<span class="badge bd">${ds.over}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
-      <td><button class="btn" onclick="goPage('employees','${dname}')" style="padding:3px 10px;font-size:11px">Chi tiết →</button></td></tr>`;
+      <td><button class="btn" onclick="goPage('employees','${cJ(dname)}')" style="padding:3px 10px;font-size:11px">Chi tiết →</button></td></tr>`;
     if (isEC) {
       row += `<tr><td colspan="5" style="padding:0;border:none"><div id="${boxIdD}" style="display:none;padding:8px 0 8px 18px"></div></td></tr>`;
       const useDeltaD = deptTab === 'week';

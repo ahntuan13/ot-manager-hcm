@@ -630,7 +630,8 @@ async function sList(prefix){
 /* Mật khẩu ứng viên: lưu băm SHA-256 (+salt) ở iv_accounts (ứng viên đọc được để đăng nhập); bản rõ để Quản lý xem lại nằm ở iv_cred (chỉ Quản lý đọc). */
 async function sha256(t){ const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); }
 function newSalt(){ return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>x.toString(16).padStart(2,"0")).join(""); }
-async function checkPw(account, p){ if(account.passHash) return (await sha256((account.salt||"")+p)) === account.passHash; return account.password === p; }
+// Đăng nhập bằng mật khẩu đã bị gỡ (mật khẩu băm từng đọc được công khai) — ứng viên dùng link riêng có mã bí mật dài.
+async function checkPw(account, p){ return false; }
 async function migrateLegacy(){
   if(!MGR){ alert("Chỉ Quản lý."); return; }
   if(!confirm("Chuyển ứng viên + bài làm từ hệ thống cũ (testonline-17ed0) sang HMD?\nDữ liệu đã có ở HMD sẽ KHÔNG bị ghi đè.")) return;
@@ -643,7 +644,7 @@ async function migrateLegacy(){
       const u = d.id;
       if(await sGet(`account:${u}`)){ sk++; continue; }
       const a = JSON.parse(d.data().payload), salt = newSalt(), pw = a.password || "";
-      const acc = { passHash: await sha256(salt+pw), salt, fullName:a.fullName||"", position:a.position||"", examSet:a.examSet||"DE1", createdAt:a.createdAt||new Date().toISOString() };
+      const acc = { legacyLocked: true, fullName:a.fullName||"", position:a.position||"", examSet:a.examSet||"DE1", createdAt:a.createdAt||new Date().toISOString() };
       await sSet(`account:${u}`, acc); await sSet(`cred:${u}`, { password: pw }); na++;
     }
     const subs = await getDocs(collection(ldb, "submissions"));
@@ -859,6 +860,7 @@ async function tokenLogin(tok){
   root.className = "app"; root.innerHTML = loadingBox("Đang mở bài thi...");
   const account = await sGet(`account:${tok}`);
   if(!account){ alert("Link không hợp lệ hoặc đã bị thu hồi. Vui lòng liên hệ người phụ trách tuyển dụng."); return goto("landing"); }
+  if(account.legacyLocked || account.passHash || account.password !== undefined){ alert("Tài khoản này không còn truy cập bằng link. Vui lòng liên hệ người phụ trách tuyển dụng để được cấp link mới."); return goto("landing"); }
   if(account.expiresAt && new Date(account.expiresAt) < new Date()){
     const sb = await sGet(`submission:${tok}`);
     if(!(sb && sb.testStartedAt)){ alert("Link đã hết hạn. Vui lòng liên hệ người phụ trách tuyển dụng."); return goto("landing"); }
@@ -897,7 +899,7 @@ function renderCandidateLogin(){
     root.innerHTML = loadingBox(bi("Đang kiểm tra tài khoản...","Checking your account..."));
     const account = await sGet(`account:${u}`);
     if(!account || !(await checkPw(account, p))){
-      errorMsg = bis("Sai tài khoản hoặc mật khẩu.","Incorrect username or password.");
+      errorMsg = bis("Đăng nhập bằng mật khẩu không còn được hỗ trợ. Vui lòng dùng link riêng do người phụ trách tuyển dụng gửi.","Password login is no longer supported. Please use the private link sent by HR.");
       return renderCandidateLogin();
     }
     return startCandidate(u, account);
@@ -1284,7 +1286,15 @@ async function loadRoster(){
   const roster = [];
   for(const k of keys){
     const username = k.replace(/^account:/,"");
-    const account = await sGet(k);
+    let account = await sGet(k);
+    // Bảo mật: tài khoản cũ dùng mật khẩu — xoá mật khẩu băm/muối/mật khẩu rõ khỏi iv_accounts (ai cũng đọc được tài liệu này) và khoá đăng nhập bằng mật khẩu.
+    if(account && (account.passHash || account.salt || account.password !== undefined) && MGR){
+      try{
+        if(account.password && !(await sGet(`cred:${username}`))) await sSet(`cred:${username}`, { password: account.password });
+        const clean = { ...account, legacyLocked: true }; delete clean.passHash; delete clean.salt; delete clean.password;
+        if(await sSet(`account:${username}`, clean)) account = clean;
+      }catch(e){ console.error("purge legacy password failed", e); }
+    }
     const sub = await sGet(`submission:${username}`);
     roster.push({ username, account, sub });
   }
@@ -1369,8 +1379,8 @@ function drawDashboard(){
       <td>${entry.sub?.submittedAt ? esc(fmtDT(entry.sub.submittedAt)) : "—"}</td>
       <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" data-view="${esc(entry.username)}">${entry.sub?.submittedAt ? bis("Chấm bài","Grade") : bis("Xem","View")}</button>
-        <button class="btn btn-ghost btn-sm" data-cred="${esc(entry.username)}">${entry.account?.passHash ? bis("Tài khoản","Account") : "Link"}</button>
-        ${entry.account && !entry.account.passHash && !entry.account.short ? `<button class="btn btn-ghost btn-sm" data-short="${esc(entry.username)}">Rút gọn</button>` : ""}
+        <button class="btn btn-ghost btn-sm" data-cred="${esc(entry.username)}">${entry.account?.legacyLocked ? bis("Đã khoá","Locked") : "Link"}</button>
+        ${entry.account && !entry.account.passHash && !entry.account.legacyLocked && !entry.account.short ? `<button class="btn btn-ghost btn-sm" data-short="${esc(entry.username)}">Rút gọn</button>` : ""}
         <button class="btn btn-ghost btn-sm" data-del="${esc(entry.username)}" style="color:var(--bad);">${bis("Xóa","Delete")}</button>
       </div></td>
     `;
@@ -1399,7 +1409,7 @@ async function shortenLink(key){
 }
 async function showCred(username){
   const ac = dashRoster.find(e=>e.username===username)?.account;
-  if(ac && !ac.passHash){ const l = ac.short || candLink(username); try{ await navigator.clipboard.writeText(l); }catch(e){} alert(`Link riêng của ứng viên (đã sao chép):\n\n${l}`); return; }
+  if(ac && !ac.passHash && !ac.legacyLocked){ const l = ac.short || candLink(username); try{ await navigator.clipboard.writeText(l); }catch(e){} alert(`Link riêng của ứng viên (đã sao chép):\n\n${l}`); return; }
   const c = await sGet(`cred:${username}`);
   if(!c){ alert(`Tài khoản: ${username}\n\nKhông còn mật khẩu gốc để xem. Hãy tạo lại ứng viên hoặc xoá và tạo mới.`); return; }
   alert(`Tài khoản ứng viên\n\nUsername: ${username}\nPassword: ${c.password}\n\nGửi thông tin này cho ứng viên để họ đăng nhập.`);
