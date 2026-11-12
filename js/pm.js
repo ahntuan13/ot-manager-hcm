@@ -186,7 +186,7 @@ function apPlanBtns(group, proj, mk, hasContent) {
 }
 function apRowHtml(i, mk, o) {
   const mp = getMonthPlan(o.pg, o.pp, mk), rej = (mp.approvedBy || '').startsWith('REJECTED|');
-  const noteTa = `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${apJs(o.pg)}','${apJs(o.pp)}','note',this.value,'${mk}')">${apEsc(mp.note || '')}</textarea>`;
+  const noteTa = `<textarea rows="5" style="width:100%;min-height:110px;line-height:1.5;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${apJs(o.pg)}','${apJs(o.pp)}','note',this.value,'${mk}')">${apEsc(mp.note || '')}</textarea>`;
   return `<tr class="${rej ? 'row-rejected' : ''}"><td style="text-align:center;color:var(--text2)">${i}</td><td>${o.pmCell}</td><td>${o.projCell}</td>
     <td style="font-size:12px;line-height:1.6">${o.otCell}</td><td>${o.staffCell}</td><td>${planCellHtml(o.pg, o.pp, mk, mp, o.legacy)}</td><td>${approvalBoxHtml(o.pg, o.pp, mp, mk)}</td><td>${noteTa}</td></tr>`;
 }

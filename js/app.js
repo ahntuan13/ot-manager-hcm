@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.140';
+const APP_VERSION = '2026.141';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -2073,6 +2073,7 @@ function renderDashProjectBarChart(totals) {
 
   // Gộp OT theo dự án — chỉ tính NV có staffCode đã được gán vào 1 dự án cụ thể trong PROJECTS_DB.
   const projTotals = {}; // "group/proj" -> tổng OT
+  const unTip = [];      // NV thuộc "Chưa gán dự án" (hiện trong tooltip)
   totals.forEach(t => {
     if (!t.staffCode) return;
     const info = findEmployeeProject(t.staffCode, activeMK);
@@ -2080,7 +2081,9 @@ function renderDashProjectBarChart(totals) {
     const key = `${info.group}/${info.proj.replace(/^HCM\s+/i,'')}`;
     if (!projTotals[key]) projTotals[key] = 0;
     projTotals[key] += t.total;
+    if (info.proj === UNASSIGNED_PROJ && t.total > 0) unTip.push([t.name || t.staffCode, t.total]);
   });
+  unTip.sort((a, b) => b[1] - a[1]);
   const entries = Object.entries(projTotals).map(([k,v]) => ({ key:k, total: Math.round(v*60)/60 }))
     .filter(e => e.total > 0).sort((a,b) => b.total - a.total);
 
@@ -2097,11 +2100,11 @@ function renderDashProjectBarChart(totals) {
   CH['cDashProjectBar'] = new Chart(canvasEl, {
     type: 'bar',
     data: { labels: entries.map(e => e.key),
-      datasets: [{ data: entries.map(e => e.total), backgroundColor: '#2D6CDF', borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
+      datasets: [{ data: entries.map(e => e.total), backgroundColor: entries.map(e => e.key.endsWith('/' + UNASSIGNED_PROJ) ? '#9AA0A6' : '#2D6CDF'), borderWidth: 0, borderRadius: 3, label: 'Tổng OT (h)' }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
       plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: 'h' },
-        tooltip: { callbacks: { label: c => ` ${fmtH(c.raw)}` } } },
+        tooltip: { callbacks: { label: c => ` ${fmtH(c.raw)}`, afterBody: items => entries[items[0].dataIndex].key.endsWith('/' + UNASSIGNED_PROJ) && unTip.length ? ['NV chưa gán dự án (gán ở Danh mục → Dự án):', ...unTip.slice(0, 15).map(r => `• ${r[0]} — ${fmtH(Math.round(r[1] * 60) / 60)}`), ...(unTip.length > 15 ? [`… và ${unTip.length - 15} NV khác`] : [])] : [] } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
              suggestedMax: Math.ceil(Math.max(...entries.map(e=>e.total)) * 1.15) },
@@ -2810,7 +2813,7 @@ function renderDept() {
     const useDeltaChart = deptTab === 'week';
     const projEntriesD = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaChart);
-      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+      return { name: proj.replace(/^HCM\s+/i,''), value: s.total, tip: unassignedTip('HCM-EC', proj, mk, pIdx, useDeltaChart) };
     }).filter(e => e.value > 0);
     const lblD = document.getElementById('deptProjChartLabel');
     if (lblD) lblD.textContent = periodLabel;
@@ -3005,7 +3008,7 @@ function renderCompareWeek() {
     if (lblW) lblW.textContent = periods[lastPeriodIdx]?.label || '';
     const projEntriesW = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
-      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+      return { name: proj.replace(/^HCM\s+/i,''), value: s.total, tip: unassignedTip('HCM-EC', proj, activeMK, lastPeriodIdx, true) };
     }).filter(e => e.value > 0);
     renderGenericProjectBarChart(CH, killChart, 'cCmpProjWeek',
       document.getElementById('cCmpProjWeek'), document.getElementById('cCmpProjWeekEmpty'),
@@ -5557,7 +5560,7 @@ function buildActionPlanTable(group, tbodyId, mk) {
     const mp = getMonthPlan(group, proj, mk); // bucket riêng của THÁNG ĐANG XEM — tháng khác không ảnh hưởng
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
-    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    const editable = (field, ph) => `<textarea rows="${field==='note'?5:2}" style="width:100%;${field==='note'?'min-height:110px;font-size:13px;line-height:1.5;':'font-size:12px;'}border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
     const isRejected = (mp.approvedBy||'').startsWith('REJECTED|');
     return `<tr class="${isRejected ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${i+1}</td>
@@ -5618,7 +5621,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
     <td style="text-align:center;color:var(--text3)">—</td>
     <td>${planCellHtml(group, sedKey, mk, pAuto)}</td>
     <td>${approvalBoxHtml(group, sedKey, pAuto, mk)}</td>
-    <td><textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value,'${mk}')">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
+    <td><textarea rows="5" style="width:100%;min-height:110px;line-height:1.5;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ghi chú..." onchange="saveProjectField('${group}','${sedKey}','note',this.value,'${mk}')">${(pAuto.note||'').replace(/</g,'&lt;')}</textarea></td>
   </tr>`);
 
   // Các dự án S-ED được thêm thủ công (nếu có) — hiện tiếp bên dưới, giống HCM-EC
@@ -5627,7 +5630,7 @@ function buildActionPlanTableSED(tbodyId, mk) {
     const mp = getMonthPlan(group, proj, mk);
     const stats = getProjectOTStats(group, proj, mk);
     const projEsc = proj.replace(/'/g,"\\'");
-    const editable = (field, ph) => `<textarea rows="2" style="width:100%;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
+    const editable = (field, ph) => `<textarea rows="${field==='note'?5:2}" style="width:100%;${field==='note'?'min-height:110px;font-size:13px;line-height:1.5;':'font-size:12px;'}border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-family:inherit;resize:vertical" placeholder="${ph}" onchange="saveProjectField('${group}','${projEsc}','${field}',this.value,'${mk}')">${(mp[field]||'').replace(/</g,'&lt;')}</textarea>`;
     const isRejected2 = (mp.approvedBy||'').startsWith('REJECTED|');
     rowsHtml.push(`<tr class="${isRejected2 ? 'row-rejected' : ''}">
       <td style="text-align:center;color:var(--text2)">${idx+2}</td>
@@ -5742,6 +5745,17 @@ function getProjectOTStats(group, projectName, mk) {
 // OT của 1 dự án, tổng quát cho MỌI loại kỳ (tuần/tháng): periodIdx=null → luỹ kế (tháng),
 // periodIdx=số cụ thể + useDelta=true → đúng riêng tuần đó (không cộng dồn), khớp quy ước
 // "Theo tuần" đã dùng khắp app (deltaTotal). Dùng chung 1 nguồn getTotals() để luôn khớp số.
+// Danh sách NV (kèm OT) của nhóm "Chưa gán dự án" — để biết đó là ai (hiện trong tooltip biểu đồ)
+function unassignedTip(group, proj, mk, periodIdx, useDelta) {
+  if (proj !== UNASSIGNED_PROJ || !mk || !DB[mk]) return [];
+  const share = new Map(projectEmployeesWithShare(group, proj, mk, periodEndIso(mk, periodIdx)).map(x => [x.code, x]));
+  const rows = [];
+  getTotals(mk, '__all__', periodIdx).forEach(t => { const sh = t.staffCode && share.get(t.staffCode); if (!sh) return; const v = (useDelta ? (t.deltaTotal || 0) : t.total) * sh.frac; if (v > 0) rows.push([t.name || t.staffCode, v]); });
+  rows.sort((a, b) => b[1] - a[1]);
+  const out = rows.slice(0, 15).map(r => `• ${r[0]} — ${fmtH(Math.round(r[1] * 60) / 60)}`);
+  if (rows.length > 15) out.push(`… và ${rows.length - 15} NV khác`);
+  return out;
+}
 function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
   if (!p || !mk || !DB[mk]) return { total: 0, nvCount: 0 };
@@ -5855,11 +5869,11 @@ function renderGenericProjectBarChart(store, killFn, chartId, canvasEl, emptyEl,
   safeMakeChart(store, killFn, chartId, canvasEl, {
     type: 'bar',
     data: { labels: entries.map(e => e.name),
-      datasets: [{ data: entries.map(e => e.value), backgroundColor: color || '#2D6CDF', borderWidth: 0, borderRadius: 3 }] },
+      datasets: [{ data: entries.map(e => e.value), backgroundColor: entries.map(e => e.name === UNASSIGNED_PROJ ? '#9AA0A6' : (color || '#2D6CDF')), borderWidth: 0, borderRadius: 3 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 40, top: 4, bottom: 4, left: 4 } },
       plugins: { legend: { display: false }, barValueLabels: {on:true, suffix: unitSuffix || '' },
-        tooltip: { callbacks: { label: c => ` ${c.raw}${unitSuffix||''}` } } },
+        tooltip: { callbacks: { label: c => ` ${c.raw}${unitSuffix||''}`, afterBody: items => { const t = entries[items[0].dataIndex].tip; return t && t.length ? ['NV chưa gán dự án (gán ở Danh mục → Dự án → "Chưa gán dự án"):', ...t] : []; } } } },
       scales: {
         x: { grid: { color: 'rgba(128,128,128,0.12)' }, ticks: { font: { size: 10 } },
              suggestedMax: Math.ceil(Math.max(1, ...entries.map(e=>e.value)) * 1.15) },
