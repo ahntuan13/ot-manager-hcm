@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.141';
+const APP_VERSION = '2026.142';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1214,9 +1214,12 @@ function updateSelects() {
   if (empDF) empDF.innerHTML = opts;
   const keys = Object.keys(DB).sort();
   const mOpts = keys.map(mk => `<option value="${mk}" title="${fmtCompanyMK(mk)}">${fmtMK(mk)}</option>`).join('');
-  document.getElementById('deptMonthSel').innerHTML = mOpts || '<option>Chưa có dữ liệu</option>';
-  if (activeMK && keys.includes(activeMK))
-    document.getElementById('deptMonthSel').value = activeMK;
+  const dms = document.getElementById('deptMonthSel'), dPrev = dms.value;
+  dms.innerHTML = mOpts || '<option>Chưa có dữ liệu</option>';
+  // Mặc định luôn là THÁNG MỚI NHẤT (không để về tháng đầu tiên); giữ lựa chọn người dùng nếu còn hợp lệ
+  if (keys.includes(dPrev)) dms.value = dPrev;
+  else if (activeMK && keys.includes(activeMK)) dms.value = activeMK;
+  else if (keys.length) dms.value = keys[keys.length - 1];
 }
 
 // Parse "H:MM" or "HH:MM" time string -> minutes since midnight. Returns null if invalid.
