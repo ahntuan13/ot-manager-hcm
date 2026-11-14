@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.146';
+const APP_VERSION = '2026.147';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -2498,7 +2498,7 @@ function renderDashTable(totals, periods) {
     const night = Math.min(rawNight, t.total);
     const normal = Math.round((t.total - night)*60)/60;
     const projInfo = t.staffCode ? findEmployeeProject(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : null;
-    const projName = projInfo ? projInfo.proj.replace(/^HCM\s+/i, '') : '';
+    const projName = projInfo ? projShort(projInfo.proj) : '';
     const mvTxt = t.staffCode ? midCycleMoveText(t.staffCode, document.getElementById('pg-employees')?.classList.contains('show') ? empMK : activeMK) : '';
     const deptDisplay = mvTxt ? `${projInfo ? projInfo.group : t.dept}: ${mvTxt}` : ((projInfo && !projInfo.proj.startsWith('__')) ? `${projInfo.group}/${projName}` : (projInfo ? projInfo.group : t.dept));
     // Tích hợp Chi tiết OT theo ngày NGAY TẠI ĐÂY — bấm tên NV để mở/đóng, thay vì phải xem 1 danh
@@ -2803,7 +2803,7 @@ function renderDept() {
       const useDeltaD = deptTab === 'week';
       const projRowsD = projectsInGroup('HCM-EC').sort().map(proj => {
         const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaD);
-        return { name: proj, display: fmtH(s.total), nv: s.nvCount };
+        return { name: (/^HCM[\s-]+RED[\s-]*DRAGON$/i.test(proj) ? projShort(proj) : proj), display: fmtH(s.total), nv: s.nvCount };
       });
       setTimeout(() => fillProjectBox(boxIdD, projRowsD, 'OT (h)'), 0);
     }
@@ -2816,7 +2816,7 @@ function renderDept() {
     const useDeltaChart = deptTab === 'week';
     const projEntriesD = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdx, useDeltaChart);
-      return { name: proj.replace(/^HCM\s+/i,''), value: s.total, tip: unassignedTip('HCM-EC', proj, mk, pIdx, useDeltaChart) };
+      return { name: projShort(proj), value: s.total, tip: unassignedTip('HCM-EC', proj, mk, pIdx, useDeltaChart) };
     }).filter(e => e.value > 0);
     const lblD = document.getElementById('deptProjChartLabel');
     if (lblD) lblD.textContent = periodLabel;
@@ -3011,14 +3011,14 @@ function renderCompareWeek() {
     if (lblW) lblW.textContent = periods[lastPeriodIdx]?.label || '';
     const projEntriesW = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
-      return { name: proj.replace(/^HCM\s+/i,''), value: s.total, tip: unassignedTip('HCM-EC', proj, activeMK, lastPeriodIdx, true) };
+      return { name: projShort(proj), value: s.total, tip: unassignedTip('HCM-EC', proj, activeMK, lastPeriodIdx, true) };
     }).filter(e => e.value > 0);
     renderGenericProjectBarChart(CH, killChart, 'cCmpProjWeek',
       document.getElementById('cCmpProjWeek'), document.getElementById('cCmpProjWeekEmpty'),
       projEntriesW, 'h', '#6B4FA0');
     const projRowsW = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, activeMK, lastPeriodIdx, true);
-      return { name: proj, display: fmtH(s.total), nv: s.nvCount };
+      return { name: (/^HCM[\s-]+RED[\s-]*DRAGON$/i.test(proj) ? projShort(proj) : proj), display: fmtH(s.total), nv: s.nvCount };
     });
     setTimeout(() => fillProjectBox(weekBoxId, projRowsW, 'OT (h)'), 0);
   }
@@ -3182,7 +3182,7 @@ function renderCompareMonth() {
         const pIdxM = periodsM.length ? periodsM.length - 1 : null;
         const projRowsM = projectsInGroup('HCM-EC').sort().map(proj => {
           const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxM, false);
-          return { name: proj, display: fmtH(s.total), nv: s.nvCount };
+          return { name: (/^HCM[\s-]+RED[\s-]*DRAGON$/i.test(proj) ? projShort(proj) : proj), display: fmtH(s.total), nv: s.nvCount };
         });
         setTimeout(() => fillProjectBox(boxIdM, projRowsM, 'OT (h)'), 0);
       }
@@ -3200,7 +3200,7 @@ function renderCompareMonth() {
     const pIdxM2 = periodsM2.length ? periodsM2.length - 1 : null;
     const projEntriesM = projectsInGroup('HCM-EC').sort().map(proj => {
       const s = getProjectOTForPeriod('HCM-EC', proj, cmpSelMk, pIdxM2, false);
-      return { name: proj.replace(/^HCM\s+/i,''), value: s.total };
+      return { name: projShort(proj), value: s.total };
     }).filter(e => e.value > 0);
     renderGenericProjectBarChart(CH, killChart, 'cCmpProjMonth',
       document.getElementById('cCmpProjMonth'), document.getElementById('cCmpProjMonthEmpty'),
@@ -3400,7 +3400,7 @@ function renderCompareQuarter() {
             const s = getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ, false);
             sum += s.total; nv = Math.max(nv, s.nvCount);
           });
-          return { name: proj, display: fmtH(Math.round(sum*60)/60), nv };
+          return { name: (/^HCM[\s-]+RED[\s-]*DRAGON$/i.test(proj) ? projShort(proj) : proj), display: fmtH(Math.round(sum*60)/60), nv };
         });
         setTimeout(() => fillProjectBox(boxIdQ, projRowsQ, 'OT (h)'), 0);
       }
@@ -3423,7 +3423,7 @@ function renderCompareQuarter() {
         const pIdxQ2 = periodsQ2.length ? periodsQ2.length - 1 : null;
         sum += getProjectOTForPeriod('HCM-EC', proj, mk, pIdxQ2, false).total;
       });
-      return { name: proj.replace(/^HCM\s+/i,''), value: Math.round(sum*60)/60 };
+      return { name: projShort(proj), value: Math.round(sum*60)/60 };
     }).filter(e => e.value > 0);
     renderGenericProjectBarChart(CH, killChart, 'cCmpProjQtr',
       document.getElementById('cCmpProjQtr'), document.getElementById('cCmpProjQtrEmpty'),
@@ -3756,7 +3756,7 @@ function buildCompareReportHtml(mode) {
   const depts = [...new Set(periods.flatMap(p => p.mks.flatMap(mk => Object.keys(DB[mk]?.depts || {}))))].sort();
   const projs = projectsInGroup('HCM-EC').filter(p => p !== UNASSIGNED_PROJ).sort();
   const deptRows = depts.map(d => ({ name: d, vals: periods.map(p => reportOtOfDept(p.mks, d)) }));
-  const projRows = projs.map(pr => ({ name: pr.replace(/^HCM[\s-]+/i, ''), vals: periods.map(p => reportOtOfProj(p.mks, pr)) }));
+  const projRows = projs.map(pr => ({ name: projShort(pr), vals: periods.map(p => reportOtOfProj(p.mks, pr)) }));
   const tbl = rows => `<table><thead><tr><th></th>${periods.map(p => `<th style="text-align:right">${p.label}</th>`).join('')}<th style="text-align:right">Chênh (kỳ cuối vs kỳ trước)</th></tr></thead><tbody>` +
     rows.map(r => { const n = r.vals.length, d = n > 1 ? Math.round((r.vals[n-1] - r.vals[n-2]) * 10) / 10 : null;
       return `<tr><td><strong>${r.name}</strong></td>${r.vals.map(v => `<td class="num" style="text-align:right">${fmtH(v)}</td>`).join('')}<td class="num" style="text-align:right;color:${d === null ? '#999' : d > 0 ? '#C0392B' : '#2E7D32'}">${d === null ? '—' : (d > 0 ? '+' : '') + d + 'h'}</td></tr>`; }).join('') + '</tbody></table>';
@@ -4778,6 +4778,11 @@ function projectsInGroup(group) { return Object.keys((PROJECTS_DB && PROJECTS_DB
 // Chuyển NV trong chu kỳ đang chạy (VD 12/10, chu kỳ 16/09→15/10 = "2026-10") chỉ có hiệu lực
 // từ CHU KỲ SAU ("2026-11", tức 16/10) → số liệu các tháng đã qua giữ nguyên dự án cũ.
 const UNASSIGNED_PROJ = 'Chưa gán dự án';
+// Tên hiển thị rút gọn của dự án (bỏ tiền tố HCM). MEGA = RED DRAGON (E và M) → hiện kèm ghi chú.
+function projShort(name) {
+  const n = String(name || '').replace(/^HCM[\s-]+/i, '');
+  return /^RED[\s-]*DRAGON$/i.test(n.trim()) ? 'RED DRAGON (MEGA) E+M' : n;
+}
 // Các phòng ban khác có thể là đích khi chuyển NV ra khỏi dự án HCM-EC
 const DEPT_TARGETS = ['S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ'];
 function deptEntryKey(d) { return d === 'S-ED' ? '__SED_ALL__' : '__DEPT_ALL__'; }
@@ -6487,7 +6492,7 @@ function renderWlbCore() {
       const allEcProjects = wlbProjectList([monthNumP]);
       const projEntries = allEcProjects.map(proj => {
         const w = getProjectWlbForMonth('HCM-EC', proj, monthNumP);
-        return { name: proj.replace(/^HCM\s+/i,'') + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
+        return { name: projShort(proj) + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
       });
       // Thông báo rõ nguyên nhân khi rỗng — tránh để trắng trơn khiến người dùng tưởng bị lỗi/mất
       // dữ liệu, trong khi thực ra chỉ đơn giản là tháng đang xem chưa có dữ liệu Excel WLB.
@@ -6578,7 +6583,7 @@ function renderWlbCore() {
           const monthNum = parseInt(mk.split('-')[1], 10);
           const projRows = wlbProjectList([monthNum]).map(proj => {
             const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, monthNum) };
+            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, monthNum) };
           });
           rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
@@ -6676,7 +6681,7 @@ function renderWlbCore() {
       const allEcProjectsQ = wlbProjectList(monthNumsQ);
       const projEntriesQ = allEcProjectsQ.map(proj => {
         const w = getProjectWlbForMonths('HCM-EC', proj, monthNumsQ);
-        return { name: proj.replace(/^HCM\s+/i,'') + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
+        return { name: projShort(proj) + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
       });
       const emptyElQ = document.getElementById('cWlbProjQtrEmpty');
       if (emptyElQ) {
@@ -6763,7 +6768,7 @@ function renderWlbCore() {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
           const projRows = wlbProjectList(monthNums).map(proj => {
             const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
-            return { name: proj, display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, parseInt(mks[mks.length-1].split('-')[1],10)) };
+            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, parseInt(mks[mks.length-1].split('-')[1],10)) };
           });
           qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);

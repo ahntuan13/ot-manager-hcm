@@ -6,7 +6,7 @@ const MP_KPI_H = 45, MP_PAY_H = 70;
 const MP_C = { blue:'#2a78d6', orange:'#eb6834', aqua:'#1baf7a', yellow:'#eda100', red:'#e34948' };
 
 function mpProjects() { return projectsInGroup(MP_GROUP).filter(p => p !== UNASSIGNED_PROJ).sort(); }
-function mpShort(p) { return p.replace(/^HCM[\s-]+/i, ''); }
+function mpShort(p) { return projShort(p); }
 
 // Tổng OT từng NV của 1 chu kỳ (cùng nguồn getTotals với toàn app)
 function mpTotalsMap(mk, cache) {

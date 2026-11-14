@@ -169,7 +169,7 @@ function apLegacyText(projs, mk) {   // Lý do/Kế hoạch cũ nhập theo từ
 }
 function apOtLines(projs, mk) {
   return projs.map(x => {
-    const s = getProjectOTStats(x.g, x.p, mk), nm = apEsc(x.p.replace(/^HCM[\s-]+/i, ''));
+    const s = getProjectOTStats(x.g, x.p, mk), nm = apEsc(projShort(x.p));
     return `<div style="margin-bottom:6px"><b>${nm}</b>${x.dLabel && x.dLabel !== 'E+M' ? ` <span class="pm-tag" style="background:#8a8f98;color:#fff">${x.dLabel}</span>` : ''}<br>
       OT thường: <b>${fmtH(s.otNormal)}</b> · OT đêm: <b style="color:#C0392B">${fmtH(s.otNight)}</b><br>
       Số NV OT: <b style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="viewProjectEmployees('${apJs(x.g)}','${apJs(x.p)}','${mk}')" title="Xem các NV này ở Danh sách NV OT">${s.nvCount}</b> người${s.overPay > 0 ? ` · <span style="color:#C0392B">vượt 70h: ${s.overPay}</span>` : ''}</div>`;
