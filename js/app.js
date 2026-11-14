@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.152';
+const APP_VERSION = '2026.153';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -427,6 +427,37 @@ const barValueLabelsPlugin = {
   }
 };
 Chart.register(barValueLabelsPlugin);
+
+// ── Tên hiển thị: phòng "HCM-EC" nay gọi là "S-PROJECT" ──
+// Mã nội bộ vẫn là 'HCM-EC' (giữ nguyên dữ liệu đã lưu/đồng bộ, file Excel cũ); chỉ ĐỔI CHỮ HIỂN THỊ:
+// nhãn biểu đồ, chữ trên trang (kể cả bảng/ô chọn render sau), không đụng giá trị (value) của ô nhập/chọn.
+const DEPT_SHOW_FROM = /HCM-EC/g, DEPT_SHOW_TO = 'S-PROJECT';
+const dispDeptText = t => (typeof t === 'string' && t.indexOf('HCM-EC') >= 0) ? t.replace(DEPT_SHOW_FROM, DEPT_SHOW_TO) : t;
+Chart.register({
+  id: 'deptDisplayName',
+  beforeUpdate(chart) {
+    const d = chart.data; if (!d) return;
+    if (Array.isArray(d.labels)) d.labels = d.labels.map(dispDeptText);
+    (d.datasets || []).forEach(ds => { if (ds && typeof ds.label === 'string') ds.label = dispDeptText(ds.label); });
+  }
+});
+(function deptDisplayDom() {
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT']);
+  const fix = n => {
+    if (n.nodeType === 3) { if (n.nodeValue.indexOf('HCM-EC') >= 0 && !(n.parentNode && SKIP.has(n.parentNode.nodeName))) n.nodeValue = dispDeptText(n.nodeValue); return; }
+    if (n.nodeType !== 1 || SKIP.has(n.nodeName)) return;
+    ['title', 'placeholder'].forEach(a => { const v = n.getAttribute && n.getAttribute(a); if (v && v.indexOf('HCM-EC') >= 0) n.setAttribute(a, dispDeptText(v)); });
+    for (let c = n.firstChild; c; c = c.nextSibling) fix(c);
+  };
+  const start = () => {
+    fix(document.body);
+    new MutationObserver(ms => ms.forEach(m => {
+      if (m.type === 'characterData') fix(m.target);
+      else m.addedNodes.forEach(fix);
+    })).observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
 
 // Nền xen kẽ + đường kẻ giữa các NHÓM phòng ban trên grouped bar — giúp nhìn rõ
 // cụm W1…W5 thuộc cùng 1 phòng ban (tránh phòng OT thấp bị tưởng là "thiếu cột").
