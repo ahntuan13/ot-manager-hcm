@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.144';
+const APP_VERSION = '2026.145';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5778,15 +5778,15 @@ function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
 // ── WLB theo dự án: danh sách dự án lấy từ ACTION PLAN (PROJECTS_DB). NV HCM-EC có trong Excel
 // nhưng chưa thuộc dự án nào → gom vào dòng "Chưa gán dự án (Excel)" để tổng các dự án = tổng HCM-EC.
 // v2026.144: danh sách dự án WLB = đúng cột "Project Name" của Action Plan (cùng PROJECTS_DB). Nhóm
-// "Chưa gán dự án" chỉ hiện khi Action Plan cũng hiện (tháng đó có NV trong nhóm). NV chỉ có trong Excel
+// Không có nhóm "Chưa gán dự án" (khối văn phòng không tính WLB). NV chỉ có trong Excel
 // mà chưa thuộc dự án nào KHÔNG tự gom vào dòng nào (gán họ ở Danh mục để tính vào dự án).
 const WLB_REMAIN_PROJ = UNASSIGNED_PROJ;
 function wlbProjCodes(group, proj, monthNum) {
   return projectEmployeesForMonth(group, proj, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`);
 }
 function wlbProjectList(monthNums) {
-  return projectsInGroup('HCM-EC').filter(p => !p.startsWith('__')).sort()
-    .filter(p => p !== UNASSIGNED_PROJ || monthNums.some(m => wlbProjCodes('HCM-EC', p, m).length));
+  // WLB chỉ tính cho NV thuộc dự án: bỏ nhóm "Chưa gán dự án" (NV chỉ ghi HCM-EC = khối văn phòng, không thuộc diện tính WLB)
+  return projectsInGroup('HCM-EC').filter(p => !p.startsWith('__') && p !== UNASSIGNED_PROJ).sort();
 }
 function wlbProjNv(proj, monthNum) { return wlbProjCodes('HCM-EC', proj, monthNum).length; }
 function getProjectWlbForMonth(group, proj, monthNum) {
