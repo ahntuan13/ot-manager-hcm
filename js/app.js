@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.149';
+const APP_VERSION = '2026.150';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1151,7 +1151,10 @@ function getAllDepts() {
 // (tên hơi khác, hoặc NV đó chưa có OT tháng này) sẽ bị rớt khỏi bảng dù có dữ liệu.
 // YÊU CẦU: WLB giờ chỉ tính cho 2 phòng HCM-EC (gồm các dự án) và S-ED — không hiển thị/tính cho
 // các phòng khác (S-AD, S-AZ, S-PD, S-PU, S-QC) nữa dù có dữ liệu Off Day/OT của các phòng đó.
-const WLB_ALLOWED_DEPTS = ['HCM-EC', 'S-ED'];
+// v2026.150 (quy định mới): WLB chỉ tính nhóm "HCM - Project" = Project Base + CS (các NV thuộc dự án, phòng HCM-EC).
+// Khối văn phòng (S-EC/HCM-EC chưa thuộc dự án, S-ED, S-QC, S-PU, S-PD, S-AZ) KHÔNG tính WLB.
+const WLB_ALLOWED_DEPTS = ['HCM-EC'];
+const wlbDeptLabel = d => d === 'HCM-EC' ? 'HCM - Project (Project Base + CS)' : d;
 function getAllDeptsForWlb() {
   const s = new Set(getAllDepts());
   Object.values(OFF_DB).forEach(m => Object.keys(m.depts || {}).forEach(d => { if (d) s.add(d); }));
@@ -6054,7 +6057,7 @@ function wlbProjKeyOf(code, monthNum, cur) {
   return (!k || k.endsWith(un) || k.indexOf('::__') >= 0) ? null : k;
 }
 function wlbCounts(e, monthNum, cur) {
-  if (e.dept !== 'HCM-EC') return true;
+  if (e.dept !== 'HCM-EC') return false;   // phòng văn phòng: không tính WLB
   return !!(e.code && wlbProjKeyOf(e.code, monthNum, cur));
 }
 function wlbXlsTotalOT(monthNum, dept) {
@@ -6582,7 +6585,7 @@ function renderWlbCore() {
         const expandBtn = d === 'HCM-EC' ? projectExpandButtonHtml(boxId) : '';
         rows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${fmtMK(mk)}</td>
-          <td>${d}${expandBtn}</td>
+          <td>${wlbDeptLabel(d)}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${fmtH(ot)}</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mk)}">${wlbDisplayWithWarn(v, ot)}</td>
@@ -6767,7 +6770,7 @@ function renderWlbCore() {
         const expandBtn = d === 'HCM-EC' ? projectExpandButtonHtml(boxId) : '';
         qRows.push(`<tr>
           <td style="color:var(--text3);font-size:11px;padding-left:18px">${qLabel[qk]}</td>
-          <td>${d}${expandBtn}</td>
+          <td>${wlbDeptLabel(d)}${expandBtn}</td>
           <td style="font-family:var(--font-mono)">${fmtH(ot)}</td>
           <td style="font-family:var(--font-mono)">${off}</td>
           <td style="font-family:var(--font-mono);font-weight:700;color:${wlbColor(v,mks[mks.length-1])}">${wlbDisplayWithWarn(v, ot)}</td>
