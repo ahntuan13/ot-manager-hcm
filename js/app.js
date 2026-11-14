@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.151';
+const APP_VERSION = '2026.152';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -1364,7 +1364,7 @@ function tryParseCheckinOutFormat(ws) {
   if (dateStart < 0) return false;
 
   // Only include these HCM departments
-  const ALLOWED_DEPTS = new Set(['HCM-EC','S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ']);
+  const ALLOWED_DEPTS = new Set(['HCM-EC','S-EC','S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ']);
 
   // Build list of {inCol, outCol, isoDate, monthKey} for each "In" column (pairs In/Out)
   const dayCols = [];
@@ -1530,7 +1530,7 @@ const NEW_DEPT_MAP = [
 function mapNewDept(v) {
   const t = String(v || '').trim();
   if (window.SITE_HN) return t || null;   // Hà Nội: mã phòng ban theo đúng file chấm công, không quy đổi
-  if (/^(HCM-EC|S-AD|S-ED|S-QC|S-PU|S-PD|S-AZ)$/.test(t)) return t;
+  if (/^(HCM-EC|S-EC|S-AD|S-ED|S-QC|S-PU|S-PD|S-AZ)$/.test(t)) return t;
   const m = NEW_DEPT_MAP.find(([re]) => re.test(t)); return m ? m[1] : null;
 }
 const HCM_ONLY_FILTER = true;

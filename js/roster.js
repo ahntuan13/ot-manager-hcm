@@ -16,7 +16,7 @@ let EMP_DB = {};
 function loadEmpDb() { try { const r = localStorage.getItem(EMP_KEY); if (r) EMP_DB = JSON.parse(r) || {}; } catch (e) {} }
 function saveEmpDb() { try { localStorage.setItem(EMP_KEY, JSON.stringify(EMP_DB)); } catch (e) {} if (typeof cloudTouch === 'function') cloudTouch(); }
 loadEmpDb();
-const EMP_DEPTS = ['HCM-EC', 'S-AD', 'S-ED', 'S-QC', 'S-PU', 'S-PD', 'S-AZ'];
+const EMP_DEPTS = ['HCM-EC', 'S-EC', 'S-AD', 'S-ED', 'S-QC', 'S-PU', 'S-PD', 'S-AZ'];
 const EMP_ST = { ot: ['Tính OT', '#2E7D32'], excl: ['Không tính OT', '#8a8f98'], left: ['Đã nghỉ việc', '#C0392B'] };
 const emEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const emJs = s => emEsc(s).replace(/\\/g, '\\\\');
