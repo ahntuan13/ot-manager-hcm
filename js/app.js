@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.143';
+const APP_VERSION = '2026.144';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5777,36 +5777,21 @@ function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
 // (nguồn nhân sự), vì Off Day chỉ có ở đó, không có trong DB chấm công hàng ngày.
 // ── WLB theo dự án: danh sách dự án lấy từ ACTION PLAN (PROJECTS_DB). NV HCM-EC có trong Excel
 // nhưng chưa thuộc dự án nào → gom vào dòng "Chưa gán dự án (Excel)" để tổng các dự án = tổng HCM-EC.
-// v2026.143: dòng này dùng CHÍNH nhóm "Chưa gán dự án" của Action Plan (cùng tên, cùng danh sách NV với
-// Tổng quan OT/OT phòng ban). Riêng NV có trong Excel HCM-EC nhưng không có trong chấm công (nên chưa được
-// tự gom vào nhóm) cũng được cộng vào dòng này để tổng các dự án = tổng HCM-EC.
+// v2026.144: danh sách dự án WLB = đúng cột "Project Name" của Action Plan (cùng PROJECTS_DB). Nhóm
+// "Chưa gán dự án" chỉ hiện khi Action Plan cũng hiện (tháng đó có NV trong nhóm). NV chỉ có trong Excel
+// mà chưa thuộc dự án nào KHÔNG tự gom vào dòng nào (gán họ ở Danh mục để tính vào dự án).
 const WLB_REMAIN_PROJ = UNASSIGNED_PROJ;
-function wlbRemainCodes(monthNum) {
-  const mk = `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`;
-  const cur = currentProjectMap();
-  const out = [];
-  Object.values(WLB_XLS.employees || {}).forEach(e => {
-    if (e.dept !== 'HCM-EC' || !e.code) return;
-    if (!projKeyForEmp(e.code, mk, cur)) out.push(e.code);
-  });
-  return out;
-}
-// Mã NV của 1 dự án trong 1 tháng dương lịch (nhóm "Chưa gán dự án" = nhóm Action Plan + NV chỉ có trong Excel)
 function wlbProjCodes(group, proj, monthNum) {
-  const mk = `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`;
-  const base = projectEmployeesForMonth(group, proj, mk);
-  if (group === 'HCM-EC' && proj === UNASSIGNED_PROJ) return [...new Set([...base, ...wlbRemainCodes(monthNum)])];
-  return base;
+  return projectEmployeesForMonth(group, proj, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`);
 }
 function wlbProjectList(monthNums) {
-  const list = projectsInGroup('HCM-EC').sort();
-  if (!list.includes(UNASSIGNED_PROJ) && monthNums.some(m => wlbRemainCodes(m).length)) list.push(UNASSIGNED_PROJ);
-  return list.filter(p => p !== UNASSIGNED_PROJ || monthNums.some(m => wlbProjCodes('HCM-EC', p, m).length));
+  return projectsInGroup('HCM-EC').filter(p => !p.startsWith('__')).sort()
+    .filter(p => p !== UNASSIGNED_PROJ || monthNums.some(m => wlbProjCodes('HCM-EC', p, m).length));
 }
 function wlbProjNv(proj, monthNum) { return wlbProjCodes('HCM-EC', proj, monthNum).length; }
 function getProjectWlbForMonth(group, proj, monthNum) {
   const p = PROJECTS_DB[group] && PROJECTS_DB[group][proj];
-  if (!p && !(group === 'HCM-EC' && proj === UNASSIGNED_PROJ)) return { ot: 0, off: 0, wlb: null };
+  if (!p) return { ot: 0, off: 0, wlb: null };
   let ot = 0, off = 0; const set = new Set(wlbProjCodes(group, proj, monthNum));
   Object.values(WLB_XLS.employees || {}).forEach(e => { if (e.code && set.has(e.code)) { ot += (e.ot[monthNum]||0); off += (e.off[monthNum]||0); } });
   return { ot: Math.round(ot*60)/60, off: Math.round(off*60)/60, wlb: wlbRatio(off, ot) };
@@ -6490,8 +6475,8 @@ function renderWlbCore() {
       const allEcProjects = wlbProjectList([monthNumP]);
       const projEntries = allEcProjects.map(proj => {
         const w = getProjectWlbForMonth('HCM-EC', proj, monthNumP);
-        return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
-      }).filter(e => e.value !== null && e.value !== undefined);
+        return { name: proj.replace(/^HCM\s+/i,'') + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
+      });
       // Thông báo rõ nguyên nhân khi rỗng — tránh để trắng trơn khiến người dùng tưởng bị lỗi/mất
       // dữ liệu, trong khi thực ra chỉ đơn giản là tháng đang xem chưa có dữ liệu Excel WLB.
       const emptyElP = document.getElementById('cWlbProjMonthEmpty');
@@ -6679,8 +6664,8 @@ function renderWlbCore() {
       const allEcProjectsQ = wlbProjectList(monthNumsQ);
       const projEntriesQ = allEcProjectsQ.map(proj => {
         const w = getProjectWlbForMonths('HCM-EC', proj, monthNumsQ);
-        return { name: proj.replace(/^HCM\s+/i,''), value: w.wlb };
-      }).filter(e => e.value !== null && e.value !== undefined);
+        return { name: proj.replace(/^HCM\s+/i,'') + (w.wlb == null ? ' (chưa có OT)' : ''), value: w.wlb == null ? 0 : w.wlb };
+      });
       const emptyElQ = document.getElementById('cWlbProjQtrEmpty');
       if (emptyElQ) {
         const hasAnyMonth = monthNumsQ.some(m => wlbXlsMonthsWithData().includes(m));
