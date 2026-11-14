@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.148';
+const APP_VERSION = '2026.149';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5787,7 +5787,9 @@ function getProjectOTForPeriod(group, proj, mk, periodIdx, useDelta) {
 // mà chưa thuộc dự án nào KHÔNG tự gom vào dòng nào (gán họ ở Danh mục để tính vào dự án).
 const WLB_REMAIN_PROJ = UNASSIGNED_PROJ;
 function wlbProjCodes(group, proj, monthNum) {
-  return projectEmployeesForMonth(group, proj, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`);
+  const cur = currentProjectMap(), key = group + '::' + proj, codes = new Set(Object.keys(cur));
+  Object.keys(PROJ_MOVES).forEach(c => codes.add(c));
+  return [...codes].filter(c => wlbProjKeyOf(c, monthNum, cur) === key);
 }
 function wlbProjectList(monthNums) {
   // WLB chỉ tính cho NV thuộc dự án: bỏ nhóm "Chưa gán dự án" (NV chỉ ghi HCM-EC = khối văn phòng, không thuộc diện tính WLB)
@@ -6043,11 +6045,17 @@ function wlbXlsMonthsWithData() {
   return [...set].sort((a,b)=>a-b);
 }
 // WLB chỉ tính NV thuộc dự án: NV HCM-EC chỉ ghi phòng (văn phòng / chưa gán dự án) KHÔNG tính. S-ED giữ nguyên.
+// Dự án của NV cho WLB tháng monthNum. Nếu tại tháng đó NV còn "chưa gán" (VD vừa được gán ở chu kỳ hiện tại,
+// có hiệu lực từ chu kỳ sau) thì dùng dự án HIỆN TẠI của NV — để dữ liệu WLB tháng trước không bị mất.
+function wlbProjKeyOf(code, monthNum, cur) {
+  const un = '::' + UNASSIGNED_PROJ;
+  let k = projKeyForEmp(code, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`, cur);
+  if (!k || k.endsWith(un)) k = cur[code] || null;
+  return (!k || k.endsWith(un) || k.indexOf('::__') >= 0) ? null : k;
+}
 function wlbCounts(e, monthNum, cur) {
   if (e.dept !== 'HCM-EC') return true;
-  if (!e.code) return false;
-  const k = projKeyForEmp(e.code, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`, cur);
-  return !!k && !k.endsWith('::' + UNASSIGNED_PROJ) && k.indexOf('::__') < 0;
+  return !!(e.code && wlbProjKeyOf(e.code, monthNum, cur));
 }
 function wlbXlsTotalOT(monthNum, dept) {
   const cur = currentProjectMap();
