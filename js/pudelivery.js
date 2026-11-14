@@ -103,7 +103,8 @@ function puSplitProject(line) {
   } else { const d = /[-\s]([EM])$/i.exec(s); if (d) { disc = d[1].toUpperCase(); s = puClean(s.replace(d[0], ' ')); } }
   return { name: s.replace(/[-\/\s]+$/, ''), disc, pm };
 }
-const puNorm = s => String(s || '').toUpperCase().replace(/^HCM[\s_-]*/, '').replace(/[^A-Z0-9]/g, '');
+// MEGA = RED DRAGON (E và M): file Excel ghi MEGA hay RED DRAGON đều được nhận là cùng 1 dự án
+const puNorm = s => String(s || '').toUpperCase().replace(/^HCM[\s_-]*/, '').replace(/[^A-Z0-9]/g, '').replace(/^(MEGA|REDDARGON)/, 'REDDRAGON');
 function puAutoMatch(name) {
   const n = puNorm(name); if (!n) return '';
   let best = '', score = 0;

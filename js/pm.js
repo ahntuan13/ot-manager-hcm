@@ -36,7 +36,7 @@ function pmNames(p, g) {
   return l.map(x => pmShortName(x.name) + (x.d ? ` (${x.d})` : '')).join(', ');
 }
 function pmTeamsOfProject(p, g) { const s = new Set(); pmOfProject(g, p).forEach(x => x.teams.forEach(t => s.add(t))); return [...s]; }
-const pmNorm = s => String(s || '').toUpperCase().replace(/^HCM[\s-]+/, '').replace(/[^A-Z0-9]/g, '');
+const pmNorm = s => String(s || '').toUpperCase().replace(/^HCM[\s-]+/, '').replace(/[^A-Z0-9]/g, '').replace(/^(MEGA|REDDARGON)/, 'REDDRAGON');   // MEGA = RED DRAGON
 // Tìm PM theo tên dự án "lỏng" (dùng cho Tiến độ dự án, tên không trùng hẳn Action Plan): khớp đúng → khớp bỏ tiền tố HCM
 function pmNamesLoose(name) {
   if (!name) return '';
