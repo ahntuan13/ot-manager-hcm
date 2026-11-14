@@ -28,7 +28,7 @@ function catAddPmToProject(k) {
 function catPromptAddProject() {
   if (!requireManager('thêm dự án')) return;
   const name = prompt('Tên dự án mới (HCM-EC):'); if (!name || !name.trim()) return;
-  if (addProject('HCM-EC', name.trim())) { toast(`✅ Đã thêm dự án "${name.trim()}".`); catReload(); } else toast('Tên dự án đã tồn tại hoặc không hợp lệ');
+  if (addProject('HCM-EC', name.trim())) { toast(`✅ Đã thêm dự án "${name.trim()}".`); catReload(); } else toast('Tên dự án đã tồn tại (hoặc là tên tương đương, VD MEGA = RED DRAGON) hoặc không hợp lệ');
 }
 function catRenameProject(g, p) { if (!requireManager('đổi tên dự án')) return; renameProjectPrompt(g, p); catReload(); }
 function catDeleteProject(g, p) { if (!requireManager('xoá dự án')) return; deleteProjectConfirm(g, p); catReload(); }
@@ -185,7 +185,7 @@ function catProjTab(edit) {
   }).join('');
   const unN = mk ? projectEmployeesForMonth('HCM-EC', UNASSIGNED_PROJ, mk).length : 0;
   const unBox = unN ? `<div class="card" style="border-left:4px solid #E8A33D"><div style="font-size:13px;line-height:1.7">⚠️ Có <b>${unN}</b> NV HCM-EC <b>chưa gán dự án</b> — OT của họ hiện ở dòng "Chưa gán dự án" trên các biểu đồ. Đổi tên / thêm PM cho dự án <u>không</u> tự chuyển NV; cần gán NV vào dự án.${edit ? ` <button class="btn btn-primary" style="margin-left:8px" onclick="openStaffEditModal('HCM-EC','${cJ(UNASSIGNED_PROJ)}','${mk}')">Gán NV vào dự án</button>` : ''}</div></div>` : '';
-  return unBox + `<div class="card"><div class="action-row">${edit ? '<button class="btn btn-primary" onclick="catPromptAddProject()">＋ Thêm dự án</button>' : ''}<span style="font-size:12px;color:var(--text2)">${projs.length} dự án (HCM-EC). Đổi tên / xoá dự án ở đây thì mọi trang khác đổi theo.</span></div><div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6"><b>Quy định WLB:</b> chỉ tính nhóm <b>HCM - Project</b> (Project Base + CS, gồm các dự án trên đây — chỉ NV đã thuộc dự án). <b>Khối văn phòng</b> (HCM-EC chưa gán dự án, S-ED, S-QC, S-PU, S-PD, S-AZ) <b>không tính WLB</b>.</div></div>
+  return unBox + `<div class="card"><div class="action-row">${edit ? '<button class="btn btn-primary" onclick="catPromptAddProject()">＋ Thêm dự án</button>' : ''}<span style="font-size:12px;color:var(--text2)">${projs.length} dự án (HCM-EC). Đổi tên / xoá dự án ở đây thì mọi trang khác đổi theo.</span></div><div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6"><b>Quy định WLB:</b> chỉ tính nhóm <b>HCM - Project</b> (Project Base + CS, gồm các dự án trên đây — chỉ NV đã thuộc dự án). <b>Khối văn phòng</b> (<b>S-EC</b> = NV EC làm tại VP, HCM-EC chưa gán dự án, S-ED, S-QC, S-PU, S-PD, S-AZ) <b>không tính WLB</b>.</div></div>
     <div class="card"><div class="pg-tblw"><table class="pg-tbl"><thead><tr><th>#</th><th style="text-align:left">Project name</th><th style="text-align:left">PM — Nhóm</th><th style="text-align:right">Nhân sự</th>${edit ? '<th></th>' : ''}</tr></thead><tbody>${tr}</tbody></table></div></div>`;
 }
 function renderCatalog() {

@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.150';
+const APP_VERSION = '2026.151';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -4787,7 +4787,7 @@ function projShort(name) {
   return /^RED[\s-]*DRAGON$/i.test(n.trim()) ? 'RED DRAGON (MEGA) E+M' : n;
 }
 // Các phòng ban khác có thể là đích khi chuyển NV ra khỏi dự án HCM-EC
-const DEPT_TARGETS = ['S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ'];
+const DEPT_TARGETS = ['S-EC','S-AD','S-ED','S-QC','S-PU','S-PD','S-AZ'];   // S-EC = NV EC làm tại văn phòng (không tính WLB)
 function deptEntryKey(d) { return d === 'S-ED' ? '__SED_ALL__' : '__DEPT_ALL__'; }
 function ensureDeptEntries() {
   if (!PROJECTS_DB) return;
@@ -4964,6 +4964,7 @@ function pendingMoveOf(code, mk) {
 // NV thuộc HCM-EC (theo dữ liệu OT) mà chưa ở dự án nào → tự gom vào "Chưa gán dự án", chờ PM chuyển đúng.
 function autoAssignUnassigned() {
   if (!PROJECTS_DB || !DB) return false;
+  try { mergeAliasProjects(); } catch (e) { console.warn(e); }
   if (!PROJECTS_DB['HCM-EC']) PROJECTS_DB['HCM-EC'] = {};
   const cur = currentProjectMap();
   const add = [];
@@ -5009,9 +5010,39 @@ function addTombstone(group, name) {
   saveProjectsTombstones();
 }
 
+// MEGA = RED DRAGON (E và M): 2 tên này là MỘT dự án — không cho tạo/đổi tên thành tên tương đương dự án đã có,
+// và tự gộp nếu đã tồn tại cả hai.
+const projAliasNorm = n => String(n || '').toUpperCase().replace(/^HCM[\s-]+/, '').replace(/[^A-Z0-9]/g, '').replace(/^(MEGA|REDDARGON)/, 'REDDRAGON');
+function projAliasExists(group, name, except) {
+  const k = projAliasNorm(name);
+  return Object.keys(PROJECTS_DB[group] || {}).some(p => p !== except && !p.startsWith('__') && projAliasNorm(p) === k);
+}
+function mergeAliasProjects() {
+  if (!PROJECTS_DB) return false;
+  let changed = false;
+  Object.keys(PROJECTS_DB).forEach(group => {
+    const g = PROJECTS_DB[group], by = {};
+    Object.keys(g).filter(p => !p.startsWith('__') && p !== UNASSIGNED_PROJ).forEach(p => { (by[projAliasNorm(p)] = by[projAliasNorm(p)] || []).push(p); });
+    Object.values(by).filter(l => l.length > 1).forEach(list => {
+      list.sort((a, b) => ((g[b].employees || []).length - (g[a].employees || []).length) || a.length - b.length);
+      const keep = list[0], kk = group + '::' + keep;
+      list.slice(1).forEach(dup => {
+        const d = g[dup], dk = group + '::' + dup, K = g[keep];
+        K.employees = [...new Set([...(K.employees || []), ...(d.employees || [])])];
+        K.plans = K.plans || {};
+        Object.keys(d.plans || {}).forEach(m => { if (!K.plans[m] || !(K.plans[m].reason || K.plans[m].plan || K.plans[m].note)) K.plans[m] = d.plans[m]; });
+        Object.values(PROJ_MOVES).forEach(mv => Object.values(mv).forEach(e => { if (e.key === dk) e.key = kk; if (e.prev === dk) e.prev = kk; }));
+        try { if (typeof pmOnProjectRename === 'function') pmOnProjectRename(group, dup, keep); } catch (e) {}
+        delete g[dup]; addTombstone(group, dup); changed = true;
+      });
+    });
+  });
+  if (changed) { saveProjMoves(); saveProjectsDB(); }
+  return changed;
+}
 function addProject(group, name) {
   if (!PROJECTS_DB[group]) PROJECTS_DB[group] = {};
-  if (!name || PROJECTS_DB[group][name]) return false;
+  if (!name || PROJECTS_DB[group][name] || projAliasExists(group, name)) return false;
   PROJECTS_DB[group][name] = { employees:[], plans:{} };
   // Nếu trước đây từng xoá dự án CÙNG TÊN rồi tạo lại — bỏ đánh dấu tombstone, vì giờ NGƯỜI DÙNG
   // đang chủ động muốn dự án này tồn tại trở lại (không phải Sheet cũ hồi sinh nhầm).
@@ -5021,7 +5052,7 @@ function addProject(group, name) {
   return true;
 }
 function renameProject(group, oldName, newName) {
-  if (!PROJECTS_DB[group] || !PROJECTS_DB[group][oldName] || !newName || PROJECTS_DB[group][newName]) return false;
+  if (!PROJECTS_DB[group] || !PROJECTS_DB[group][oldName] || !newName || PROJECTS_DB[group][newName] || projAliasExists(group, newName, oldName)) return false;
   PROJECTS_DB[group][newName] = PROJECTS_DB[group][oldName];
   delete PROJECTS_DB[group][oldName];
   { const ok = group + '::' + oldName, nk = group + '::' + newName;
@@ -5707,7 +5738,7 @@ function promptAddProject(group) {
     toast(`Đã thêm dự án "${name.trim()}"`); renderActionPlan();
     notify('mgr', { type:'project', k:`project:${group}::${name.trim()}`, ic:'🆕', title:`${notifActorLabel()} thêm dự án mới — ${name.trim()}`, body: `Nhóm ${group}` });
   }
-  else toast('Tên dự án đã tồn tại hoặc không hợp lệ');
+  else toast('Tên dự án đã tồn tại (hoặc là tên tương đương, VD MEGA = RED DRAGON) hoặc không hợp lệ');
 }
 function renameProjectPrompt(group, proj) {
   if (proj === UNASSIGNED_PROJ) { toast('Không đổi tên được nhóm này'); return; }
@@ -6343,6 +6374,7 @@ function renderWlbRecon(mks) {
 
 function renderWlb() { renderWlbCore(); periodRelabel('wlb-quarter', wlbTab === 'year'); }
 function renderWlbCore() {
+  try { mergeAliasProjects(); } catch (e) { console.warn(e); }
   const allMks  = wlbAllMks();
   try { renderWlbRecon(allMks); } catch(e) { console.warn('recon', e); }
   const allDepts = getAllDeptsForWlb();
@@ -6594,7 +6626,7 @@ function renderWlbCore() {
           const monthNum = parseInt(mk.split('-')[1], 10);
           const projRows = wlbProjectList([monthNum]).map(proj => {
             const w = getProjectWlbForMonth('HCM-EC', proj, monthNum);
-            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, monthNum) };
+            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot) + `<div style="font-size:10px;color:var(--text3);font-weight:400">Off ${w.off} ngày ÷ OT ${fmtH(w.ot)}</div>`, nv: wlbProjNv(proj, monthNum) };
           });
           rows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           // Điền nội dung ngay (ẩn sẵn) — không đợi bấm mới tính, vì dữ liệu WLB theo dự án nhẹ.
@@ -6779,7 +6811,7 @@ function renderWlbCore() {
           const monthNums = mks.map(mk => parseInt(mk.split('-')[1], 10));
           const projRows = wlbProjectList(monthNums).map(proj => {
             const w = getProjectWlbForMonths('HCM-EC', proj, monthNums);
-            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot), nv: wlbProjNv(proj, parseInt(mks[mks.length-1].split('-')[1],10)) };
+            return { name: projShort(proj), display: wlbDisplayWithWarn(w.wlb, w.ot) + `<div style="font-size:10px;color:var(--text3);font-weight:400">Off ${w.off} ngày ÷ OT ${fmtH(w.ot)}</div>`, nv: wlbProjNv(proj, parseInt(mks[mks.length-1].split('-')[1],10)) };
           });
           qRows.push(`<tr><td colspan="6" style="padding:0;border:none"><div id="${boxId}" style="display:none;padding:6px 0 10px 18px"></div></td></tr>`);
           setTimeout(() => fillProjectBox(boxId, projRows, 'WLB'), 0);
