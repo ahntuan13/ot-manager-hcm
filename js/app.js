@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.145';
+const APP_VERSION = '2026.146';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -6037,14 +6037,23 @@ function wlbXlsMonthsWithData() {
   });
   return [...set].sort((a,b)=>a-b);
 }
+// WLB chỉ tính NV thuộc dự án: NV HCM-EC chỉ ghi phòng (văn phòng / chưa gán dự án) KHÔNG tính. S-ED giữ nguyên.
+function wlbCounts(e, monthNum, cur) {
+  if (e.dept !== 'HCM-EC') return true;
+  if (!e.code) return false;
+  const k = projKeyForEmp(e.code, `${WLB_XLS.year}-${String(monthNum).padStart(2,'0')}`, cur);
+  return !!k && !k.endsWith('::' + UNASSIGNED_PROJ) && k.indexOf('::__') < 0;
+}
 function wlbXlsTotalOT(monthNum, dept) {
+  const cur = currentProjectMap();
   return Object.values(WLB_XLS.employees)
-    .filter(e => !dept || dept==='__all__' || e.dept===dept)
+    .filter(e => (!dept || dept==='__all__' || e.dept===dept) && wlbCounts(e, monthNum, cur))
     .reduce((s,e)=> s + (e.ot[monthNum]||0), 0);
 }
 function wlbXlsTotalOff(monthNum, dept) {
+  const cur = currentProjectMap();
   return Object.values(WLB_XLS.employees)
-    .filter(e => !dept || dept==='__all__' || e.dept===dept)
+    .filter(e => (!dept || dept==='__all__' || e.dept===dept) && wlbCounts(e, monthNum, cur))
     .reduce((s,e)=> s + (e.off[monthNum]||0), 0);
 }
 // Nhóm Quý theo QUÝ LỊCH, không chồng lấp: Q1=T1-3, Q2=T4-6, Q3=T7-9, Q4=T10-12.
@@ -6203,7 +6212,9 @@ function buildEmployeeWlbRows(mks, deptFilter, searchTerm) {
 
     if (useXlsForThisMonth) {
       // Nguồn ĐÚNG (Excel WLB) cho tháng này — cả OT và Off Day cùng khớp 1 nguồn, 1 khoảng thời gian.
+      const curW = currentProjectMap();
       Object.values(WLB_XLS.employees).forEach(e => {
+        if (!wlbCounts(e, monthNum, curW)) return;
         const key = e.code ? ('C:'+e.code) : ('N:'+e.name);
         if (!rowsMap[key]) rowsMap[key] = { name:e.name, code:e.code||'', dept:e.dept||'', ot:0, off:0 };
         rowsMap[key].ot += (e.ot[monthNum]||0);
@@ -6292,7 +6303,8 @@ function renderWlbRecon(mks) {
   mks.forEach(mk => {
     const mn = parseInt(mk.split('-')[1], 10);
     WLB_ALLOWED_DEPTS.forEach(d => {
-      const ex = Object.values(WLB_XLS.employees || {}).filter(e => e.dept === d && (e.ot[mn]||0) > 0);
+      const curR = currentProjectMap();
+      const ex = Object.values(WLB_XLS.employees || {}).filter(e => e.dept === d && (e.ot[mn]||0) > 0 && wlbCounts(e, mn, curR));
       const exOt = ex.reduce((s,e) => s + (e.ot[mn]||0), 0);
       const m = DB[mk];
       let dbOt = null, dbCodes = new Set();
