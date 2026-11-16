@@ -13,6 +13,34 @@ const cJ = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, 
 const catGroupOf = e => { const t = pmTeamsOf(e); return t[0] || ''; };
 const catProjLabel = k => { const s = pmSplitKey(k); return s.p; };
 
+// ── Xuất báo cáo: danh mục nhân viên thuộc từng PM (PM → dự án → NV), theo tháng OT mới nhất ──
+function catExportPmReport() {
+  if (typeof XLSX === 'undefined') { toast('⚠️ Chưa tải được thư viện Excel.'); return; }
+  const mk = (typeof latestOtMk === 'function' && latestOtMk()) || '';
+  const pms = pmList().filter(e => e.status !== 'left')
+    .sort((a, b) => ({ CS: 0, PB: 1, '': 2 }[catGroupOf(a)] - { CS: 0, PB: 1, '': 2 }[catGroupOf(b)]) || a.name.localeCompare(b.name, 'vi'));
+  const detail = [['PM', 'Nhóm', 'Dự án', 'E/M', 'Mã NV', 'Họ và tên', 'Phòng ban', 'Chức vụ', 'Trạng thái']];
+  const sum = [['PM', 'Nhóm', 'Số dự án', 'Dự án phụ trách', 'Số NV (không trùng)']];
+  pms.forEach(pm => {
+    const projs = apPmProjects(pm.code), seen = new Set();
+    projs.forEach(x => {
+      const codes = projectEmployeesForMonth(x.g, x.p, mk).filter(cd => EMP_DB[cd] && cd !== pm.code)
+        .sort((a, b) => (EMP_DB[a].name || '').localeCompare(EMP_DB[b].name || '', 'vi'));
+      if (!codes.length) detail.push([pm.name, pmTeamLabel(pm), projShort(x.p), x.dLabel || '', '', '(chưa có NV)', '', '', '']);
+      codes.forEach(cd => {
+        seen.add(cd); const e = EMP_DB[cd];
+        detail.push([pm.name, pmTeamLabel(pm), projShort(x.p), x.dLabel || '', cd, e.name, dispDeptText(e.dept || ''), e.pos || '', (typeof EMP_ST !== 'undefined' && EMP_ST[e.status] ? EMP_ST[e.status][0] : '')]);
+      });
+    });
+    if (!projs.length) detail.push([pm.name, pmTeamLabel(pm), '(chưa gán dự án)', '', '', '', '', '', '']);
+    sum.push([pm.name, pmTeamLabel(pm), projs.length, projs.map(x => projShort(x.p)).join(', '), seen.size]);
+  });
+  const w1 = XLSX.utils.aoa_to_sheet(sum), w2 = XLSX.utils.aoa_to_sheet(detail);
+  w1['!cols'] = [26, 16, 10, 50, 18].map(w => ({ wch: w })); w2['!cols'] = [26, 16, 26, 7, 10, 28, 12, 24, 14].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, w1, 'Tổng hợp PM'); XLSX.utils.book_append_sheet(wb, w2, 'NV theo PM');
+  XLSX.writeFile(wb, `Danh-muc-NV-theo-PM-${mk || 'hien-tai'}.xlsx`);
+  toast(`✅ Đã xuất báo cáo NV theo PM (${pms.length} PM${mk ? ', tháng ' + mk : ''}).`);
+}
 function catSetTab(t) { catTab = t; renderCatalog(); }
 function catReload() { renderCatalog(); try { pmRefreshOthers(); } catch (e) {} }
 
@@ -165,6 +193,7 @@ function catPmTab(edit) {
       <td style="text-align:right">${set.size}</td>${edit ? `<td><button class="btn" style="padding:3px 9px;color:#C0392B" onclick="pmRemove('${c}')" title="Bỏ khỏi danh bạ PM">Bỏ PM</button></td>` : ''}</tr>`;
   }).join('');
   return `<div class="card"><div class="action-row">${edit ? '<button class="btn btn-primary" onclick="catAddPmDialog()">＋ Thêm PM</button><button class="btn" onclick="catImportDialog()" title="Gom tên PM đang gõ tay ở Action Plan / PU Delivery">⬇ Nhập từ Action Plan / PU</button>' : ''}
+      <button class="btn" onclick="catExportPmReport()" title="Xuất Excel: PM → dự án → danh sách nhân viên thuộc PM">⬇ Xuất báo cáo NV theo PM</button>
       ${chip('all', 'Tất cả')}${chip('CS', 'CS')}${chip('PB', 'Project Base')}${chip('none', 'Chưa phân nhóm')}
       <input type="text" placeholder="Tìm PM…" value="${cE(catQ)}" oninput="catQ=this.value;catRefocus(this)" style="width:160px"></div>
       <div style="font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6">Mỗi PM thuộc <b>1 nhóm</b> (CS hoặc Project Base). Một PM nắm nhiều dự án; một dự án có thể nhiều PM (mảng <b>E</b> / <b>M</b>). Sửa ở đây thì Action Plan, Nhân lực, PU Delivery, Tiến độ, OT tự cập nhật.${edit ? '' : ' (Chỉ Quản lý/Admin chỉnh sửa.)'}</div></div>
