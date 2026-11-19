@@ -392,17 +392,27 @@
     snapshotOld(ops);
     const forced = ops.filter(o => o.force), checked = ops.filter(o => !o.force);
     // 1) Ghi thẳng theo lô (OT/Đi trễ/Off/WLB/thông báo)
-    let i = 0;
+    let i = 0; const failed = [];
+    const bytesOf = s => { try { return new TextEncoder().encode(s || '').length; } catch (e) { return (s || '').length * 2; } };
+    const okOne = o => { if (o.del) delete remote[o.id]; else remote[o.id] = { j: o.j, ver: o.pl.ver }; };
     while (i < forced.length) {
       const batch = db.batch(), grp = []; let size = 0;
       while (i < forced.length && grp.length < 200 && size < 3.5e6) {
-        const o = forced[i++]; grp.push(o); size += (o.j ? o.j.length : 0);
-        if (size > 900000) toast('⚠️ Dữ liệu "' + o.id + '" rất lớn (' + Math.round(size / 1024) + ' KB) — gần giới hạn 1MB của Firestore.');
+        const o = forced[i++], b = bytesOf(o.j); grp.push(o); size += b;
+        // Firestore: 1 doc ≤ 1 MiB (tính theo BYTE, chữ có dấu = 2–3 byte). Chỉ cảnh báo/loại đúng doc quá lớn — không để nó chặn các dữ liệu khác.
+        if (b > 1040000) { o.tooBig = b; failed.push(o.id + ' (' + Math.round(b / 1024) + ' KB > 1 MB)'); continue; }
+        if (b > 900000) toast('⚠️ Dữ liệu "' + o.id + '" rất lớn (' + Math.round(b / 1024) + ' KB) — gần giới hạn 1MB của Firestore.');
         const ref = db.collection(COL).doc(o.id);
         if (o.del) batch.delete(ref); else { o.pl = payload(o.id, o.j); batch.set(ref, o.pl); }
       }
-      await batch.commit();
-      grp.forEach(o => { if (o.del) delete remote[o.id]; else remote[o.id] = { j: o.j, ver: o.pl.ver }; });
+      const okGrp = grp.filter(o => !o.tooBig);
+      try { await batch.commit(); okGrp.forEach(okOne); }
+      catch (e) {   // 1 doc lỗi làm hỏng cả lô → ghi lại TỪNG doc để các doc còn lại vẫn được lưu
+        for (const o of okGrp) {
+          try { const ref = db.collection(COL).doc(o.id); if (o.del) await ref.delete(); else { o.pl = payload(o.id, o.j); await ref.set(o.pl); } okOne(o); }
+          catch (e2) { failed.push(o.id + ' (' + (e2 && e2.message || e2) + ')'); }
+        }
+      }
     }
     // 2) Dự án / di chuyển / kế hoạch: kiểm tra phiên bản — nếu người khác vừa sửa thì tải bản của họ về
     for (const o of checked) {
@@ -417,11 +427,12 @@
         });
         if (o.del) delete remote[o.id]; else remote[o.id] = { j: o.j, ver: res.ver };
       } catch (e) {
-        if (!e.conflict) throw e;
+        if (!e.conflict) { failed.push(o.id + ' (' + (e && e.message || e) + ')'); continue; }
         handleConflict(o, e.remote);
       }
     }
     if (ops.some(o => !o.id.startsWith('nt_'))) logChange(ops);
+    if (failed.length) throw new Error('Không lưu được: ' + failed.slice(0, 3).join('; ') + (failed.length > 3 ? '…' : '') + ' — các dữ liệu khác đã lưu bình thường.');
   }
   function handleConflict(o, rd) {
     applying = true;
