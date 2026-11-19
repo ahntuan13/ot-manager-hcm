@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.155';
+const APP_VERSION = '2026.156';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5505,7 +5505,8 @@ function renderStaffEditEmployees() {
     const ot = (!isIn && otBy[code] != null) ? `${fmtH(Math.round(otBy[code]*60)/60)}` : '—';
     const isDel = staffEditDeletes.includes(code);
     const curMk = companyMonthInfo(new Date()).monthKey;
-    const sel = viewOnly ? '' : (isDel
+    const gone = !isAdd && !isIn && !curMap[code] && !!pend && !pend.key;   // đã bị xoá/chưa gán từ chu kỳ sau → chỉ còn hiện ở tháng đang xem
+    const sel0 = viewOnly ? '' : (isDel
       ? `<span style="font-size:11px;color:#C0392B;font-weight:600">🗑 sẽ xoá (nghỉ việc) từ ${fmtMK(curMk)}</span> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditDeletes=staffEditDeletes.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
       : isIn ? `<label style="font-size:11px;color:var(--text2)" title="Sửa ngày bắt đầu tính OT cho dự án này">Ngày chuyển <input type="date" value="${staffEditDates[code] || incomingMoveDate(code)}" onchange="staffEditDates['${code}']=this.value;renderStaffEditEmployees()" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : isAdd
       ? `<span style="font-size:11px;color:var(--green);font-weight:600">＋ sẽ thêm vào dự án này</span> <label style="font-size:11px;color:var(--text2)">Ngày chuyển <input type="date" value="${staffEditDates[code] || ''}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label> <a href="#" style="font-size:11px;margin-left:6px" onclick="staffEditAdds=staffEditAdds.filter(c=>c!=='${code}');renderStaffEditEmployees();return false">↩ huỷ</a>`
@@ -5514,6 +5515,9 @@ function renderStaffEditEmployees() {
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
            <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
          </select>${chosen ? ` <label style="font-size:11px;color:var(--text2)" title="Từ ngày này, OT tính cho dự án mới; trước đó vẫn tính dự án cũ">Ngày chuyển <input type="date" value="${staffEditDates[code]||''}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : ''}${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
+    const sel = (!viewOnly && gone && !isDel)
+      ? `<span style="font-size:11px;color:#B8730F;font-weight:600">đã xoá từ ${fmtMK(pend.mk)}</span> <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Gỡ NV khỏi cả tháng đang xem (OT tháng này của NV sẽ không còn tính cho dự án)" onclick="staffPurgeFromMonth('${code}')">🗑 Gỡ khỏi tháng này</button>`
+      : sel0;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--border2);${isDel?'background:rgba(192,57,43,.10);text-decoration:line-through;':''}${chosen||isAdd?'background:var(--accent-bg)':''}${isIn?'background:rgba(60,160,90,.10)':''}">
       <span style="font-family:var(--font-mono);font-size:11px;width:68px;color:var(--text2)">${code}</span>
       <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${employeeNameByCode(code)} ${pendTxt}</span>
@@ -5528,6 +5532,20 @@ function renderStaffEditEmployees() {
   document.getElementById('staffEditMoveNote').innerHTML = viewOnly ? '' :
     `Chọn <strong>Ngày chuyển</strong> cho từng NV (mặc định: đầu chu kỳ sau, ${cycleStartLabel(eff)}). Từ ngày đó, OT tính cho dự án mới; OT trước ngày chuyển vẫn tính cho dự án cũ (tổng OT của NV không đổi). NV đang ở "Chưa gán dự án" được gán, và NV nghỉ việc bị xoá, có hiệu lực <strong>ngay từ ${fmtMK(companyMonthInfo(new Date()).monthKey)}</strong>. Các tháng trước đó giữ nguyên.${nMoves ? ` <strong style="color:var(--accent)">Đang chờ lưu: ${nMoves} thay đổi.</strong>` : ''}`;
   document.getElementById('staffEditAddRow').style.display = viewOnly ? 'none' : 'flex';
+}
+// NV đã bị xoá (nghỉ việc) từ chu kỳ sau nhưng vẫn hiện ở tháng đang xem → dời hiệu lực xoá về đúng tháng đang xem
+function staffPurgeFromMonth(code) {
+  if (!staffEditCtx) return;
+  const mk = staffEditCtx.mk, mv = PROJ_MOVES[code], p = pendingMoveOf(code, mk);
+  if (!mv || !p || p.key) { toast('NV này không ở trạng thái "đã xoá".'); return; }
+  if (!confirm(`Gỡ ${code} — ${employeeNameByCode(code)} khỏi dự án cả ở ${fmtMK(mk)}?\n\nOT của NV trong ${fmtMK(mk)} sẽ không còn tính cho dự án này (các tháng trước đó giữ nguyên).`)) return;
+  const e = mv[p.mk], ex = mv[mk];
+  delete mv[p.mk];
+  const ne = { ...e, key: null, at: Date.now() }; delete ne.date; if (ex) ne.prev = ex.prev;
+  mv[mk] = ne;
+  saveProjMoves(); apUnsynced = true;
+  renderStaffEditEmployees(); renderActionPlan();
+  toast(`Đã gỡ ${code} khỏi ${fmtMK(mk)}.${window.CLOUD_ON ? ' — mọi người sẽ thấy sau khi lưu Cloud.' : ''}`);
 }
 function staffEditAddEmp() {
   const inp = document.getElementById('staffEditAddInput');
