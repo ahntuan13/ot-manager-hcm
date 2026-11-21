@@ -1,7 +1,7 @@
 // ============================================================
 //  PHIÊN BẢN APP — chỉ cần đổi số này mỗi lần update (vd: '2026.2', '2026.3'...)
 // ============================================================
-const APP_VERSION = '2026.156';
+const APP_VERSION = '2026.157';
 // Cloud (Firebase) — cloud.js đăng ký hàm đẩy; các hàm save* gọi cloudTouch() để tự lưu.
 function cloudTouch() { if (window.CLOUD_ON && typeof window.cloudPush === 'function') window.cloudPush(); }
 
@@ -5514,7 +5514,7 @@ function renderStaffEditEmployees() {
            <option value="">Chuyển đến… (giữ nguyên)</option>
            <optgroup label="Dự án">${opts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
            <optgroup label="Phòng ban khác">${deptOpts.map(o => `<option value="${o.v}" ${chosen===o.v?'selected':''}>${o.label}</option>`).join('')}</optgroup>
-         </select>${chosen ? ` <label style="font-size:11px;color:var(--text2)" title="Từ ngày này, OT tính cho dự án mới; trước đó vẫn tính dự án cũ">Ngày chuyển <input type="date" value="${staffEditDates[code]||''}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : ''}${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
+         </select>${chosen ? ` <label style="font-size:11px;color:var(--text2)" title="Từ ngày này, OT tính cho dự án mới; trước đó vẫn tính dự án cũ">Ngày chuyển <input type="date" value="${staffEditDates[code]||defaultMoveDate()}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : ''}${(!chosen && !isAdd && !isIn && pend && pend.key) ? ` <label style="font-size:11px;color:var(--text2)" title="Đã ghi nhận chuyển; sửa ngày để đổi thời điểm có hiệu lực">Ngày chuyển <input type="date" value="${staffEditDates[code] || moveEffIso(pend.mk, PROJ_MOVES[code][pend.mk])}" onchange="staffEditDates['${code}']=this.value" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px"></label>` : ''}${(!isAdd && !isIn) ? ` <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Xoá NV nghỉ việc khỏi dự án" onclick="staffEditDeletes.push('${code}');delete staffEditMoves['${code}'];renderStaffEditEmployees()">🗑 Xoá</button>` : ''}`);
     const sel = (!viewOnly && gone && !isDel)
       ? `<span style="font-size:11px;color:#B8730F;font-weight:600">đã xoá từ ${fmtMK(pend.mk)}</span> <button class="btn btn-danger" style="padding:3px 8px;font-size:11px" title="Gỡ NV khỏi cả tháng đang xem (OT tháng này của NV sẽ không còn tính cho dự án)" onclick="staffPurgeFromMonth('${code}')">🗑 Gỡ khỏi tháng này</button>`
       : sel0;
@@ -5579,13 +5579,16 @@ function saveStaffEditModal() {
     if (staffEditMoves[code] || staffEditAdds.includes(code) || staffEditDeletes.includes(code)) return;
     if (reDateMove(code, d)) { moved++; lines.push(`${code} ${employeeNameByCode(code)} → đổi ngày chuyển ${fmtIsoVN(d)}`); }
   });
+  const mvCodes = [...Object.keys(staffEditMoves), ...staffEditAdds, ...Object.keys(staffEditDates)];
+  const effIso = mvCodes.length ? incomingMoveDate(mvCodes[0]) : '';
+  const effFuture = effIso && effIso > isoDate(new Date());
   if (moved + deleted) notify('mgr', { type:'staff', k:`staff:${group}::${proj}`, ic:'👥', title:`${notifActorLabel()} cập nhật nhân sự — ${proj}`,
     body: `${moved} chuyển${deleted ? `, ${deleted} xoá (nghỉ việc)` : ''}: ${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '…' : ''}`, mk: staffEditCtx.mk });
   moved += deleted;
   if (moved) apUnsynced = true;
   closeStaffEditModal();
   renderActionPlan();
-  toast(moved ? `Đã lưu ${moved} thay đổi nhân sự${deleted ? ` (${deleted} NV nghỉ việc đã xoá từ ${fmtMK(companyMonthInfo(new Date()).monthKey)})` : ''}${window.CLOUD_ON ? ' — mọi người thấy ngay.' : '. Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.'}` : 'Không có thay đổi nhân sự nào.');
+  toast(moved ? `Đã lưu ${moved} thay đổi nhân sự${effFuture ? ` — hiệu lực từ ${fmtIsoVN(effIso)} (trước ngày đó NV vẫn hiện ở dự án cũ; muốn đổi sớm hơn: mở lại và sửa "Ngày chuyển")` : ''}${deleted ? ` (${deleted} NV nghỉ việc đã xoá từ ${fmtMK(companyMonthInfo(new Date()).monthKey)})` : ''}${window.CLOUD_ON ? ' — mọi người thấy ngay.' : '. Nhớ bấm "Lưu & Đồng bộ lên Sheet" ở phía trên.'}` : 'Không có thay đổi nào để lưu. (NV đã được chuyển trước đó sẽ có hiệu lực theo "Ngày chuyển" ghi cạnh tên — sửa ngày đó nếu muốn đổi sớm hơn.)');
 }
 // Ô "Kế hoạch nhân sự" trong bảng: tổng số NV + icon 👁️ để xem/sửa việc di chuyển
 function staffCellHtml(group, proj, mk) {
